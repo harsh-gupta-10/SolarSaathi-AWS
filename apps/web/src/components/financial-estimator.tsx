@@ -7,6 +7,7 @@ import type { SystemCandidate, SystemDemand } from "@solarsaathi/calculations";
 import { financialApi, type FinancialEstimateResponse, type FinancialInputs } from "../lib/financial-api";
 import { RoofRequestError } from "../lib/roof-api";
 import { FinancialResults } from "./financial-results";
+import { BenefitEvaluator } from "./benefit-evaluator";
 
 function bounded(raw: string, minimum: number, maximum: number): number | undefined {
   const value = Number(raw);
@@ -76,6 +77,10 @@ export function FinancialEstimator({ propertyId, analysisId, demand, generationK
       {busy && <p className="system-form-status" role="status">Calculating the selected system from the saved roof and your inputs…</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
     </form>
-    {result && <FinancialResults response={result} />}
+    {result && <><FinancialResults response={result} />
+      <BenefitEvaluator key={result.requestId} propertyId={propertyId} analysisId={analysisId} demand={demand}
+        generationKwhPerKwYear={generationKwhPerKwYear} nominalKw={result.system.nominalKw}
+        grossSystemCostRupees={result.financial.input.quote.grossSystemCostRupees} />
+    </>}
   </section>;
 }

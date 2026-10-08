@@ -6,6 +6,7 @@ import { Button, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle 
 import { useAuth } from "../auth/auth-provider";
 import { policyReviewApi, type PolicyChangeDetail, type PolicyChangeRecord, type PolicyReviewDetail,
   type PolicyReviewRecord, type PolicyReviewSource, type PolicyReviewSourceState } from "../lib/policy-review-api";
+import { PolicyPublicationPanel } from "./policy-publication-panel";
 
 type ReviewAction = { kind: "approve" | "reject"; item: PolicyReviewRecord } |
   { kind: "approve-change" | "reject-change"; change: PolicyChangeRecord } |
@@ -28,8 +29,9 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
   const userId = demo ? "SYNTHETIC_DEMO" : status === "signedIn" && profile?.policyAdmin ? profile.userId : null;
   const activeUserId = useRef(userId);
   activeUserId.current = userId;
+  const previousUserId = useRef(userId);
   const queueGeneration = useRef(0);
-  const [view, setView] = useState<"queue" | "sources">("queue");
+  const [view, setView] = useState<"queue" | "sources" | "rules">("queue");
   const [items, setItems] = useState<PolicyReviewRecord[]>([]);
   const [changes, setChanges] = useState<PolicyChangeRecord[]>([]);
   const [sources, setSources] = useState<PolicyReviewSource[]>([]);
@@ -39,6 +41,7 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<PolicyReviewDetail | null>(null);
   const [changeDetail, setChangeDetail] = useState<PolicyChangeDetail | null>(null);
+  const [authorEvidence, setAuthorEvidence] = useState<PolicyReviewDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +50,13 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const refreshQueue = () => { queueGeneration.current++; setRefresh(value => value + 1); };
+
+  useEffect(() => {
+    if (previousUserId.current !== userId) {
+      previousUserId.current = userId;
+      setAuthorEvidence(null);
+    }
+  }, [userId]);
 
   useEffect(() => {
     queueGeneration.current++;
@@ -60,7 +70,7 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
     if (!userId) { setItems([]); setChanges([]); setSources([]); setSourceStates([]);
       setNextCursor(null); setSelectedId(null);
       setDetail(null); setChangeDetail(null);
-      setAction(null); setReason(""); setMessage(null); setError(null); return; }
+      setAuthorEvidence(null); setAction(null); setReason(""); setMessage(null); setError(null); return; }
     const controller = new AbortController();
     setLoading(true); setError(null);
     void Promise.all([policyReviewApi.queue(userId, controller.signal), policyReviewApi.sources(userId, controller.signal)])
@@ -108,9 +118,13 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
           action.kind === "approve-change" ? "approve" : "reject", action.change.revision, reason.trim());
         setMessage(`Document change ${action.kind === "approve-change" ? "reviewed" : "rejected"}. No policy fact was published.`);
       } else {
-        await policyReviewApi.review(userId, action.item.candidate.candidateId, action.kind,
+        const reviewed = await policyReviewApi.review(userId, action.item.candidate.candidateId, action.kind,
           action.item.revision, reason.trim());
         setMessage(`Evidence ${action.kind === "approve" ? "approved for policy drafting" : "rejected"}. No benefit rule was published.`);
+        if (action.kind === "approve" && detail?.candidate.candidate.candidateId === action.item.candidate.candidateId) {
+          setAuthorEvidence({ ...detail, candidate: reviewed.candidate });
+          setView("rules");
+        }
       }
       setAction(null); setReason(""); refreshQueue();
     } catch (cause) { setError(errorText(cause)); }
@@ -163,6 +177,7 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
     <div className="policy-review-tabs" role="group" aria-label="Policy review sections">
       <button type="button" aria-pressed={view === "queue"} onClick={() => setView("queue")}>Review queue <span>{items.length + changes.length}</span></button>
       <button type="button" aria-pressed={view === "sources"} onClick={() => setView("sources")}>Official sources <span>{sources.length}</span></button>
+      <button type="button" aria-pressed={view === "rules"} onClick={() => setView("rules")}>Benefit rules</button>
     </div>
     {view === "queue" ? <div className="policy-review-grid">
       <div className="policy-review-list" role="group" aria-label="Pending evidence">
@@ -253,7 +268,7 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
             <li key={event.eventId}>{label(event.action)}<small>{time(event.occurredAt)}</small></li>)}</ol></div>}
         </>}
       </div>
-    </div> : <div className="policy-review-sources">
+    </div> : view === "sources" ? <div className="policy-review-sources">
       {loading && <p className="policy-review-empty" role="status">Loading official sources…</p>}
       {!loading && sources.length === 0 && <p className="policy-review-empty">No sources are registered. Register an official source before it can be curated and monitored.</p>}
       {sources.map(source => { const state = sourceStates.find(item => item.sourceId === source.sourceId);
@@ -270,7 +285,7 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
               <Button variant="outline" disabled={busy || !!demo} onClick={() => { setAction({ kind: "clear-rate-limit", source }); setReason(""); }}>Review rate limit</Button>
             : source.enabled ? <Button variant="outline" disabled={busy || !!demo} onClick={() => void crawl(source)}>Queue check</Button> : null}</div>
       </article>; })}
-    </div>}
+    </div> : <PolicyPublicationPanel key={userId} userId={userId} demo={!!demo} evidence={authorEvidence ?? currentDetail} />}
     <Sheet open={action !== null} onOpenChange={open => { if (!open && !busy) { setAction(null); setReason(""); } }}>
       <SheetContent side="right"><SheetHeader><SheetTitle>{action?.kind === "curate" ? "Curate official source" : action?.kind === "clear-rate-limit" ? "Review official rate limit" : action?.kind === "approve" ? "Approve evidence" : action?.kind === "approve-change" ? "Mark document reviewed" : "Reject evidence"}</SheetTitle>
         <SheetDescription>{action?.kind === "curate" ? "This enables scheduled checks for the registered source." : action?.kind === "clear-rate-limit" ?

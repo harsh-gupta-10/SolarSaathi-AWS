@@ -241,8 +241,8 @@ The crawler monitors only explicitly registered URLs. Linked official
 circular/PDF discovery and broader India source registration remain open.
 No policy resources have been deployed, so live official fetches, Cognito/IAM,
 S3/DynamoDB, CloudWatch alarms and production coverage are unverified. There
-is no active verified benefit/rule publication path yet; Phase 10 must add it
-before any homeowner subsidy calculation can use policy data.
+is no deployed active verified benefit/rule publication path. Phase 10 adds
+the local publication and evaluation path; live policy data remains open.
 
 ## Phase 10 — Subsidy stacking / eligibility engine
 Implement:
@@ -268,6 +268,46 @@ Output:
 - source for every benefit
 - policy version
 - confidence/verification status
+
+Status: locally implemented; **live verified India rule coverage remains
+open**. The typed deterministic engine evaluates central, state, DISCOM, local
+and other rules against declared applicant, property, geography, capacity and
+timing facts. Missing facts remain unknown. Fixed, per-kW, tiered and
+percentage-of-policy-eligible-cost formulas use bounded integer paise, with
+explicit individual and combined caps. The exact search checks reciprocal
+compatibility, overlap and exclusions for at most 16 relevant rules and
+returns stable selected/ineligible/unknown/excluded reasons. The API scopes
+active-rule retrieval by jurisdiction and returns unavailable without an
+amount if its safe search bound or a DynamoDB page boundary is reached.
+
+A separate admin publication workflow binds every numeric value, effective
+period, eligibility clause and compatibility edge to exact excerpts in a
+current immutable official archive. The author submits a draft; a different
+administrator from the author and source curator reviews it. Conditional
+DynamoDB transactions write verified facts, an immutable policy version,
+active pointer, activation event and audit. Cross-source replacement applies
+current official-source precedence and records its reason; unresolved
+equal-authority conflicts fail closed for manual resolution. Evidence-review
+approval alone never publishes a benefit. The homeowner API reloads the owned
+roof and recomputes the selected system. It labels applicant facts as
+self-reported, displays citations, policy versions, effective dates, source
+last-check status and incomplete scope coverage. The Phase 7 financial result
+remains unsubsidized; integration is Phase 11.
+
+No policy stack has been deployed or populated with verified live India benefit
+records. The local crawler still monitors explicitly registered URLs and does
+not provide broad source coverage. Source conflicts that lack a deterministic
+precedence resolution require separate human investigation; there is no
+in-product conflict-resolution record yet. Installed-capacity rules using a
+basis other than modeled DC watts must not be published until that basis is
+represented and verified. Rule authoring currently requires precise archive
+offsets and typed JSON in the admin UI. Live AWS IAM, Cognito, DynamoDB, S3,
+API Gateway and source-crawl behavior remain unverified.
+
+The local Phase 10 gate passed 662 tests, lint, typechecking, production builds,
+SAM invariant checks and read-only CloudFormation template validation. The
+benefit and admin demo screens passed inspected desktop/mobile accessibility
+checks with no WCAG A/AA violations.
 
 ## Phase 11 — Policy-backed financial engine
 Replace hardcoded subsidy assumptions with policy engine output.

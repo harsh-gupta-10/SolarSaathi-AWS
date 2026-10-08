@@ -97,6 +97,21 @@ candidate benefits
 
 Never manually subtract a subsidy in UI code.
 
+Phase 10 implements this as a pure, versioned rule evaluator. It checks declared
+applicant facts, jurisdiction, effective dates, current source evidence, rule
+compatibility, overlapping benefits, individual and combined caps, then chooses
+the largest compatible total. Money is evaluated in integer paise. Unknown
+facts or unverified evidence do not become an eligible amount. The current
+system-size test uses modeled actual DC watts; tariff or DISCOM AC-capacity
+requirements need separately verified rules before they can be asserted.
+
+The homeowner API recomputes the system from an owned, unexpired analysis. Its
+policy result is shown alongside the Phase 7 unsubsidized estimate. The Phase 7
+cash-flow rows and payback are not recalculated with a policy deduction yet.
+An unknown policy-eligible cost is not assumed to equal the whole installation
+quote. An incomplete or oversized relevant rule catalog yields an unavailable
+result rather than a made-up zero or maximum benefit.
+
 ## Net cost
 
 `netCost = max(0, grossCost - totalEligibleBenefit)`
@@ -151,3 +166,7 @@ Every financial result that uses a policy benefit stores:
 - rule IDs
 - source IDs
 - timestamp
+
+Phase 10 benefit evaluations return this provenance and archived clause
+citations, source checks, jurisdiction, effective window and verification time
+to the caller. Persisting a policy-adjusted financial result is later work.

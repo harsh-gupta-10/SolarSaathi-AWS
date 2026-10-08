@@ -19,7 +19,7 @@ approval.
 
 ## Phase 1 and Phase 2 checks
 
-Current `pnpm check` passes **232 tests**, lint, workspace/infrastructure typechecks
+The Phase 2 baseline passed **232 tests**, lint, workspace/infrastructure typechecks
 and production builds. Tests cover address drafts and storage failures,
 role-aware navigation, domain routing, accessible mobile menus, SDK cookie
 persistence, missing-config auth guards, strict-mode session restore, OAuth
@@ -111,6 +111,23 @@ reviewer, revision conflicts, immutable audit snapshots and no policy-fact
 publication. Browser tests cover stale/failed source feedback, link
 provenance, account changes and mobile/accessibility states. Fixtures are
 synthetic, and no local test implies a live official policy value.
+
+### Phase 10 benefit rules and publication
+
+The Phase 10 local `pnpm check` gate passed 662 tests across the workspace,
+infrastructure and tools suites, alongside lint, typechecking and builds.
+Pure rule tests cover eligibility with unknown facts, jurisdiction and Indian
+effective-date boundaries, current evidence, source precedence, overlap,
+conditional and mutual compatibility, individual/combined caps, optimization,
+zero-value handling and rule-catalog limits. API tests cover exact archived
+numeric and clause excerpts, forged locators, maker-checker separation,
+revision races, audited source replacement, owner-scoped analysis reads,
+pagination and fail-closed unavailability. UI tests cover declared facts,
+result provenance, unavailable states, publication queue/detail/review and
+pagination. Desktop/mobile browser checks covered the benefit and admin demo
+screens; accessibility checks reported no WCAG A/AA violations in the inspected
+states. These fixtures do not establish live India policy coverage or deployed
+AWS authorization.
 
 ### Application state
 Test:

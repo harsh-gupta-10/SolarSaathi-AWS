@@ -181,6 +181,18 @@ Resources:
       LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/policy"
       RetentionInDays: !Ref LogRetentionDays
 
+  PolicyPublicationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/policy-publication"
+      RetentionInDays: !Ref LogRetentionDays
+
+  BenefitsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/benefits"
+      RetentionInDays: !Ref LogRetentionDays
+
   PolicyCrawlerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -313,6 +325,102 @@ Resources:
             RestApiId: !Ref Api
             Path: /financials/estimate
             Method: POST
+
+  PolicyPublicationFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Human maker-checker publication of verified, cited policy rules from current archived official evidence.
+        must:
+          - Require verified ADMIN_POLICY or ADMIN Cognito membership and separate author, curator and reviewer.
+          - Bind exact quote and immutable citation to pinned derived archive and current crawl state.
+          - Publish only through conditional policy version and active-pointer transactions.
+    Properties:
+      Handler: handlers/policy-publication.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 28
+      MemorySize: 512
+      LoggingConfig:
+        LogGroup: !Ref PolicyPublicationLogGroup
+      Environment:
+        Variables:
+          POLICY_TABLE_NAME: !Ref PolicyTable
+          POLICY_DOCUMENT_BUCKET: !Ref PolicyDocumentBucket
+      Policies:
+        - Statement:
+            - Sid: PublishVerifiedPolicyItems
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:Query, dynamodb:ConditionCheckItem]
+              Resource: !GetAtt PolicyTable.Arn
+            - Sid: ReadPendingPublicationIndex
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${PolicyTable.Arn}/index/GSI6"
+            - Sid: ReadPinnedPublicationEvidence
+              Effect: Allow
+              Action: s3:GetObjectVersion
+              Resource: !Sub "${PolicyDocumentBucket.Arn}/derived/*"
+      Events:
+        CreateBenefitDraft:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /admin/policy/benefits/drafts, Method: POST }
+        ListBenefitReviewQueue:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /admin/policy/benefits/queue, Method: GET }
+        BenefitDraftDetail:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/policy/benefits/{draftId}", Method: GET }
+        SubmitBenefitDraft:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/policy/benefits/{draftId}/submit", Method: POST }
+        PublishBenefitDraft:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/policy/benefits/{draftId}/publish", Method: POST }
+        RejectBenefitDraft:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/policy/benefits/{draftId}/reject", Method: POST }
+
+  BenefitsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Evaluates active verified benefits for an authenticated owned roof and recomputed feasible system.
+        must:
+          - Read only homeowner core and published policy data; never write policy or accept browser rules.
+          - Fail closed on missing policy provenance or source crawl state and label incomplete coverage.
+    Properties:
+      Handler: handlers/benefits.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 28
+      LoggingConfig:
+        LogGroup: !Ref BenefitsLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+          POLICY_TABLE_NAME: !Ref PolicyTable
+      Policies:
+        - Statement:
+            - Sid: ReadOwnedBenefitRoof
+              Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt AnalysesTable.Arn
+            - Sid: ReadActiveVerifiedPolicy
+              Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt PolicyTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["PUBLISHED_POLICY#*", "SOURCE#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: ListActivePolicyIndex
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${PolicyTable.Arn}/index/GSI5"
+      Events:
+        EvaluateBenefits:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /benefits/evaluate, Method: POST }
 
   PolicyFunction:
     Type: AWS::Serverless::Function
@@ -896,6 +1004,14 @@ Resources:
           AttributeType: S
         - AttributeName: GSI4SK
           AttributeType: S
+        - AttributeName: GSI5PK
+          AttributeType: S
+        - AttributeName: GSI5SK
+          AttributeType: S
+        - AttributeName: GSI6PK
+          AttributeType: S
+        - AttributeName: GSI6SK
+          AttributeType: S
       KeySchema:
         - AttributeName: PK
           KeyType: HASH
@@ -931,6 +1047,22 @@ Resources:
             - AttributeName: GSI4PK
               KeyType: HASH
             - AttributeName: GSI4SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI5
+          KeySchema:
+            - AttributeName: GSI5PK
+              KeyType: HASH
+            - AttributeName: GSI5SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI6
+          KeySchema:
+            - AttributeName: GSI6PK
+              KeyType: HASH
+            - AttributeName: GSI6SK
               KeyType: RANGE
           Projection:
             ProjectionType: ALL

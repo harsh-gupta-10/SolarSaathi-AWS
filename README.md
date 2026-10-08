@@ -69,7 +69,7 @@ Current policy values are never treated as permanent constants. A crawler detect
 
 ## Implementation status
 
-Phases 0–9 have locally implemented source code:
+Phases 0–10 have locally implemented source code:
 - pnpm workspace, Next.js marketing site, responsive application shell, typed
   packages, quality scripts, GitHub Actions, and compiled Lambda/SAM foundation;
 - Cognito hosted sign-in, code+PKCE callback, identity verification, profile and
@@ -93,7 +93,10 @@ Phases 0–9 have locally implemented source code:
 - an official-source crawler with bounded scheduled fetches, change detection,
   tentative conflict signals, a mixed evidence/document-change review queue,
   independent administrator review, immutable audit, and a policy review UI
-  with a synthetic preview at `/demo/policy-review`.
+  with a synthetic preview at `/demo/policy-review`;
+- a deterministic benefit engine with tri-state eligibility, cited numeric and
+  clause evidence, compatibility/overlap/caps, an exact bounded optimizer,
+  owner-scoped evaluation API, and separate administrator rule publication.
 
 Google-derived preview, analysis and cache records have a 21-day retention
 limit and an hourly bounded hard-delete worker with an error alarm. Google roof
@@ -103,16 +106,20 @@ recommended system size. The system designer does not claim local interconnectio
 eligibility, a cost, savings or subsidy. The base financial model requires
 explicit user inputs and does not establish policy benefits or export credits.
 The policy evidence archive has no active government benefit facts yet.
-Crawler review approval does not publish a rule or calculate a subsidy;
-verified-rule publication and the benefit engine follow in Phase 10.
+Crawler review approval does not publish a rule or calculate a subsidy.
+Phase 10's publication workflow requires a separate reviewer and exact current
+official archive excerpts for every numeric value and rule clause. The
+homeowner benefit view labels applicant facts self-reported, leaves incomplete
+coverage visible, and never uses an unknown rule to increase the total.
 
 These phases have **local** lint, typecheck, test and build coverage. No AWS
 resources or Google Cloud project have been configured or deployed for this app;
 live Cognito, DynamoDB, Google API and hosting behavior remains unverified.
 Production release also needs alarm notifications, a review of DynamoDB PITR
 backup retention for Google data, credentials in the intended AWS account, and
-live deployment checks. The policy-backed financial and policy engines in later
-phases remain unimplemented and do not provide real subsidy figures. The local
+live deployment checks. The Phase 11 policy-backed financial integration is
+not implemented; Phase 10 has no live policy data and provides no real subsidy
+figure in the local preview. The local
 crawler monitors registered URLs; automatic discovery of linked official
 documents and live India source coverage remain open.
 

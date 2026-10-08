@@ -11,3 +11,7 @@ export * from "./candidate-extraction";
 export * from "./change-detection";
 export * from "./candidate-conflicts";
 export * from "./fetch-official";
+export * from "./benefit-rules";
+export * from "./benefit-stacking";
+export * from "./calendar";
+export * from "./benefit-clause-keys";

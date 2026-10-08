@@ -124,14 +124,14 @@ function sameHost(left: string, right: string): boolean {
 }
 
 async function request<T>(expectedUserId: string, path: string, method: "GET" | "POST",
-  schema: z.ZodType<T>, body?: unknown, signal?: AbortSignal): Promise<T> {
+  schema: z.ZodType<T>, body?: unknown, signal?: AbortSignal, timeoutMs = 10_000): Promise<T> {
   const url = endpoint(path);
   const controller = new AbortController();
   const cancel = () => controller.abort();
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) controller.abort();
   let timedOut = false;
-  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 10_000);
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
   try {
     if (controller.signal.aborted) throw new PolicyReviewError("CANCELLED", "The request was cancelled.");
     const session = await fetchAuthSession();
@@ -171,6 +171,8 @@ async function request<T>(expectedUserId: string, path: string, method: "GET" | 
     signal?.removeEventListener("abort", cancel);
   }
 }
+
+export { request as policyReviewRequest };
 
 export const policyReviewApi = {
   queue: (userId: string, signal?: AbortSignal, cursor?: string) => request(userId,

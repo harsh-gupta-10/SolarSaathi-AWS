@@ -67,6 +67,16 @@ the source curator and a revision-checked transaction; approved evidence is
 still unverified for homeowner policy/benefit use. Local checks do not prove
 deployed IAM, Cognito, network or alarm routing.
 
+Phase 10 publication binds each numeric and operative rule clause to an exact
+excerpt in an immutable archived official document. The backend derives the
+fact IDs and checks document hashes, current source status and source
+precedence; it does not accept browser-supplied authority or publication IDs.
+An admin different from the draft author and source curator must publish, with
+revision-checked DynamoDB transactions and audit records. The homeowner route
+loads only an owned analysis and active rules, and fails closed when there are
+no current rules or the bounded rule catalog cannot support evaluation. Local
+tests exercise these controls but do not establish live IAM or policy coverage.
+
 ## Sensitive data
 Protect:
 - identity data

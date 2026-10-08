@@ -169,6 +169,75 @@ rule or subsidy amount. Changed revisions return 409; all transitions are
 audited. These routes and scheduled fetches have only local test coverage;
 no deployed policy workflow has been verified.
 
+Phase 10 adds a locally implemented, owner-scoped `POST /v1/benefits/evaluate`.
+The request uses the confirmed `propertyId` and `analysisId`, the same demand,
+generation and nominal system inputs as the system and base-financial routes,
+and `applicantFacts` declared by the user. `eligibleQuotedCostPaise` is optional:
+the gross installed quote is not silently treated as policy-eligible cost.
+The backend reloads the owned roof and recomputes the roof-fitting system; it
+does not accept browser geometry, benefit amounts, policy IDs or source health.
+
+```json
+{
+  "propertyId": "owned-property-id",
+  "analysisId": "confirmed-analysis-id",
+  "demand": { "kind": "CONSUMPTION", "monthlyConsumptionKwh": 300 },
+  "generationKwhPerKwYear": 1500,
+  "nominalKw": 2,
+  "applicantFacts": {
+    "country": "IN",
+    "state": "MH",
+    "customerType": "RESIDENTIAL",
+    "propertyType": "INDIVIDUAL_HOME",
+    "ownership": "OWNER"
+  }
+}
+```
+
+These are synthetic **request inputs**, not a current policy or eligibility
+claim. The response has source `DETERMINISTIC_BENEFIT_STACK_V1`, trusted system
+capacity, `applicantFactsSource: "USER_DECLARED"`,
+`eligibilityNotGuaranteed: true`, scope coverage, and either `UNAVAILABLE`
+with reason codes and no amount or `AVAILABLE` with a deterministic stack.
+Each decision includes its status, reason codes, policy/rule/version, effective
+jurisdiction and dates, immutable official citations and current last-checked
+source status. `coverageComplete` remains false until coverage is independently
+verified. The total counts only selected compatible verified rules; unknown or
+stale benefits never enter it. This is separate from the unsubsidized Phase 7
+financial response; net cost and subsidy-adjusted payback are Phase 11 work.
+
+Phase 10 also adds administrator-only policy publication routes. They require a
+verified Cognito `ADMIN_POLICY` or `ADMIN` group. `POST
+/v1/admin/policy/benefits/drafts` creates an immutable, evidence-bound rule
+draft. The request identifies a current curated source, latest crawled document
+version, exact archived quote and locator, benefit ID and typed rule. Numeric
+amounts, eligibility clauses and positive compatibility edges require their
+own cited archived evidence. The server derives policy/rule/fact IDs and
+versions; a draft cannot choose or overwrite them. `GET
+/v1/admin/policy/benefits/queue?cursor=...` pages submitted drafts with an
+opaque cursor, and `GET
+/v1/admin/policy/benefits/{draftId}` returns detail with source freshness.
+`POST` to the draft path followed by `/submit`, `/publish`, or `/reject` carries
+`expectedRevision`; reviewer actions require an audited reason. Only the
+author may submit, while a different administrator from both author and source
+curator may publish or reject. Publication transactionally writes verified
+numeric/clause facts, an immutable active version, activation event and active
+pointer. Superseding a version preserves history. Evidence review in Phase 9
+alone never publishes a benefit. No Phase 10 policy resources have been
+deployed or populated locally.
+
+The draft request includes `clauseEvidence: [{ clauseKey, locator,
+quotedEvidence }]`. `EFFECTIVE_PERIOD` is always required; `CAP`,
+`COMBINED_CAP`, `SYSTEM_SIZE`, and `OVERLAP` appear when the corresponding rule
+field exists. Every `eligibility.allOf` predicate uses
+`ELIGIBILITY_ALL_<index>`, each `eligibility.anyOf` predicate uses
+`ELIGIBILITY_ANY_<group>_<index>`, and compatibility edges and conditional
+predicates use `COMPATIBILITY_<index>` and
+`COMPATIBILITY_<index>_CONDITION_<index>`. Empty eligibility is rejected. Each
+locator carries exact absolute character offsets and, when archived, the same
+page/section/fragment. The server verifies every excerpt against the pinned
+normalized archive before creation and again before publication.
+
 Paths below are planned contracts unless listed as available above.
 
 ## Roof
@@ -194,34 +263,6 @@ Paths below are planned contracts unless listed as available above.
 `POST /v1/policies/research`
 
 For international research, return a clearly labelled live-research result.
-
-## Benefits
-
-`POST /v1/benefits/evaluate`
-
-Input:
-```json
-{
-  "propertyId": "...",
-  "analysisId": "...",
-  "systemKw": 3,
-  "customerType": "RESIDENTIAL"
-}
-```
-
-Output:
-```json
-{
-  "grossCost": 195000,
-  "benefits": [],
-  "totalEligibleBenefit": 0,
-  "netCost": 195000,
-  "policyVersions": [],
-  "warnings": ["No approved current policy facts were available for evaluation."]
-}
-```
-
-This is a synthetic shape example with no live policy fact or subsidy amount.
 
 ## Applications
 

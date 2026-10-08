@@ -16,7 +16,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(template.Transform).toBe("AWS::Serverless-2016-10-31");
   });
   it("uses compiled handlers with explicit log destinations", () => {
-    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "PolicyFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
+    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "BenefitsFunction", "PolicyFunction", "PolicyPublicationFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
       expect(properties(name).CodeUri).toBe("../../apps/api/dist");
       expect(properties(name).Handler).toMatch(/^handlers\/[a-z-]+\.handler$/);
       expect(properties(name).LoggingConfig).toBeDefined();
@@ -257,6 +257,8 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
       expect.objectContaining({ IndexName: "GSI2", Projection: { ProjectionType: "ALL" } }),
       expect.objectContaining({ IndexName: "GSI3", Projection: { ProjectionType: "ALL" } }),
       expect.objectContaining({ IndexName: "GSI4", Projection: { ProjectionType: "ALL" } }),
+      expect.objectContaining({ IndexName: "GSI5", Projection: { ProjectionType: "ALL" } }),
+      expect.objectContaining({ IndexName: "GSI6", Projection: { ProjectionType: "ALL" } }),
     ]);
     const worker = properties("PolicyCrawlerFunction");
     expect(worker.Handler).toBe("handlers/policy-crawler.handler");
@@ -280,5 +282,32 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     ]);
     expect(JSON.stringify(worker)).not.toMatch(/AnalysesTable|CORE_TABLE_NAME|secretsmanager|bedrock|DeleteObject|ListBucket/);
     expect(properties("PolicyCrawlerFailureAlarm")).toMatchObject({ Namespace: "AWS/Lambda", MetricName: "Errors", Threshold: 1 });
+  });
+
+  it("isolates maker-checker publication from read-only homeowner benefit evaluation", () => {
+    const table = properties("PolicyTable");
+    expect(table.GlobalSecondaryIndexes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ IndexName: "GSI5", Projection: { ProjectionType: "ALL" } }),
+      expect.objectContaining({ IndexName: "GSI6", Projection: { ProjectionType: "ALL" } }),
+    ]));
+    const publication = properties("PolicyPublicationFunction");
+    expect(publication.Handler).toBe("handlers/policy-publication.handler");
+    expect(publication.Events).toMatchObject({ CreateBenefitDraft: { Properties: { Method: "POST" } },
+      PublishBenefitDraft: { Properties: { Method: "POST" } },
+      RejectBenefitDraft: { Properties: { Method: "POST" } } });
+    const publishPolicy = JSON.stringify(publication.Policies);
+    expect(publishPolicy).toContain("dynamodb:ConditionCheckItem");
+    expect(publishPolicy).toContain("index/GSI6");
+    expect(publishPolicy).toContain("s3:GetObjectVersion");
+    expect(publishPolicy).not.toMatch(/AnalysesTable|DeleteObject|secretsmanager|bedrock/);
+    const benefits = properties("BenefitsFunction");
+    expect(benefits.Handler).toBe("handlers/benefits.handler");
+    expect(benefits.Events).toMatchObject({ EvaluateBenefits: { Properties: {
+      Path: "/benefits/evaluate", Method: "POST" } } });
+    expect(benefits.Timeout).toBe(28);
+    const readPolicy = JSON.stringify(benefits.Policies);
+    expect(readPolicy).toContain("index/GSI5");
+    expect(readPolicy).toContain("AnalysesTable.Arn");
+    expect(readPolicy).not.toMatch(/PutItem|UpdateItem|DeleteItem|s3:|secretsmanager|bedrock/);
   });
 });

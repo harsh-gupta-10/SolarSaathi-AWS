@@ -133,47 +133,31 @@ Stored under the relevant source/change/candidate partition with
 changes and reviewer actions append events; review transactions write the
 audit event with the immutable review snapshot.
 
-### POLICY
-`PK=POLICY#policyId`, `SK=VERSION#version`
+### POLICY_PUBLICATION_DRAFT
+`PK=PUB_DRAFT#draftId`, `SK=CURRENT` and `SK=AUDIT#time#eventId`
 
-Fields:
-- jurisdiction
-- category
-- status
-- effectiveFrom
-- effectiveTo
-- verificationStatus
-- sourceIds
-- createdAt
-- approvedAt
+Phase 10 keeps an immutable draft body with a revision-checked mutable status.
+The draft binds a benefit rule to a precise archived quote/locator and records
+author and source curator. Submission adds a sparse pending-review GSI6 entry.
+A different administrator reviews with a reason; each transition appends audit.
+Correcting a rule requires a new draft.
 
-### POLICY_RULE
-`PK=POLICY#policyId`, `SK=RULE#ruleId#version`
+### PUBLISHED_POLICY
+`PK=PUBLISHED_POLICY#policyId`, `SK=VERSION#00000001` and `SK=ACTIVE`
 
-Fields:
-- ruleType
-- inputs
-- formula
-- eligibility
-- exclusions
-- compatibility
-- cap
-- priority
-- sourceLocator
+The version record stores a verified policy version, numeric and cited clause
+facts, typed benefit rule and provenance. It is immutable. A conditional
+transaction writes the next version, an `ACTIVATION#VERSION#...` event, updated
+active pointer, draft transition and audit together, while checking current
+source/crawl revisions. The pointer alone appears in sparse GSI5, partitioned
+by jurisdiction for bounded homeowner evaluation. Historical versions remain
+readable; the pointer controls which version participates in calculations.
+Current crawl state is separate from immutable source/document snapshots.
 
 ### POLICY_CHANGE
-`PK=POLICY#policyId`, `SK=CHANGE#timestamp`
-
-This is the future change history for approved policy rules. It is distinct
-from Phase 9 document-change evidence above.
-
-Fields:
-- oldVersion
-- newVersion
-- changedFields
-- detectedAt
-- reviewStatus
-- reviewer
+The Phase 10 activation event records version lineage. More detailed semantic
+field diffs and rollback remain future work. This is distinct from Phase 9
+document-change evidence above.
 
 ### POLICY_RESEARCH_CACHE
 `PK=RESEARCH#fingerprint`, `SK=RESULT#version`
@@ -252,16 +236,10 @@ Fields:
 ## Policy calculation audit
 
 ### BENEFIT_CALCULATION
-`PK=ANALYSIS#analysisId`, `SK=BENEFIT_CALC#timestamp`
-
-Store:
-- policy versions
-- rules
-- candidate benefits
-- excluded benefits
-- final stack
-- total
-- timestamp
+The Phase 10 API computes a request-scoped result and returns its request ID,
+policy versions and cited decisions. It does not persist this entity yet.
+Persisting a property-scoped audit snapshot requires a retention and privacy
+design, because applicant eligibility inputs are self-reported and sensitive.
 
 ## Access patterns
 

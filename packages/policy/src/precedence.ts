@@ -3,6 +3,7 @@ import { policyCitationSchema, policyDocumentSchema, policyFactSchema, policyLoc
   type PolicyCitationV1, type PolicyDocumentV1, type PolicyFactV1, type PolicyLocatorV1,
   type PolicySourceV1, type PolicyVersionV1 } from "./schema";
 import { sourceIsStale, validateOfficialSourceUrl } from "./sources";
+import { policyCalendarDateV1 } from "./calendar";
 
 export interface PolicyEvidenceV1 {
   source: PolicySourceV1;
@@ -75,7 +76,7 @@ export function isPolicyEvidencePublishable(evidenceInput: PolicyEvidenceV1, at:
   const evidence = parseEvidence(evidenceInput);
   if (!Number.isFinite(at.getTime())) throw new RangeError("Invalid policy evaluation time.");
   const { source, version, fact } = evidence;
-  const today = at.toISOString().slice(0, 10);
+  const today = policyCalendarDateV1(at, fact.jurisdiction);
   if (source.authorityTier > 2 || source.registryStatus !== "CURATED" || !source.enabled ||
     source.healthStatus !== "HEALTHY" || sourceIsStale(source, at) ||
     version.status !== "ACTIVE" || version.verificationStatus !== "VERIFIED" ||

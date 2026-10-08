@@ -10,13 +10,15 @@ It is a **policy intelligence pipeline**.
 
 ## Local implementation state
 
-Phase 8 provides typed source, document, citation, fact, and policy-version
-contracts; official-domain registration; conservative source precedence;
-bounded HTML/PDF extraction; exact-byte and normalized-text hashes; and
-section/page-addressed chunks. The administrative ingestion API archives raw
-and derived evidence with immutable version keys. It does not crawl, extract
-benefit facts, or publish policy versions. Scheduled fetching, conflict review,
-approval, and activation are Phase 9 work.
+Phases 8–9 provide typed source, document, citation, fact and policy-version
+contracts; exact official-domain registration; bounded HTML/PDF extraction;
+raw and normalized hashes; scheduled canonical-URL checks; and human review of
+candidate quotations and document changes. Source/document versions and S3
+archives are immutable. Phase 10 adds a separate human-authored, evidence-bound
+benefit-rule draft and independent publication gate. A reviewer verifies the
+numeric values and rule clauses against archived official excerpts before an
+active version can enter deterministic homeowner evaluation. This local
+workflow has not been deployed or populated with live India coverage.
 
 ## 1. Policy categories
 
@@ -223,12 +225,13 @@ For non-India:
 
 ## 11. Admin approval
 
-Phase 9 currently approves or rejects **evidence review records** only:
-document changes and exact candidate quotations. Even approved evidence stays
-outside active policy benefits. A later controlled policy-rule publication
-flow must validate eligibility, compatibility, effective dates and amounts,
-then create a verified policy version before homeowner use. Do not equate an
-evidence-review approval with the `APPROVED` policy-version state below.
+Phase 9 approves or rejects **evidence review records** only: document changes
+and exact candidate quotations. Even approved evidence stays outside active
+policy benefits. Phase 10's separate publication flow validates the current
+official archive, exact excerpts, numeric values, eligibility/compatibility
+clauses, effective dates, source authority and independent reviewer. Only its
+atomic activation makes a verified version available to homeowners. Do not
+equate evidence-review approval with active policy publication.
 
 Material changes go:
 

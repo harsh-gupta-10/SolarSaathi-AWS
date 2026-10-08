@@ -48,32 +48,14 @@ If compatibility is unknown, do not count it in the final eligible total.
 
 ## Data model
 
-```json
-{
-  "benefitId": "SYNTHETIC_CENTRAL_EXAMPLE",
-  "scope": "CENTRAL",
-  "jurisdiction": "IN",
-  "calculation": {
-    "type": "TIERED_KW",
-    "tiers": [
-      {"upToKw": 2, "inrPerKw": 10000},
-      {"upToKw": 3, "inrPerKw": 5000}
-    ],
-    "capInr": 25000
-  },
-  "compatibility": {
-    "with": ["STATE_EXAMPLE"],
-    "mode": "CONDITIONAL"
-  },
-  "source": {
-    "policyId": "..."
-  }
-}
-```
-
-This object is a synthetic shape example, not a current scheme or benefit
-value. Production calculations must read approved active policy versions and
-their citations from the policy database.
+`PolicyBenefitRuleV1` stores scope, jurisdiction, effective window, a fixed,
+per-kW, tiered-kW or percentage-of-policy-eligible-cost formula, system size
+limits, typed applicant conditions, reciprocal compatibility edges, overlap
+group, and individual/combined caps. Values are integer paise or basis points.
+Each rule points to an immutable active policy version and independently
+verified numeric and clause facts with official archive citations. The current
+source check remains a separate live record; updating it never rewrites the
+source or fact version. No scheme amount lives in product source code.
 
 ## Eligibility dimensions
 
@@ -111,20 +93,25 @@ Check:
 10. Return excluded benefits and reasons.
 ```
 
+The Phase 10 engine performs an exact, bounded search over at most 16 relevant
+active rules. The API prefilters by declared jurisdiction. Missing applicant
+facts have a third `UNKNOWN` state; they are never assumed eligible. Positive
+stacking requires reciprocal, explicitly supported compatibility edges.
+Overlap groups and mutually exclusive rules cannot be counted together.
+Combined caps are applied once, with deterministic tie-breaking. Arithmetic
+uses BigInt internally and returns bounded integer paise. When more than 16
+relevant rules exist, the API returns unavailable rather than a partial
+"optimum." A scope is marked covered only after independent coverage review.
+
 ## Output
 
-```json
-{
-  "grossCost": 195000,
-  "benefits": [],
-  "totalEligibleBenefit": 0,
-  "netCost": 195000,
-  "policyVersions": [],
-  "warnings": ["No approved current policy facts were available for evaluation."]
-}
-```
-
-This example deliberately contains no unverified benefit amount.
+`BenefitStackResultV1` returns selected, ineligible, unknown and excluded
+decisions with reason codes, verified rule/policy/fact IDs, current source
+checks, citations and a total of counted selected benefits. It does not
+calculate net installed cost or payback; that integration belongs to Phase 11.
+When no current verified rules are available, the API returns `UNAVAILABLE`
+without an amount. Stale evidence and absent policy-eligible cost do not
+become zero.
 
 ## Explain non-eligible schemes
 
@@ -157,6 +144,6 @@ Never display:
 
 Prefer:
 
-> "Based on the current verified policy rules and the information you provided, you may be eligible for up to ₹X."
+> "Based on the current verified rules and the details you provided, these are the benefits this check could include. Policy coverage and official approval may change the outcome."
 
 Final benefit is subject to official verification and scheme processing.

@@ -148,6 +148,30 @@ The layout below uses placeholders. Never render a benefit amount until the
 eligibility engine has returned an approved active policy version, compatible
 stack and citations for that property.
 
+## Phase 10 benefit evaluation UI
+
+`/app/benefits` explains the property-first flow. A homeowner can check
+benefits after a confirmed roof, roof-fitting system comparison and base
+financial scenario. The browser sends self-reported jurisdiction, applicant,
+property, timing and optional scheme facts to the authenticated backend.
+Percent-of-eligible-cost rules remain unknown unless a separate, explicitly
+policy-eligible cost is supplied; the whole gross quote is never substituted.
+
+The result shows selected, ineligible, unknown and compatibility-excluded
+rules, separate scope coverage, reason codes, and policy/source/version,
+effective window, verification and last source-check timestamps. Missing or
+stale data is textually labelled and never presented as a zero benefit.
+Incomplete coverage never produces a "maximum subsidy" claim. The Phase 7
+financial chart stays unsubsidized until Phase 11 recalculates it through the
+policy-backed financial engine. Published rules depend on official processing;
+the UI calls the result an estimate based on self-reported facts.
+
+The administrator policy workspace adds a benefit-rule publication tab.
+Authors bind a typed rule and clause evidence to the exact current archive;
+they then submit an immutable draft. A separate reviewer sees source freshness,
+quote, policy metadata and rule JSON before recording a reasoned publish or
+reject decision. The synthetic demo disables all publication requests.
+
 Hero card:
 
 ```text
