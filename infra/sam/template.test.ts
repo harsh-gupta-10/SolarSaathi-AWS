@@ -16,7 +16,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(template.Transform).toBe("AWS::Serverless-2016-10-31");
   });
   it("uses compiled handlers with explicit log destinations", () => {
-    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "RoofRetentionFunction"]) {
+    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "RoofRetentionFunction"]) {
       expect(properties(name).CodeUri).toBe("../../apps/api/dist");
       expect(properties(name).Handler).toMatch(/^handlers\/[a-z]+\.handler$/);
       expect(properties(name).LoggingConfig).toBeDefined();
@@ -173,5 +173,18 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
       RestApiId: "Api", Path: "/systems/recommend", Method: "POST",
     } } });
     expect(JSON.stringify(systems)).not.toMatch(/GOOGLE_.*API_KEY|secretsmanager|BEDROCK/);
+  });
+
+  it("estimates unsubsidized financial cash flow with owned analysis reads only", () => {
+    const financials = properties("FinancialsFunction");
+    expect(financials.Handler).toBe("handlers/financials.handler");
+    expect(financials.Environment).toEqual({ Variables: { CORE_TABLE_NAME: "AnalysesTable" } });
+    expect(financials.Policies).toEqual([{ Statement: [expect.objectContaining({
+      Sid: "ReadOwnedFinancialAnalysis", Effect: "Allow", Action: "dynamodb:GetItem", Resource: "AnalysesTable.Arn",
+    })] }]);
+    expect(financials.Events).toEqual({ EstimateFinancials: { Type: "Api", Properties: {
+      RestApiId: "Api", Path: "/financials/estimate", Method: "POST",
+    } } });
+    expect(JSON.stringify(financials)).not.toMatch(/GOOGLE_.*API_KEY|secretsmanager|BEDROCK/);
   });
 });

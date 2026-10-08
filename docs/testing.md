@@ -49,6 +49,18 @@ response provenance and least-privilege SAM routing. The fixture-only design
 demo supports browser checks without Cognito or Google credentials. None of
 these tests proves a live DISCOM rule or site-specific production yield.
 
+## Phase 7 base financial checks
+
+Calculator tests cover the 25 annual rows, degraded generation, independent
+import/export values, annual self-use capped by demand, tariff and maintenance
+escalation, interpolated or absent payback, and one-variable sensitivity. API
+tests use owned, expired, foreign and metadata-only analyses; reject client
+roof/candidate metrics and invalid monetary inputs; and verify the Lambda
+performs only DynamoDB `GetItem` reads. UI tests exercise required user inputs,
+stale-result clearing, response validation and an explicitly synthetic demo.
+The base result has no policy benefit or financing calculation, so its cash
+flow is not a policy-backed return forecast.
+
 ## Unit tests
 
 ### Calculations

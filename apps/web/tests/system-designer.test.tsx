@@ -10,7 +10,9 @@ import { SystemDesigner } from "../src/components/system-designer";
 import { SystemDesignResults } from "../src/components/system-design-results";
 
 const api = vi.hoisted(() => ({ recommend: vi.fn() }));
-vi.mock("../src/lib/system-api", () => ({ systemApi: api }));
+vi.mock("../src/lib/system-api", async importOriginal => ({
+  ...await importOriginal<typeof import("../src/lib/system-api")>(), systemApi: api,
+}));
 vi.mock("../src/lib/roof-api", () => ({ RoofRequestError: class extends Error {} }));
 
 beforeEach(() => {
@@ -72,7 +74,7 @@ describe("system designer", () => {
     render(<SystemDesignerDemoPage />);
     await waitFor(() => expect(screen.getByText(/No API request is made/)).toBeTruthy());
     expect(screen.getByRole("region", { name: "System candidate comparison" })).toBeTruthy();
-    expect(screen.getByText(/Synthetic fixture result/)).toBeTruthy();
+    expect(screen.getAllByText(/Synthetic fixture result/)).toHaveLength(2);
     expect(api.recommend).not.toHaveBeenCalled();
   });
 

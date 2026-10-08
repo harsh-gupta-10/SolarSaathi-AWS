@@ -7,6 +7,7 @@ import { SYSTEM_DESIGN_BASELINE_V1, type SystemDemand } from "@solarsaathi/calcu
 import { RoofRequestError } from "../lib/roof-api";
 import { systemApi, type SystemRecommendationResponse } from "../lib/system-api";
 import { SystemDesignResults } from "./system-design-results";
+import { FinancialEstimator } from "./financial-estimator";
 
 function bounded(raw: string, minimum: number, maximum: number): number | undefined {
   const value = Number(raw);
@@ -20,7 +21,7 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
   const [tariff, setTariff] = useState("");
   const [yieldFactor, setYieldFactor] = useState(String(SYSTEM_DESIGN_BASELINE_V1.generationKwhPerKwYear));
   const [sanctionedLoad, setSanctionedLoad] = useState("");
-  const [result, setResult] = useState<SystemRecommendationResponse>();
+  const [submitted, setSubmitted] = useState<{ response: SystemRecommendationResponse; demand: SystemDemand; generationKwhPerKwYear: number }>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const request = useRef<AbortController | null>(null);
@@ -28,7 +29,7 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
 
   function change(update: () => void) {
     request.current?.abort(); request.current = null;
-    setResult(undefined); setBusy(false); setError(undefined); update();
+    setSubmitted(undefined); setBusy(false); setError(undefined); update();
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -53,9 +54,9 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
     }
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
-    setBusy(true); setError(undefined); setResult(undefined);
+    setBusy(true); setError(undefined); setSubmitted(undefined);
     void systemApi.recommend(propertyId, analysisId, demand, generationKwhPerKwYear, controller.signal)
-      .then(response => { if (!controller.signal.aborted) setResult(response); })
+      .then(response => { if (!controller.signal.aborted) setSubmitted({ response, demand, generationKwhPerKwYear }); })
       .catch(failure => { if (!controller.signal.aborted) setError(failure instanceof RoofRequestError ? failure.message : "The system design could not be created. Try again."); })
       .finally(() => { if (request.current === controller) { request.current = null; setBusy(false); } });
   }
@@ -74,6 +75,9 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
       {busy && <p role="status" className="system-form-status">Checking the saved roof and planning candidates…</p>}
       {error && <p role="alert" className="form-error">{error}</p>}
     </form>
-    {result && <SystemDesignResults design={result.design} analysisId={analysisId} />}
+    {submitted && <SystemDesignResults design={submitted.response.design} analysisId={analysisId} />}
+    {submitted?.response.design.recommendation && <FinancialEstimator propertyId={propertyId} analysisId={analysisId}
+      demand={submitted.demand} generationKwhPerKwYear={submitted.generationKwhPerKwYear}
+      candidates={submitted.response.design.candidates} recommendedNominalKw={submitted.response.design.recommendation.nominalKw} />}
   </section>;
 }

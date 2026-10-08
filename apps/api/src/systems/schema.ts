@@ -14,10 +14,12 @@ const bill = z.object({
   sanctionedLoadKw: z.number().finite().min(0.25).max(1_000).optional(),
 }).strict();
 
+export const systemDemandSchema = z.discriminatedUnion("kind", [consumption, bill]);
+
 export const systemRecommendationRequestSchema = z.object({
   propertyId: identifier,
   analysisId: identifier,
-  demand: z.discriminatedUnion("kind", [consumption, bill]),
+  demand: systemDemandSchema,
   generationKwhPerKwYear: z.number().finite().min(500).max(2_500),
 }).strict();
 

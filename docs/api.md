@@ -76,6 +76,35 @@ analysis without usable roof geometry returns `409 ROOF_MODEL_REQUIRED`.
 Generation is an estimate; this endpoint returns no price, subsidy, legal
 eligibility, or structural approval.
 
+Phase 7 adds authenticated `POST /v1/financials/estimate`:
+
+```json
+{
+  "propertyId": "owned-property-id",
+  "analysisId": "confirmed-analysis-id",
+  "demand": { "kind": "CONSUMPTION", "monthlyConsumptionKwh": 300 },
+  "generationKwhPerKwYear": 1500,
+  "nominalKw": 2,
+  "financialInputs": {
+    "grossSystemCostRupees": 120000,
+    "selfConsumptionFraction": 0.7,
+    "importTariffRupeesPerKwh": 8,
+    "exportRateRupeesPerKwh": 0,
+    "annualMaintenanceRupees": 3000
+  }
+}
+```
+
+All rupee and rate values in this example are **synthetic request inputs**, not
+market prices, current tariffs or policy benefits. The server checks ownership
+and expiry, recomputes Phase 6 candidates from the stored roof, and permits
+only a supported eligible nominal size with positive generation. The response
+uses source `DETERMINISTIC_BASE_FINANCIAL_V1` and includes the trusted candidate,
+echoed assumptions, 25 annual cash-flow rows, payback or `null`, and one-axis
+sensitivity. `policyBenefitsEvaluated` and `financingModeled` are `false`.
+There is no subsidy amount in the base response. Invalid inputs return 400;
+missing normalized roof returns 409; an unfit candidate returns 422.
+
 POST scaffolds require an `application/json` object of at most 64 KiB after
 base64 decoding. Errors use `{ error: { code, message, requestId } }`, with
 400 for invalid JSON/object shape, 413 for oversized payloads, 415 for unsupported

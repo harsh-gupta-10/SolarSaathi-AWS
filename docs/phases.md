@@ -154,6 +154,21 @@ unverified until the earlier cloud dependencies are configured.
 - 25-year cash flow
 - sensitivity
 
+Status: local implementation verified. The authenticated estimate endpoint
+recomputes a roof-fitting Phase 6 candidate from the owned, unexpired analysis
+and requires user-entered gross quote, avoidable import rate, self-use share,
+export-rate scenario and maintenance. A pure versioned calculator separates
+self-used and surplus energy, caps self-use by annual demand, applies explicit
+degradation and escalation assumptions, and returns 25 annual rows, interpolated
+payback or no payback, and one-variable low/base/high sensitivity. The UI shows
+the unsubsidized cash flow, a chart, annual table and caveats; its demo values
+are explicitly synthetic. Lint, typecheck, 559 tests and production builds pass
+locally. Desktop/mobile browser checks found no WCAG A/AA violations; the chart
+label color also passed a manual contrast ratio check. Export settlement,
+policy benefits, financing and equipment replacement are not modeled or
+verified. The API and cloud resources remain undeployed, so live behavior is
+unverified.
+
 ## Phase 8 — Policy Intelligence foundation
 Create:
 - source registry

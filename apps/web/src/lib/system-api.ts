@@ -27,7 +27,7 @@ const candidateReason = z.enum([
   "ROOF_FIT_UNDETERMINED", "EXCEEDS_MODELED_ROOF", "SANCTIONED_LOAD_REVIEW_NEEDED",
   "EXCEEDS_DEMAND_LIMIT", "ZERO_MODELED_GENERATION",
 ]);
-const candidate = z.object({
+export const systemCandidateSchema = z.object({
   nominalKw: finite.positive(), panelCount: z.number().int().positive(), actualDcKw: finite.positive(),
   minimumInverterAcKw: finite.positive(), estimatedAnnualGenerationKwh: finite.nonnegative(),
   generationBasis: z.enum(["GOOGLE_DC_DERATED", "ASSUMED_YIELD"]), annualConsumptionCoverageRatio: finite.nonnegative(),
@@ -45,7 +45,7 @@ const designSchema: z.ZodType<SystemDesignResult> = z.object({
     maxPanelCount: z.number().int().nonnegative().nullable(), maxModeledDcKw: finite.nonnegative().nullable(),
     layoutWarnings: z.array(roofWarnings),
   }),
-  candidates: z.array(candidate).min(1), recommendation: candidate.nullable(),
+  candidates: z.array(systemCandidateSchema).min(1), recommendation: systemCandidateSchema.nullable(),
   decisionCode: z.enum(["RECOMMENDED_CLOSEST_TO_TARGET", "ROOF_FIT_UNDETERMINED", "NO_CANDIDATE_WITHIN_ROOF", "NO_CANDIDATE_WITH_MODELED_GENERATION", "NO_CANDIDATE_WITHIN_DEMAND_LIMIT"]),
   warnings: z.array(z.enum([
     "LOCAL_RULES_NOT_CHECKED", "SANCTIONED_LOAD_NOT_PROVIDED", "SANCTIONED_LOAD_REVIEW_NEEDED",

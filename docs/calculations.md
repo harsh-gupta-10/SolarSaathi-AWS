@@ -79,9 +79,10 @@ Clearly label as an assumption.
 
 ## Gross system cost
 
-`grossCost = systemKw * installedCostPerKw`
-
-The cost model must be configurable by market/vendor context.
+Phase 7 requires an explicit gross installation quote in rupees. There is no
+production price-per-kW default. The 25-year base result begins at the negative
+gross quote, with no policy benefit deducted. A later market/vendor cost model
+may supply a sourced estimate when a quote is unavailable.
 
 ## Benefit calculation
 
@@ -104,17 +105,21 @@ Do not subtract optional accessories unless the user explicitly includes them an
 
 ## Annual savings
 
-Use:
-- generation
-- self-consumption/export assumptions
-- tariff
-- net-metering/settlement rules when available
-
-Do not pretend that all generated kWh have the same financial value.
+The Phase 7 base model splits each year's generation into self-consumed energy
+and surplus. Self-consumed energy is capped by the annual demand from Phase 6
+and valued at a user-entered **avoidable** import energy rate. Surplus uses a
+separately entered export-rate scenario, which may be zero. Local metering and
+settlement rules have not yet been checked, so an export amount is not an
+entitlement. Flat annual demand and the rate escalations are echoed assumptions.
+Gross savings minus maintenance gives yearly net cash flow; financing and
+policy benefits are outside the base result.
 
 ## Payback
 
-Calculate from year-by-year cash flows, not a simplistic single ratio when detailed policy/tariff data exists.
+Calculate the first crossing of zero cumulative cash flow from the negative
+upfront quote and each year's net cash flow. Interpolate within that year;
+return `null` if the quote is not recovered within 25 years. This is an
+estimate, not a guaranteed payback time.
 
 ## 25-year savings
 
@@ -124,17 +129,20 @@ Produce annual table:
 - tariff
 - gross savings
 - maintenance
-- financing where applicable
-- benefit
+- financing where applicable in a later model
+- verified benefit in the policy-backed model
 - cumulative cash flow
 
 ## Sensitivity
 
-At minimum:
-- low/base/high generation
-- low/base/high tariff
-- system cost
-- benefit amount
+The base result varies generation, avoidable import tariff and gross quote
+one at a time by the displayed low/base/high percentages. Export rate stays
+separate when tariff changes. Benefit sensitivity follows once the policy
+engine provides an eligible, sourced amount; there is no invented subsidy
+scenario in Phase 7.
+
+This simplified year-by-year approach follows the cash-flow framing in
+[NREL's System Advisor Model documentation](https://sam.nrel.gov/images/web_page_files/sam-help-2025-4-16.pdf).
 
 ## Policy provenance
 

@@ -130,7 +130,19 @@ sanctioned load is only a prompt to verify local rules. The 3D viewer and
 designer use the same versioned roof layout assumptions. The synthetic demo is
 clearly labelled and does not call live services.
 
-## Financial results
+## Phase 7 base financial UI
+
+Once a roof-fitting system has been compared, the homeowner may enter an
+installed quote or their own planning estimate, an avoidable import energy
+rate, a self-use share, an assumed export credit and annual maintenance. The
+authenticated backend rechecks the candidate against the saved roof. The
+result shows the unsubsidized upfront quote, payback or no payback within 25
+years, a cumulative cash-flow chart, one-at-a-time sensitivity, all calculation
+assumptions, and a full annual table. The export value remains a user scenario
+until local metering rules are verified. Government benefits and financing are
+shown as unevaluated, and the synthetic demo values are labelled as fixtures.
+
+## Policy-backed financial results (Phase 11 target)
 
 Hero card:
 

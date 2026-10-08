@@ -69,7 +69,7 @@ Current policy values are never treated as permanent constants. A crawler detect
 
 ## Implementation status
 
-Phases 0–6 have locally implemented source code:
+Phases 0–7 have locally implemented source code:
 - pnpm workspace, Next.js marketing site, responsive application shell, typed
   packages, quality scripts, GitHub Actions, and compiled Lambda/SAM foundation;
 - Cognito hosted sign-in, code+PKCE callback, identity verification, profile and
@@ -83,22 +83,26 @@ Phases 0–6 have locally implemented source code:
   `/demo/roof-3d`;
 - deterministic whole-panel system sizing, modeled inverter and generation
   estimates, an authenticated comparison API, and a fixture-only demo at
-  `/demo/system-designer`.
+  `/demo/system-designer`;
+- an unsubsidized 25-year base financial model with user-entered quote and
+  energy rates, separate self-use and export values, annual cash flow, payback,
+  sensitivity and an authenticated estimate API.
 
 Google-derived preview, analysis and cache records have a 21-day retention
 limit and an hourly bounded hard-delete worker with an error alarm. Google roof
 bounds are approximate and the 3D view does not certify installation or
 structural safety. An area-only manual roof has no panel-count estimate or
 recommended system size. The system designer does not claim local interconnection
-eligibility, a cost, savings or subsidy.
+eligibility, a cost, savings or subsidy. The base financial model requires
+explicit user inputs and does not establish policy benefits or export credits.
 
 These phases have **local** lint, typecheck, test and build coverage. No AWS
 resources or Google Cloud project have been configured or deployed for this app;
 live Cognito, DynamoDB, Google API and hosting behavior remains unverified.
 Production release also needs alarm notifications, a review of DynamoDB PITR
 backup retention for Google data, credentials in the intended AWS account, and
-live deployment checks. The financial and policy engines in later phases remain
-scaffolds and do not provide real subsidy figures.
+live deployment checks. The policy-backed financial and policy engines in later
+phases remain unimplemented and do not provide real subsidy figures.
 
 Local application validation uses `pnpm check`. AWS CloudFormation accepted a
 read-only template validation, and GitHub Actions is configured to run SAM

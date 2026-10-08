@@ -169,6 +169,12 @@ Resources:
       LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/systems"
       RetentionInDays: !Ref LogRetentionDays
 
+  FinancialsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/financials"
+      RetentionInDays: !Ref LogRetentionDays
+
   RoofRetentionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -263,6 +269,37 @@ Resources:
           Properties:
             RestApiId: !Ref Api
             Path: /systems/recommend
+            Method: POST
+
+  FinancialsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Estimates a deterministic unsubsidized 25-year cash flow for an owned roof and server-recomputed feasible system.
+        must:
+          - Read an owned, unexpired roof analysis and recompute the selected system server-side.
+          - Never treat unverified policy benefits or export settlement as established eligibility.
+          - Allow only table GetItem reads; no secrets or model access.
+    Properties:
+      Handler: handlers/financials.handler
+      CodeUri: ../../apps/api/dist
+      LoggingConfig:
+        LogGroup: !Ref FinancialsLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+      Policies:
+        - Statement:
+            - Sid: ReadOwnedFinancialAnalysis
+              Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt AnalysesTable.Arn
+      Events:
+        EstimateFinancials:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /financials/estimate
             Method: POST
 
   RoofRetentionFunction:
