@@ -50,6 +50,8 @@ describe("roof analysis flow", () => {
     render(<AnalyzeStart />);
     expect(await screen.findByText(candidate.address)).toBeTruthy();
     expect(screen.getByText(/Sign in to save a roof assessment/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Explore 3D demo" }).getAttribute("href")).toBe("/demo/roof-3d");
+    expect(screen.getByRole("link", { name: "Try system designer demo" }).getAttribute("href")).toBe("/demo/system-designer");
     expect(screen.queryByRole("button", { name: "Find my building" })).toBeNull();
     expect(api.bootstrap).not.toHaveBeenCalled();
   });

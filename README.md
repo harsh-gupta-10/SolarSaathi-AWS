@@ -69,7 +69,7 @@ Current policy values are never treated as permanent constants. A crawler detect
 
 ## Implementation status
 
-Phases 0–5 have locally implemented source code:
+Phases 0–6 have locally implemented source code:
 - pnpm workspace, Next.js marketing site, responsive application shell, typed
   packages, quality scripts, GitHub Actions, and compiled Lambda/SAM foundation;
 - Cognito hosted sign-in, code+PKCE callback, identity verification, profile and
@@ -80,12 +80,17 @@ Phases 0–5 have locally implemented source code:
   and roof confirmation, normalized roof measurements, and manual fallback;
 - deterministic roof geometry and panel layout with an interactive 3D viewer,
   top-down fallback, explicit planning assumptions, and a fixture-only demo at
-  `/demo/roof-3d`.
+  `/demo/roof-3d`;
+- deterministic whole-panel system sizing, modeled inverter and generation
+  estimates, an authenticated comparison API, and a fixture-only demo at
+  `/demo/system-designer`.
 
 Google-derived preview, analysis and cache records have a 21-day retention
 limit and an hourly bounded hard-delete worker with an error alarm. Google roof
 bounds are approximate and the 3D view does not certify installation or
-structural safety. An area-only manual roof has no panel-count estimate.
+structural safety. An area-only manual roof has no panel-count estimate or
+recommended system size. The system designer does not claim local interconnection
+eligibility, a cost, savings or subsidy.
 
 These phases have **local** lint, typecheck, test and build coverage. No AWS
 resources or Google Cloud project have been configured or deployed for this app;

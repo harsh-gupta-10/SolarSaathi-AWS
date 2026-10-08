@@ -9,11 +9,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@solarsaathi/config": "workspace:*",
-    "@solarsaathi/types": "workspace:*",
     "@aws-sdk/client-cognito-identity-provider": "^3.1147.0",
     "@aws-sdk/client-dynamodb": "^3.1147.0",
     "@aws-sdk/lib-dynamodb": "^3.1147.0",
+    "@solarsaathi/calculations": "workspace:*",
+    "@solarsaathi/config": "workspace:*",
+    "@solarsaathi/types": "workspace:*",
     "aws-jwt-verify": "^5.2.1",
     "zod": "^4.1.12"
   }

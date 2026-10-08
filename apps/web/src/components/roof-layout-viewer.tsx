@@ -4,24 +4,10 @@ import dynamic from "next/dynamic";
 import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Box, Compass, Maximize2, Minus, Plus, RotateCcw, RotateCw } from "lucide-react";
 import { Button } from "@solarsaathi/ui";
-import { planRoofLayout, type RoofLayout, type RoofLayoutAssumptions } from "@solarsaathi/calculations";
+import { getRoofLayoutAssumptionsV1, planRoofLayout, type RoofLayout } from "@solarsaathi/calculations";
 import type { NormalizedRoofV1 } from "@solarsaathi/types";
 import type { ViewCommand } from "./roof-layout-scene";
-
-const warningText: Record<RoofLayout["warnings"][number], string> = {
-  GOOGLE_BOUNDS_ARE_APPROXIMATE: "Google supplies bounding boxes, not exact roof outlines.",
-  SEGMENT_BOUNDS_MISSING: "Some roof segments have no usable bounds and cannot be modeled for panel fit.",
-  PANEL_SUGGESTIONS_MISSING: "Google did not return usable panel positions for this roof.",
-  PANEL_DIMENSIONS_DIFFER_FROM_GOOGLE_MODEL: "The selected panel size differs from the size used for Google's suggestions.",
-  PANEL_SPECS_DIFFER_FROM_GOOGLE_MODEL: "Panel dimensions or capacity differ from Google's model, so provider energy estimates are not shown.",
-  PANELS_FILTERED_FOR_CLEARANCE: "Some suggested panels were removed by the modeled setback or service path.",
-  AREA_ONLY_MANUAL_ROOF: "Area alone cannot determine roof shape or panel fit; the drawing is symbolic.",
-  MANUAL_AREA_DIFFERS_FROM_DIMENSIONS: "Entered area and footprint dimensions differ; check them with an installer.",
-  PANEL_LIMIT_REACHED: "The layout reached its panel count limit.",
-  NEAR_VERTICAL_SEGMENT: "A near-vertical segment was excluded from the layout.",
-  PITCH_ASSUMED_FLAT: "Roof pitch was not provided; the drawing uses a flat plane for illustration.",
-  NO_USABLE_GEOMETRY: "The available measurements cannot support a panel layout.",
-};
+import { roofLayoutWarningText } from "../lib/roof-layout-copy";
 
 const RoofLayoutScene = dynamic(() => import("./roof-layout-scene"), {
   ssr: false,
@@ -68,24 +54,8 @@ function PlanView({ layout }: { layout: RoofLayout }) {
   </svg>;
 }
 
-function assumptionsFor(roof: NormalizedRoofV1): RoofLayoutAssumptions {
-  return {
-    schemaVersion: 1,
-    panelWidthMeters: roof.panelWidthMeters ?? 1.1,
-    panelHeightMeters: roof.panelHeightMeters ?? 2,
-    panelCapacityWatts: roof.panelCapacityWatts ?? 550,
-    edgeSetbackMeters: 0.5,
-    panelGapMeters: 0.05,
-    servicePathWidthMeters: 0.75,
-    mountingOffsetMeters: 0.1,
-    maxModeledPitchDegrees: 85,
-    manualAreaToleranceFraction: 0.05,
-    maxPanels: 300,
-  };
-}
-
 export function RoofLayoutViewer({ roof, analysisId }: { roof: NormalizedRoofV1; analysisId: string }) {
-  const assumptions = useMemo(() => assumptionsFor(roof), [roof]);
+  const assumptions = useMemo(() => getRoofLayoutAssumptionsV1(roof), [roof]);
   const layout = useMemo(() => planRoofLayout(roof, assumptions), [roof, assumptions]);
   const [webGl, setWebGl] = useState<"checking" | "available" | "unavailable">("checking");
   const [mode, setMode] = useState<"3d" | "plan">("plan");
@@ -147,6 +117,6 @@ export function RoofLayoutViewer({ roof, analysisId }: { roof: NormalizedRoofV1;
         {roof.source === "GOOGLE_SOLAR" && <p className="roof-layout-attribution">Source: Includes solar data from Google.</p>}
       </div>
     </div>
-    {layout.warnings.length > 0 && <div className="roof-layout-warnings"><h3>Layout limits</h3><ul>{layout.warnings.map(warning => <li key={warning}>{warningText[warning]}</li>)}</ul></div>}
+    {layout.warnings.length > 0 && <div className="roof-layout-warnings"><h3>Layout limits</h3><ul>{layout.warnings.map(warning => <li key={warning}>{roofLayoutWarningText[warning]}</li>)}</ul></div>}
   </section>;
 }

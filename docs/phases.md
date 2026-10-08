@@ -131,6 +131,19 @@ configuration.
 - generation assumptions
 - recommendation explanation
 
+Status: local implementation verified. A pure versioned calculator compares
+whole-panel 1/2/3/5/7.5/10 kW candidates against the same roof-fit assumptions
+used by the 3D viewer. It reports actual DC capacity, minimum modeled inverter
+AC capacity, labelled Google-derived or assumed annual generation, demand
+coverage, decision reasons and review warnings. The authenticated API loads an
+owned, unexpired confirmed roof; browser-supplied roof geometry is rejected.
+The comparison UI and a synthetic offline demo are responsive. Lint, typecheck,
+537 tests and production builds pass; desktop/mobile browser checks found no
+WCAG A/AA violations. Google panel specifications have conservative modeling
+guards. This is a planning recommendation, not local DISCOM eligibility,
+structural approval, a price or a subsidy. Deployed API and live data remain
+unverified until the earlier cloud dependencies are configured.
+
 ## Phase 7 — Base financial engine
 - gross cost
 - generation

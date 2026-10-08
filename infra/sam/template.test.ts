@@ -16,7 +16,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(template.Transform).toBe("AWS::Serverless-2016-10-31");
   });
   it("uses compiled handlers with explicit log destinations", () => {
-    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "RoofRetentionFunction"]) {
+    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "RoofRetentionFunction"]) {
       expect(properties(name).CodeUri).toBe("../../apps/api/dist");
       expect(properties(name).Handler).toMatch(/^handlers\/[a-z]+\.handler$/);
       expect(properties(name).LoggingConfig).toBeDefined();
@@ -160,5 +160,18 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     } });
     expect(JSON.stringify(roof.Policies)).toContain("AnalysesTable.Arn");
     expect(JSON.stringify(properties("UserPoolClient"))).not.toContain("GOOGLE_SOLAR_API_KEY");
+  });
+
+  it("serves deterministic system recommendations with analysis reads only", () => {
+    const systems = properties("SystemsFunction");
+    expect(systems.Handler).toBe("handlers/systems.handler");
+    expect(systems.Environment).toEqual({ Variables: { CORE_TABLE_NAME: "AnalysesTable" } });
+    expect(systems.Policies).toEqual([{ Statement: [expect.objectContaining({
+      Sid: "ReadOwnedSystemAnalysis", Effect: "Allow", Action: "dynamodb:GetItem", Resource: "AnalysesTable.Arn",
+    })] }]);
+    expect(systems.Events).toEqual({ RecommendSystems: { Type: "Api", Properties: {
+      RestApiId: "Api", Path: "/systems/recommend", Method: "POST",
+    } } });
+    expect(JSON.stringify(systems)).not.toMatch(/GOOGLE_.*API_KEY|secretsmanager|BEDROCK/);
   });
 });

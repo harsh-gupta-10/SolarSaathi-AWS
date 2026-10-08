@@ -27,6 +27,34 @@ count; render an illustrative plane and return `null` for count and capacity.
 Neither path establishes structural safety. A site survey and installer review
 remain necessary before installation.
 
+## Phase 6 system sizing
+
+`designSolarSystem` uses the confirmed roof and the same versioned layout
+assumptions as the 3D viewer. It checks 1, 2, 3, 5, 7.5 and 10 kW nominal
+candidates using whole panels. The returned actual DC capacity, minimum modeled
+inverter AC capacity, roof fit, yearly generation, coverage ratio, warnings and
+reason codes make the recommendation reproducible. The displayed inverter
+value is a sizing estimate, not an equipment selection. The recommendation is
+the eligible candidate closest to annual consumption, with an explicit 125%
+modeled generation-to-demand ceiling; these are planning assumptions rather
+than legal or tariff rules.
+
+Direct monthly kWh is preferred. A bill can be converted with an explicitly
+entered average tariff, with an approximation warning. Google panel energy is
+used only when the saved panel specifications match the layout model, then an
+explicit DC-to-AC factor is applied. Otherwise the user-supplied annual yield
+assumption is used and labelled. The default 1,500 kWh/kW-year is illustrative,
+not a site-specific Solar API result. An area-only roof has undetermined fit
+and no recommended size. Sanctioned load is reported for local-rule review;
+it does not impose an unverified legal capacity cap. No financial savings,
+subsidy or policy eligibility is calculated here.
+
+Google panel width, height and capacity override the versioned baseline only
+when the complete module specification passes conservative modeling guardrails.
+An implausible or partial specification falls back to the displayed baseline
+module and does not reuse Google's per-panel energy for that different module.
+The guardrails protect the sizing model; they are not equipment certification.
+
 ## Solar generation
 
 Initial configurable assumption:

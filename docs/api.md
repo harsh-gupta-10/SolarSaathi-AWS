@@ -53,6 +53,29 @@ Google preview and analysis records are bounded and expire; manual measurements
 are labelled user-provided. A confirmed roof is still not a structural review,
 panel layout, or financial result.
 
+Phase 6 adds authenticated `POST /v1/systems/recommend` with a strict request:
+
+```json
+{
+  "propertyId": "owned-property-id",
+  "analysisId": "confirmed-analysis-id",
+  "generationKwhPerKwYear": 1500,
+  "demand": { "kind": "CONSUMPTION", "monthlyConsumptionKwh": 300 }
+}
+```
+
+Alternatively, `demand` may be `{ "kind": "BILL", "monthlyBillRupees":
+2400, "tariffRupeesPerKwh": 8 }`. Both forms may include `sanctionedLoadKw`
+as context for a local-rule review. The backend loads the owned, unexpired
+analysis and uses its saved roof model; the browser cannot submit roof geometry
+or override the panel and inverter planning assumptions. The response contains
+`{ schemaVersion, source, requestId, propertyId, analysisId, design }`, where
+`design` includes the explicit assumptions, roof cap, all candidates, a
+recommendation when one is defensible, reason codes, and warnings. A saved
+analysis without usable roof geometry returns `409 ROOF_MODEL_REQUIRED`.
+Generation is an estimate; this endpoint returns no price, subsidy, legal
+eligibility, or structural approval.
+
 POST scaffolds require an `application/json` object of at most 64 KiB after
 base64 decoding. Errors use `{ error: { code, message, requestId } }`, with
 400 for invalid JSON/object shape, 413 for oversized payloads, 415 for unsupported

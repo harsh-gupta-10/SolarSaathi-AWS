@@ -57,7 +57,7 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
-async function post<T>(path: string, body: unknown, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+export async function postAuthenticated<T>(path: string, body: unknown, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
   const url = endpoint(path);
   const controller = new AbortController();
   const cancel = () => controller.abort();
@@ -101,19 +101,19 @@ async function post<T>(path: string, body: unknown, schema: z.ZodType<T>, signal
 }
 
 export const roofApi = {
-  bootstrap: (signal?: AbortSignal) => post("/users/bootstrap", {}, z.object({ ...envelope, source: z.literal("DYNAMODB") }).passthrough(), signal),
+  bootstrap: (signal?: AbortSignal) => postAuthenticated("/users/bootstrap", {}, z.object({ ...envelope, source: z.literal("DYNAMODB") }).passthrough(), signal),
   createCustomer: async (name: string, signal?: AbortSignal): Promise<string> =>
-    (await post("/customers", { name }, customerResponse, signal)).customer.customerId,
+    (await postAuthenticated("/customers", { name }, customerResponse, signal)).customer.customerId,
   createProperty: async (address: string, customerId?: string, signal?: AbortSignal): Promise<string> =>
-    (await post("/properties", { label: "Rooftop solar property", address, ...(customerId ? { customerId } : {}) }, propertyResponse, signal)).property.propertyId,
+    (await postAuthenticated("/properties", { label: "Rooftop solar property", address, ...(customerId ? { customerId } : {}) }, propertyResponse, signal)).property.propertyId,
   geocode: (propertyId: string, signal?: AbortSignal): Promise<RoofGeocodeResponse> =>
-    post("/solar/geocode", { propertyId }, geocodeResponse, signal) as Promise<RoofGeocodeResponse>,
+    postAuthenticated("/solar/geocode", { propertyId }, geocodeResponse, signal) as Promise<RoofGeocodeResponse>,
   insights: (propertyId: string, selected: GeocodeCandidate, location: RoofPoint, signal?: AbortSignal): Promise<RoofPreviewResponse> =>
-    post("/solar/building-insights", { propertyId, placeId: selected.placeId, location }, previewResponse, signal) as Promise<RoofPreviewResponse>,
+    postAuthenticated("/solar/building-insights", { propertyId, placeId: selected.placeId, location }, previewResponse, signal) as Promise<RoofPreviewResponse>,
   confirmBuilding: (propertyId: string, previewId: string, signal?: AbortSignal): Promise<RoofPreviewResponse> =>
-    post("/solar/confirm-building", { propertyId, previewId, confirmed: true }, previewResponse, signal) as Promise<RoofPreviewResponse>,
+    postAuthenticated("/solar/confirm-building", { propertyId, previewId, confirmed: true }, previewResponse, signal) as Promise<RoofPreviewResponse>,
   confirmRoof: (propertyId: string, previewId: string, signal?: AbortSignal): Promise<RoofConfirmationResponse> =>
-    post("/solar/confirm-roof", { propertyId, previewId, confirmed: true }, confirmationResponse, signal) as Promise<RoofConfirmationResponse>,
+    postAuthenticated("/solar/confirm-roof", { propertyId, previewId, confirmed: true }, confirmationResponse, signal) as Promise<RoofConfirmationResponse>,
   confirmManualRoof: (propertyId: string, manual: ManualRoofMeasurements, signal?: AbortSignal): Promise<RoofConfirmationResponse> =>
-    post("/solar/confirm-roof", { propertyId, manual, confirmed: true }, confirmationResponse, signal) as Promise<RoofConfirmationResponse>,
+    postAuthenticated("/solar/confirm-roof", { propertyId, manual, confirmed: true }, confirmationResponse, signal) as Promise<RoofConfirmationResponse>,
 };

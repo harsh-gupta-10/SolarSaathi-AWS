@@ -12,6 +12,7 @@ import { roofApi, RoofRequestError } from "../lib/roof-api";
 import { AddressForm } from "./address-form";
 import { SatelliteBuildingMap } from "./satellite-building-map";
 import { RoofLayoutViewer } from "./roof-layout-viewer";
+import { SystemDesigner } from "./system-designer";
 
 type Busy = "property" | "geocode" | "insights" | "building" | "roof" | "manual";
 const parseNumber = (value: string, min: number, max: number): number | undefined => {
@@ -173,7 +174,7 @@ export function AnalyzeStart() {
       {address === null ? <p role="status">Loading your tab’s draft…</p> : address && !editing ? <><p className="draft-address">{address}</p><p className="muted">This is a browser tab draft until you start an assessment.</p><div className="draft-actions"><Button variant="outline" onClick={() => { reset(); setEditing(true); }}>Edit address</Button><Button variant="ghost" onClick={clear}>Clear draft</Button></div></> : <AddressForm key={address ?? ""} initialAddress={address ?? ""} compact onSaved={value => { reset(); setAddress(value); setEditing(false); }} />}
       {profile?.role === "BROKER" && enabled && !propertyId && <div className="mt-5 max-w-md"><Label htmlFor="roof-customer-name">Customer name</Label><Input id="roof-customer-name" value={customerName} maxLength={120} onChange={event => setCustomerName(event.target.value)} /><p className="form-hint">A broker assessment must belong to a customer in your organization.</p></div>}
     </section>
-    {status !== "signedIn" && <div className="availability-note"><ShieldCheck aria-hidden="true" /><div><h2>Sign in to save a roof assessment</h2><p>{status === "unconfigured" ? "Account sign-in is not configured for this deployment. Your address remains a tab draft; no analysis has run." : "Your address remains a tab draft until your account is connected."}</p>{status === "signedOut" && <Button asChild className="mt-4"><Link href="/auth/sign-in">Sign in</Link></Button>}</div></div>}
+    {status !== "signedIn" && <div className="availability-note"><ShieldCheck aria-hidden="true" /><div><h2>Sign in to save a roof assessment</h2><p>{status === "unconfigured" ? "Account sign-in is not configured for this deployment. Your address remains a tab draft; no analysis has run." : "Your address remains a tab draft until your account is connected."}</p><div className="mt-4 flex flex-wrap gap-2">{status === "signedOut" && <Button asChild><Link href="/auth/sign-in">Sign in</Link></Button>}{(status === "signedOut" || status === "unconfigured") && <><Button asChild variant="outline"><Link href="/demo/roof-3d">Explore 3D demo</Link></Button><Button asChild variant="outline"><Link href="/demo/system-designer">Try system designer demo</Link></Button></>}</div></div></div>}
     {status !== "signedIn" && <p className="mt-4 text-sm text-muted-foreground"><Link href="/demo/roof-3d" className="font-medium text-primary underline underline-offset-4">Explore a sample 3D roof</Link> while live analysis is being configured.</p>}
     {enabled && !visibleResult && <section className="space-y-5" aria-label="Building and roof analysis">
       <div className="flex flex-wrap gap-3">
@@ -198,5 +199,6 @@ export function AnalyzeStart() {
     </section>}
     {visibleResult && <section className="rounded-xl border bg-background p-6" aria-labelledby="assessment-saved-title"><CheckCircle2 aria-hidden="true" className="mb-3 text-primary" /><h2 id="assessment-saved-title">Roof measurements saved</h2><p className="mt-2">{visibleResult.roof.roofAreaSquareMeters.toFixed(1)} m² across {visibleResult.roof.segmentCount} segment{visibleResult.roof.segmentCount === 1 ? "" : "s"}.</p><p className="mt-2 text-sm text-muted-foreground">Source: {visibleResult.source === "MANUAL" ? "your measurements" : "Includes solar data from Google"}. Assessment ID: {visibleResult.analysisId}. This does not establish structural suitability or a final solar design.</p></section>}
     {visibleResult && <RoofLayoutViewer key={visibleResult.analysisId} roof={visibleResult.roof} analysisId={visibleResult.analysisId} />}
+    {visibleResult && propertyId && <SystemDesigner key={`${propertyId}:${visibleResult.analysisId}`} propertyId={propertyId} analysisId={visibleResult.analysisId} />}
   </>;
 }

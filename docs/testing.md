@@ -38,6 +38,17 @@ signup, sign-in, Google federation and deployed API authorizer tests remain
 blocked pending approved resource configuration. Do not equate SDK mocks with
 successful cloud integration.
 
+## Phase 6 system designer checks
+
+Pure calculation tests cover roof capacity, whole-panel DC sizing, candidate
+selection, bill-derived demand, area-only uncertainty, zero Google energy,
+Google panel specification mismatch, and sanctioned-load review without an
+unverified legal cap. API tests cover strict numeric and identifier bounds,
+identity and ownership, expired analysis reads, metadata-only roof rejection,
+response provenance and least-privilege SAM routing. The fixture-only design
+demo supports browser checks without Cognito or Google credentials. None of
+these tests proves a live DISCOM rule or site-specific production yield.
+
 ## Unit tests
 
 ### Calculations

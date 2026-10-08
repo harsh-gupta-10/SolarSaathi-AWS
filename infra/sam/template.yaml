@@ -163,6 +163,12 @@ Resources:
       LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/roof"
       RetentionInDays: !Ref LogRetentionDays
 
+  SystemsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/systems"
+      RetentionInDays: !Ref LogRetentionDays
+
   RoofRetentionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -227,6 +233,36 @@ Resources:
           Properties:
             RestApiId: !Ref Api
             Path: /solar/confirm-roof
+            Method: POST
+
+  SystemsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Designs deterministic solar system candidates from an authenticated, owned roof analysis.
+        must:
+          - Load the confirmed analysis server-side and reject expired Google roof data.
+          - Allow only table GetItem reads; no policy, cost, secret or model access.
+    Properties:
+      Handler: handlers/systems.handler
+      CodeUri: ../../apps/api/dist
+      LoggingConfig:
+        LogGroup: !Ref SystemsLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+      Policies:
+        - Statement:
+            - Sid: ReadOwnedSystemAnalysis
+              Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt AnalysesTable.Arn
+      Events:
+        RecommendSystems:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /systems/recommend
             Method: POST
 
   RoofRetentionFunction:

@@ -117,6 +117,19 @@ Solar attribution visible. When WebGL is unavailable, the plan and text
 summary remain usable. A separate fixture-only demo route may illustrate the
 viewer without implying that an address has been analyzed.
 
+## Phase 6 system designer UI
+
+After saving a roof, `/app/analyze` offers a consumption or bill-and-tariff
+input and an editable annual generation assumption. The comparison is requested
+from the authenticated backend for the saved analysis. Results show each
+candidate's whole-panel DC capacity, minimum modeled inverter AC capacity,
+estimated yearly generation, modeled roof fit, and reasons it was not selected.
+The recommendation and all inputs are labelled as planning estimates. Bill
+conversion and Google roof geometry carry their approximation warnings;
+sanctioned load is only a prompt to verify local rules. The 3D viewer and
+designer use the same versioned roof layout assumptions. The synthetic demo is
+clearly labelled and does not call live services.
+
 ## Financial results
 
 Hero card:
