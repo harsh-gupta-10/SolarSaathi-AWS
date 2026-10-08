@@ -55,10 +55,15 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(text).not.toContain("IdentityPool");
   });
   it("returns configured CORS headers for authorizer and gateway errors without overriding HTTP status", () => {
-    for (const name of ["GatewayClientErrorResponse", "GatewayServerErrorResponse"]) {
-      expect(properties(name).ResponseParameters).toMatchObject({ "gatewayresponse.header.Access-Control-Allow-Origin": expect.stringContaining("ApplicationOrigin") });
-      expect(properties(name).StatusCode).toBeUndefined();
-      expect(properties(name).ResponseTemplates).toMatchObject({ "application/json": expect.stringContaining("$context.requestId") });
+    const responses = properties("Api").GatewayResponses as Record<string, {
+      ResponseParameters: { Headers: Record<string, string> };
+      ResponseTemplates: Record<string, string>;
+      StatusCode?: number;
+    }>;
+    for (const name of ["DEFAULT_4XX", "DEFAULT_5XX"]) {
+      expect(responses[name].ResponseParameters.Headers).toMatchObject({ "Access-Control-Allow-Origin": expect.stringContaining("ApplicationOrigin") });
+      expect(responses[name].StatusCode).toBeUndefined();
+      expect(responses[name].ResponseTemplates).toMatchObject({ "application/json": expect.stringContaining("$context.requestId") });
     }
   });
   it("keeps current identity protected and backed by compiled code without privileged Cognito policies", () => {

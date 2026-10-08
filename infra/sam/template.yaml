@@ -98,6 +98,21 @@ Resources:
         AllowOrigin: !Sub "'${ApplicationOrigin}'"
         AllowHeaders: "'Content-Type,Authorization'"
         AllowMethods: "'GET,POST,OPTIONS'"
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !Sub "'${ApplicationOrigin}'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+          ResponseTemplates:
+            application/json: '{"error":{"code":"GATEWAY_REQUEST_ERROR","message":"Check your sign-in session and request.","requestId":"$context.requestId"}}'
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !Sub "'${ApplicationOrigin}'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+          ResponseTemplates:
+            application/json: '{"error":{"code":"GATEWAY_SERVICE_ERROR","message":"The service is unavailable. Try again later.","requestId":"$context.requestId"}}'
       Auth:
         DefaultAuthorizer: CognitoUserPool
         AddDefaultAuthorizerToCorsPreflight: false
@@ -111,28 +126,6 @@ Resources:
           HttpMethod: "*"
           ThrottlingBurstLimit: 20
           ThrottlingRateLimit: 10
-
-  GatewayClientErrorResponse:
-    Type: AWS::ApiGateway::GatewayResponse
-    Properties:
-      RestApiId: !Ref Api
-      ResponseType: DEFAULT_4XX
-      ResponseParameters:
-        gatewayresponse.header.Access-Control-Allow-Origin: !Sub "'${ApplicationOrigin}'"
-        gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
-      ResponseTemplates:
-        application/json: '{"error":{"code":"GATEWAY_REQUEST_ERROR","message":"Check your sign-in session and request.","requestId":"$context.requestId"}}'
-
-  GatewayServerErrorResponse:
-    Type: AWS::ApiGateway::GatewayResponse
-    Properties:
-      RestApiId: !Ref Api
-      ResponseType: DEFAULT_5XX
-      ResponseParameters:
-        gatewayresponse.header.Access-Control-Allow-Origin: !Sub "'${ApplicationOrigin}'"
-        gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
-      ResponseTemplates:
-        application/json: '{"error":{"code":"GATEWAY_SERVICE_ERROR","message":"The service is unavailable. Try again later.","requestId":"$context.requestId"}}'
 
   HealthLogGroup:
     Type: AWS::Logs::LogGroup

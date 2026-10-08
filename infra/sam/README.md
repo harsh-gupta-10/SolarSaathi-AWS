@@ -61,8 +61,9 @@ target account; Phase 0 observability is Lambda/CloudWatch logging only.
 
 ## Cognito resource intent and constraints
 
-- `GatewayClientErrorResponse`, `GatewayServerErrorResponse`: fixed-origin CORS
-  and sanitized structured errors even when authorization fails before Lambda.
+- `Api.GatewayResponses`: fixed-origin CORS and sanitized structured errors
+  even when authorization fails before Lambda. They are defined inside the SAM
+  API so its generated OpenAPI definition owns the gateway responses.
   Default HTTP status codes are preserved; origins are never reflected from
   untrusted request headers. Lambda proxy responses use the same validated
   `API_ALLOWED_ORIGIN`, not merely the API's OPTIONS/preflight configuration.
