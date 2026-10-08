@@ -52,6 +52,97 @@
   ::selection { background: var(--secondary); color: var(--foreground); }
 }
 
+.policy-review { color: var(--foreground); }
+.policy-review-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.5rem; margin-bottom: 1.7rem; }
+.policy-review-heading > div { max-width: 52rem; }
+.policy-review-heading > div > p:first-child { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.7rem; color: var(--primary); font-size: 0.82rem; font-weight: 650; }
+.policy-review-heading h1 { font-size: clamp(2rem, 3.6vw, 3.3rem); }
+.policy-review-heading > div > p:last-child { margin-top: 0.75rem; max-width: 65ch; color: var(--muted-foreground); font-size: 0.94rem; }
+.policy-review-heading button { flex-shrink: 0; min-height: 44px; }
+.policy-review-feedback { display: flex; align-items: flex-start; gap: 0.65rem; margin-bottom: 1rem; padding: 0.9rem 1rem; border: 1px solid #a5d3b2; border-radius: 0.6rem; background: #f0faf2; color: #205b35; font-size: 0.86rem; }
+.policy-review-feedback.error { border-color: #e3b0a8; background: #fff4f1; color: #9d291b; }
+.policy-review-feedback svg { flex-shrink: 0; margin-top: 0.1rem; }
+.policy-review-tabs { display: flex; gap: 0.35rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); }
+.policy-review-tabs button { display: inline-flex; align-items: center; gap: 0.55rem; min-height: 48px; padding: 0.7rem 1rem; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted-foreground); font-size: 0.9rem; font-weight: 600; }
+.policy-review-tabs button[aria-pressed="true"] { border-bottom-color: var(--primary); color: var(--primary); }
+.policy-review-tabs span { min-width: 1.45rem; padding: 0.05rem 0.3rem; border-radius: 999px; background: var(--secondary); color: var(--primary); font-size: 0.72rem; text-align: center; }
+.policy-review-grid { display: grid; grid-template-columns: minmax(15rem, 0.85fr) minmax(0, 1.5fr); gap: 1rem; align-items: start; }
+.policy-review-list, .policy-review-detail, .policy-review-source-card { background: #fff; border: 1px solid var(--border); border-radius: 0.8rem; }
+.policy-review-list { min-height: 22rem; max-height: 64rem; overflow-y: auto; }
+.policy-review-load-more { display: block; margin: 1rem auto; }
+.policy-review-list-item { display: grid; width: 100%; gap: 0.45rem; padding: 1rem 1.1rem; border: 0; border-left: 4px solid transparent; border-bottom: 1px solid var(--border); background: #fff; color: var(--foreground); text-align: left; }
+.policy-review-list-item:last-child { border-bottom: 0; }
+.policy-review-list-item:hover { background: #f6faf7; }
+.policy-review-list-item[aria-pressed="true"] { border-left-color: var(--primary); background: #eef6f0; }
+.policy-review-list-top { display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; font-size: 0.8rem; }
+.policy-review-list-top strong { font-weight: 650; }
+.policy-review-list-top > span { padding: 0.15rem 0.5rem; border-radius: 999px; background: #fff3d7; color: #765312; font-size: 0.7rem; font-weight: 650; }
+.policy-review-list-quote { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 3; -webkit-box-orient: vertical; font-size: 0.85rem; line-height: 1.5; }
+.policy-review-list-meta { color: var(--muted-foreground); font-size: 0.72rem; }
+.policy-review-conflict { display: inline-flex; align-items: center; gap: 0.3rem; width: fit-content; color: #9a3c20; font-size: 0.72rem; font-weight: 650; }
+.policy-review-detail { min-width: 0; min-height: 22rem; padding: clamp(1.2rem, 2.5vw, 2rem); }
+.policy-review-empty { padding: 1.5rem; color: var(--muted-foreground); font-size: 0.88rem; }
+.policy-review-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.policy-review-detail-head span { color: #765312; font-size: 0.78rem; font-weight: 650; }
+.policy-review-detail-head h2 { margin-top: 0.35rem; font-size: clamp(1.35rem, 2vw, 1.7rem); }
+.policy-review-detail-head b { padding: 0.22rem 0.55rem; border: 1px solid var(--border); border-radius: 0.35rem; font-size: 0.75rem; }
+.policy-review-detail blockquote { margin: 1.45rem 0; padding: 1.15rem 1.25rem; border-left: 4px solid var(--solar); background: #fcfaf3; font-size: clamp(0.95rem, 1.3vw, 1.08rem); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.policy-review-change-summary { margin: 1.2rem 0; max-width: 65ch; color: var(--muted-foreground); font-size: 0.9rem; line-height: 1.6; }
+.policy-review-preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 0.85rem; margin: 1.2rem 0 0.45rem; }
+.policy-review-text-preview { min-width: 0; }
+.policy-review-text-preview h3 { font-size: 0.9rem; }
+.policy-review-text-preview > p, .policy-review-text-preview small { color: var(--muted-foreground); font-size: 0.75rem; }
+.policy-review-text-preview blockquote { max-height: 18rem; overflow: auto; margin: 0.65rem 0 0.35rem; font-size: 0.85rem; }
+.policy-review-change-context { color: var(--muted-foreground); font-size: 0.75rem; }
+.policy-review-hash { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem !important; word-break: break-all; }
+.policy-review-caution { display: flex; align-items: flex-start; gap: 0.6rem; max-width: 70ch; color: #765312; font-size: 0.82rem; }
+.policy-review-caution svg { flex-shrink: 0; margin-top: 0.15rem; }
+.policy-review-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.6rem; margin: 1.5rem 0; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+.policy-review-facts dt { color: var(--muted-foreground); font-size: 0.73rem; }
+.policy-review-facts dd { margin: 0.2rem 0 0; font-size: 0.84rem; font-weight: 600; overflow-wrap: anywhere; }
+.policy-review-source-link { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 44px; color: var(--primary); font-size: 0.85rem; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+.policy-review-warning { margin-top: 1rem; padding: 0.85rem 1rem; border-radius: 0.5rem; background: #fff4f0; color: #963f28; }
+.policy-review-warning h3 { font-size: 0.86rem; }
+.policy-review-warning ul { margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.78rem; }
+.policy-review-actions { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 1.4rem; }
+.policy-review-actions button { min-height: 44px; }
+.policy-review-audit { margin-top: 1.5rem; padding-top: 1.2rem; border-top: 1px solid var(--border); }
+.policy-review-audit h3 { font-size: 0.93rem; }
+.policy-review-audit ol { list-style: none; display: grid; gap: 0.55rem; margin: 0.65rem 0 0; padding: 0; }
+.policy-review-audit li { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.8rem; }
+.policy-review-audit small { color: var(--muted-foreground); white-space: nowrap; }
+.policy-review-sources { display: grid; gap: 0.85rem; }
+.policy-review-source-card { display: flex; justify-content: space-between; gap: 1.5rem; padding: 1.2rem 1.4rem; }
+.policy-review-source-card > div:first-child { min-width: 0; }
+.policy-review-source-card span { color: var(--primary); font-size: 0.74rem; font-weight: 650; }
+.policy-review-source-card h2 { margin: 0.35rem 0; font-size: 1.1rem; }
+.policy-review-source-card p { color: var(--muted-foreground); font-size: 0.8rem; }
+.policy-review-source-card a { display: inline-flex; align-items: center; gap: 0.25rem; min-height: 36px; color: var(--primary); font-size: 0.78rem; text-decoration: underline; text-underline-offset: 3px; }
+.policy-review-source-side { display: grid; justify-items: end; align-content: center; gap: 0.45rem; flex-shrink: 0; text-align: right; }
+.policy-review-source-side strong { color: #765312; font-size: 0.78rem; }
+.policy-review-source-side small { color: var(--muted-foreground); font-size: 0.72rem; }
+.policy-review-source-side button { min-height: 40px; }
+.policy-review-confirm { display: grid; gap: 0.55rem; margin-top: 2rem; }
+.policy-review-confirm label { font-size: 0.86rem; font-weight: 650; }
+.policy-review-confirm textarea { min-height: 8rem; width: 100%; padding: 0.75rem; border: 1px solid var(--input); border-radius: 0.5rem; background: #fff; font: inherit; font-size: 0.86rem; resize: vertical; }
+.policy-review-confirm p { color: var(--muted-foreground); font-size: 0.75rem; }
+.policy-review-confirm button { margin-top: 0.65rem; min-height: 44px; }
+
+@media (max-width: 860px) {
+  .policy-review-grid { grid-template-columns: 1fr; }
+  .policy-review-list { min-height: 0; max-height: 19rem; }
+  .policy-review-detail { min-height: 0; }
+}
+@media (max-width: 600px) {
+  .policy-review-heading { display: block; }
+  .policy-review-heading button { margin-top: 1rem; }
+  .policy-review-facts { grid-template-columns: 1fr; }
+  .policy-review-source-card { display: block; }
+  .policy-review-source-side { justify-items: start; text-align: left; margin-top: 0.85rem; }
+  .policy-review-tabs { overflow-x: auto; }
+  .policy-review-tabs button { white-space: nowrap; }
+}
+
 .container { width: min(100% - 3rem, 76rem); margin-inline: auto; }
 .muted { color: var(--muted-foreground); }
 .brand { display: inline-flex; align-items: center; gap: 0.6rem; color: var(--primary); font-size: 1.4rem; font-weight: 750; letter-spacing: -0.04em; white-space: nowrap; }

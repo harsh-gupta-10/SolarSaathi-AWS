@@ -219,6 +219,31 @@ Priority sources:
 - electricity regulators
 - official state renewable agencies
 
+Status: local crawler and evidence-review workflow verified; **live India
+coverage remains open**. A 15-minute EventBridge Lambda checks bounded,
+curated official canonical URLs through an HTTPS, exact-host, DNS-pinned,
+robots-aware fetcher. It keeps raw and normalized hashes, separates cosmetic
+changes from review-worthy text changes, archives immutable PDF/HTML evidence,
+extracts cited unverified quotations, and queues both candidate and
+document-level changes (including zero-quotation changes). A bounded lookup
+against previously approved evidence flags tentative cross-source differences;
+no verified policy fact is inferred from that comparison. Administrators see
+source freshness/failure, before/after text excerpts, conflict status and a
+mixed paginated queue. Independent reviewer decisions are revision-checked
+and audited; approval does not publish a benefit rule. Rate limits, redirect
+identity, crawl leases/replay and failures have focused tests. The PDF parser
+also passes a cold-start and PDF extraction smoke test from the bundled Lambda
+artifact. Full lint, typecheck, 633 tests, production builds, SAM template
+tests, read-only CloudFormation validation and desktop/mobile browser checks
+pass locally; browser checks found no WCAG A/AA violations.
+
+The crawler monitors only explicitly registered URLs. Linked official
+circular/PDF discovery and broader India source registration remain open.
+No policy resources have been deployed, so live official fetches, Cognito/IAM,
+S3/DynamoDB, CloudWatch alarms and production coverage are unverified. There
+is no active verified benefit/rule publication path yet; Phase 10 must add it
+before any homeowner subsidy calculation can use policy data.
+
 ## Phase 10 — Subsidy stacking / eligibility engine
 Implement:
 - central benefits

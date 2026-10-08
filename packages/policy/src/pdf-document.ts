@@ -1,5 +1,3 @@
-import { getDocument, VerbosityLevel } from "pdfjs-dist/legacy/build/pdf.mjs";
-
 export interface ExtractedPdfPage {
   pageNumber: number;
   text: string;
@@ -9,6 +7,9 @@ export async function extractPdfDocument(
   bytes: Uint8Array,
   limits: { maxPages: number; maxTextCharacters: number; maxPageTextCharacters: number },
 ): Promise<ExtractedPdfPage[]> {
+  // Keep PDF.js as ESM at runtime. Bundling it into the Lambda CJS handler
+  // erases import.meta.url, which PDF.js needs to load its Node canvas polyfill.
+  const { getDocument, VerbosityLevel } = await import("pdfjs-dist/legacy/build/pdf.mjs");
   // Only an in-memory byte array is supplied: PDF.js cannot fetch an arbitrary URL.
   // XFA rendering, worker fetching, and recovery from malformed text streams are disabled.
   const task = getDocument({

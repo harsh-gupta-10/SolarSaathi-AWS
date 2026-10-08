@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "build": "esbuild src/handlers/*.ts --bundle --platform=node --target=node22 --format=cjs --outdir=dist/handlers",
+    "build": "esbuild src/handlers/*.ts --bundle --platform=node --target=node22 --format=cjs --external:pdfjs-dist/legacy/build/pdf.mjs --outdir=dist/handlers && node scripts/package-policy-pdf-runtime.mjs && node scripts/smoke-policy-bundle.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

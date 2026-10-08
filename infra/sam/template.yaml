@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: SolarSaathi API with Cognito authentication, a private DynamoDB core model and confirmed roof analysis; advisor routes remain unavailable.
+Description: SolarSaathi authenticated roof, planning and policy evidence APIs with scheduled official-source review; advisor routes remain unavailable.
 
 Metadata:
   AWSToolsMetrics:
@@ -181,6 +181,12 @@ Resources:
       LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/policy"
       RetentionInDays: !Ref LogRetentionDays
 
+  PolicyCrawlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/policy-crawler"
+      RetentionInDays: !Ref LogRetentionDays
+
   RoofRetentionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -320,6 +326,7 @@ Resources:
     Properties:
       Handler: handlers/policy.handler
       CodeUri: ../../apps/api/dist
+      Architectures: [x86_64]
       Timeout: 28
       MemorySize: 1024
       LoggingConfig:
@@ -335,7 +342,15 @@ Resources:
               Action:
                 - dynamodb:GetItem
                 - dynamodb:PutItem
+                - dynamodb:Query
+                - dynamodb:UpdateItem
               Resource: !GetAtt PolicyTable.Arn
+            - Sid: PolicyAdminIndexes
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource:
+                - !Sub "${PolicyTable.Arn}/index/GSI1"
+                - !Sub "${PolicyTable.Arn}/index/GSI4"
             - Sid: ArchivePolicyObjects
               Effect: Allow
               Action:
@@ -344,6 +359,10 @@ Resources:
               Resource:
                 - !Sub "${PolicyDocumentBucket.Arn}/raw/*"
                 - !Sub "${PolicyDocumentBucket.Arn}/derived/*"
+            - Sid: ReadPinnedPolicyReviewText
+              Effect: Allow
+              Action: s3:GetObjectVersion
+              Resource: !Sub "${PolicyDocumentBucket.Arn}/derived/*"
       Events:
         RegisterPolicySource:
           Type: Api
@@ -351,12 +370,147 @@ Resources:
             RestApiId: !Ref Api
             Path: /admin/policy/sources
             Method: POST
+        ListPolicySources:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/sources
+            Method: GET
+        CuratePolicySource:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/sources/curate
+            Method: POST
+        QueuePolicyCrawl:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/sources/crawl
+            Method: POST
+        PolicyReviewQueue:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/queue
+            Method: GET
+        PolicyCandidateDetail:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/candidates/{candidateId}
+            Method: GET
+        ApprovePolicyEvidence:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/candidates/{candidateId}/approve
+            Method: POST
+        RejectPolicyEvidence:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/candidates/{candidateId}/reject
+            Method: POST
+        PolicyChangeDetail:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/changes/{changeId}
+            Method: GET
+        ApprovePolicyChange:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/changes/{changeId}/approve
+            Method: POST
+        RejectPolicyChange:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/changes/{changeId}/reject
+            Method: POST
         IngestPolicyDocument:
           Type: Api
           Properties:
             RestApiId: !Ref Api
             Path: /admin/policy/documents
             Method: POST
+
+  PolicyCrawlerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Checks a bounded set of due curated official sources and archives only review-worthy changes.
+        must:
+          - Revalidate every official fetch and redirect and honor robots exclusions.
+          - Preserve prior evidence and state on source fetch or extraction failure.
+          - Never publish unverified extracted text as an active policy benefit.
+    Properties:
+      Handler: handlers/policy-crawler.handler
+      CodeUri: ../../apps/api/dist
+      Architectures: [x86_64]
+      Timeout: 300
+      MemorySize: 1024
+      ReservedConcurrentExecutions: 1
+      LoggingConfig:
+        LogGroup: !Ref PolicyCrawlerLogGroup
+      Environment:
+        Variables:
+          POLICY_TABLE_NAME: !Ref PolicyTable
+          POLICY_DOCUMENT_BUCKET: !Ref PolicyDocumentBucket
+      Policies:
+        - Statement:
+            - Sid: PolicyCrawlerItems
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PolicyTable.Arn
+            - Sid: ReadDueSourcesIndex
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${PolicyTable.Arn}/index/GSI2"
+            - Sid: ReadApprovedClaimIndex
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${PolicyTable.Arn}/index/GSI3"
+            - Sid: ArchiveCrawledPolicyObjects
+              Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+              Resource:
+                - !Sub "${PolicyDocumentBucket.Arn}/raw/*"
+                - !Sub "${PolicyDocumentBucket.Arn}/derived/*"
+            - Sid: ReadPinnedDerivedPolicyVersion
+              Effect: Allow
+              Action: s3:GetObjectVersion
+              Resource: !Sub "${PolicyDocumentBucket.Arn}/derived/*"
+      Events:
+        DuePolicySourceSweep:
+          Type: Schedule
+          Properties:
+            Schedule: rate(15 minutes)
+            Description: Review a bounded set of due curated official policy sources.
+
+  PolicyCrawlerFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Scheduled official policy crawler failed or exceeded its bounded due-source batch.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref PolicyCrawlerFunction
+      Statistic: Sum
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
 
   RoofRetentionFunction:
     Type: AWS::Serverless::Function
@@ -726,11 +880,60 @@ Resources:
           AttributeType: S
         - AttributeName: SK
           AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+        - AttributeName: GSI2PK
+          AttributeType: S
+        - AttributeName: GSI2SK
+          AttributeType: N
+        - AttributeName: GSI3PK
+          AttributeType: S
+        - AttributeName: GSI3SK
+          AttributeType: S
+        - AttributeName: GSI4PK
+          AttributeType: S
+        - AttributeName: GSI4SK
+          AttributeType: S
       KeySchema:
         - AttributeName: PK
           KeyType: HASH
         - AttributeName: SK
           KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI2
+          KeySchema:
+            - AttributeName: GSI2PK
+              KeyType: HASH
+            - AttributeName: GSI2SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI3
+          KeySchema:
+            - AttributeName: GSI3PK
+              KeyType: HASH
+            - AttributeName: GSI3SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI4
+          KeySchema:
+            - AttributeName: GSI4PK
+              KeyType: HASH
+            - AttributeName: GSI4SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       Tags:
         - Key: Project
           Value: SolarSaathi
@@ -779,6 +982,18 @@ Resources:
             Condition:
               Bool:
                 aws:SecureTransport: "false"
+          - Sid: DenyUnconditionalPolicyObjectWrites
+            Effect: Deny
+            Principal: "*"
+            Action: s3:PutObject
+            Resource:
+              - !Sub "${PolicyDocumentBucket.Arn}/raw/*"
+              - !Sub "${PolicyDocumentBucket.Arn}/derived/*"
+            Condition:
+              "Null":
+                "s3:if-none-match": "true"
+              Bool:
+                s3:ObjectCreationOperation: "true"
 
   AnalysesTable:
     Type: AWS::DynamoDB::Table

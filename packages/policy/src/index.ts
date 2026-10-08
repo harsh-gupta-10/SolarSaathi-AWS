@@ -6,3 +6,8 @@ export * from "./document-ingestion";
 export * from "./html-document";
 export * from "./pdf-document";
 export * from "./starter-sources";
+export * from "./phase9-schema";
+export * from "./candidate-extraction";
+export * from "./change-detection";
+export * from "./candidate-conflicts";
+export * from "./fetch-official";

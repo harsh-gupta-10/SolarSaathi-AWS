@@ -143,6 +143,32 @@ caller. Identical retries are idempotent; conflicting versions are rejected.
 These are
 administrative ingestion routes, not public policy lookup routes.
 
+Phase 9 adds locally implemented administrator review routes. They require the
+same verified Cognito group and configured policy storage. A source begins
+scheduled checks only after `POST /v1/admin/policy/sources/curate` receives its
+`sourceId` and `expectedRegistryVersion`. `POST /v1/admin/policy/sources/crawl`
+requests an earlier check of an enabled source and returns whether it was newly
+queued. An ordinary rate limit cannot be bypassed before its due time; a
+source stopped for an unusually long `Retry-After` requires an audited
+`rateLimitClearanceReason` from an administrator before requeue. `GET /v1/admin/policy/sources` returns immutable registry snapshots and
+separate current crawl states/freshness so health is not inferred from a source
+version.
+
+`GET /v1/admin/policy/queue?limit=20&cursor=...` returns one mixed, paginated
+review page as `items` (unverified extracted quotations) and `changes`
+(document-level changes, including documents with zero extracted quotations).
+`GET /v1/admin/policy/candidates/{candidateId}` and
+`GET /v1/admin/policy/changes/{changeId}` return citation/document/source,
+freshness and audit context. The change detail may include up to 4,000
+characters of hash-checked archived plain text; it never returns raw HTML/PDF
+or an S3 URL. `POST` to either detail path followed by `/approve` or `/reject`
+requires `expectedRevision` and accepts a review reason. A separate
+administrator from the source curator must review. Approval records the
+evidence or document review only: it never activates a policy fact, eligibility
+rule or subsidy amount. Changed revisions return 409; all transitions are
+audited. These routes and scheduled fetches have only local test coverage;
+no deployed policy workflow has been verified.
+
 Paths below are planned contracts unless listed as available above.
 
 ## Roof
@@ -188,12 +214,14 @@ Output:
 {
   "grossCost": 195000,
   "benefits": [],
-  "totalEligibleBenefit": 78000,
-  "netCost": 117000,
+  "totalEligibleBenefit": 0,
+  "netCost": 195000,
   "policyVersions": [],
-  "warnings": []
+  "warnings": ["No approved current policy facts were available for evaluation."]
 }
 ```
+
+This is a synthetic shape example with no live policy fact or subsidy amount.
 
 ## Applications
 
@@ -240,14 +268,6 @@ Input:
 `GET /v1/designs/templates`
 
 ## Admin
-
-`GET /v1/admin/policy/sources`
-
-`GET /v1/admin/policy/changes`
-
-`POST /v1/admin/policy/changes/:id/approve`
-
-`POST /v1/admin/policy/changes/:id/reject`
 
 `POST /v1/admin/policy/:id/rollback`
 

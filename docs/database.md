@@ -57,15 +57,17 @@ policy table. This is a deliberate access boundary: homeowner and roof Lambda
 roles have no access to policy drafts or raw-document metadata. Raw bytes and
 derived normalized text/chunks live in a private, versioned S3 bucket. An
 ingested document is evidence for review, never an active benefit by itself.
-Conditional writes preserve immutable source/document versions; later crawler
-health updates and policy approvals must create their own auditable records.
+Conditional writes preserve immutable source/document versions. Phase 9 keeps
+mutable crawl state and review pointers separate from those snapshots; every
+human review also writes an immutable revision and audit event.
 
 ### POLICY_SOURCE
 `PK=SOURCE#sourceId`, `SK=CURRENT` and `SK=VERSION#registryVersion`
 
 Initial registration atomically writes the current pointer and an immutable
-version snapshot. Future curation and crawler health records must preserve
-those historical snapshots and use conditional transitions.
+version snapshot. Curation atomically writes the next immutable version,
+current pointer, crawl state and audit event with a registry-version condition.
+Only `CURRENT` source records appear in sparse GSI4 (`POLICY_SOURCES`).
 
 Fields:
 - authorityLevel
@@ -77,6 +79,14 @@ Fields:
 - lastChangedAt
 - contentHash
 - status
+
+### POLICY_CRAWL_STATE
+`PK=SOURCE#sourceId`, `SK=CRAWL_STATE`
+
+Revision-checked mutable state stores the next due epoch, bounded lease,
+failure count, last fetch validators/hashes and last checked/changed time.
+Sparse GSI2 (`POLICY_CRAWL_DUE`) indexes the due epoch. Source snapshots are
+not rewritten for each check.
 
 ### POLICY_DOCUMENT
 `PK=SOURCE#sourceId`, `SK=DOCUMENT#documentId#VERSION#version`
@@ -98,6 +108,30 @@ Fields:
 - effectiveFrom
 - title
 - mimeType
+
+### POLICY_DOCUMENT_CHANGE
+`PK=CHANGE#changeId`, `SK=CURRENT`, `SK=DETECTED#00000001`, and
+`SK=REVIEW#revision`
+
+A document-level change remains reviewable even when extraction finds no
+candidate quotation. Current review status is conditionally updated; detection
+and review snapshots are immutable. Only pending current records appear in
+sparse GSI1 (`POLICY_REVIEW_PENDING`).
+
+### POLICY_CANDIDATE
+`PK=CANDIDATE#candidateId`, `SK=CURRENT` and `SK=REVIEW#revision`
+
+The candidate stores an unverified, exact quoted chunk with document/version
+hash and citation. Approval means evidence reviewed; it does not activate a
+policy rule. Pending candidates share GSI1 with document changes, so one
+cursor pages both record types. Current status is rechecked on a consistent
+read after the eventually consistent index query.
+
+### POLICY_AUDIT
+Stored under the relevant source/change/candidate partition with
+`SK=AUDIT#timestamp#eventId`. Curation, crawl checks/failures, detected
+changes and reviewer actions append events; review transactions write the
+audit event with the immutable review snapshot.
 
 ### POLICY
 `PK=POLICY#policyId`, `SK=VERSION#version`
@@ -129,6 +163,9 @@ Fields:
 
 ### POLICY_CHANGE
 `PK=POLICY#policyId`, `SK=CHANGE#timestamp`
+
+This is the future change history for approved policy rules. It is distinct
+from Phase 9 document-change evidence above.
 
 Fields:
 - oldVersion

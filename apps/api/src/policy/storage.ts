@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
-import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { PolicyDocumentV1, PolicySourceV1 } from "@solarsaathi/policy";
 
 export interface PolicyRepository {
@@ -12,6 +13,7 @@ export interface PolicyRepository {
 
 export interface PolicyObjectStore {
   putImmutable(key: string, body: Uint8Array, contentType: string, sha256Hex: string): Promise<string>;
+  getDerived?(key: string, versionId: string): Promise<Uint8Array>;
 }
 
 const sourceKey = (sourceId: string) => ({ PK: `SOURCE#${sourceId}`, SK: "CURRENT" });
@@ -43,7 +45,8 @@ export class DynamoPolicyRepository implements PolicyRepository {
     await this.client.send(new TransactWriteCommand({
       TransactItems: [
         { Put: { TableName: this.tableName,
-          Item: { ...sourceKey(source.sourceId), entityType: "POLICY_SOURCE_CURRENT", value: source },
+          Item: { ...sourceKey(source.sourceId), entityType: "POLICY_SOURCE_CURRENT", value: source,
+            GSI4PK: "POLICY_SOURCES", GSI4SK: `${source.updatedAt}#${source.sourceId}` },
           ConditionExpression: "attribute_not_exists(PK) AND attribute_not_exists(SK)" } },
         { Put: { TableName: this.tableName,
           Item: { ...sourceVersionKey(source.sourceId, source.registryVersion), entityType: "POLICY_SOURCE_VERSION", value: source },
@@ -99,5 +102,25 @@ export class S3PolicyObjectStore implements PolicyObjectStore {
       }
       return existing.VersionId;
     }
+  }
+
+  async getDerived(key: string, versionId: string): Promise<Uint8Array> {
+    if (!/^derived\/[a-f0-9]{32}\/[a-f0-9]{32}\/v\d{8}\/[a-f0-9]{64}\.json$/.test(key) ||
+      !versionId || versionId.length > 1_024) throw new Error("Invalid derived policy object reference.");
+    const response = await this.client.send(new GetObjectCommand({
+      Bucket: this.bucket, Key: key, VersionId: versionId,
+    }), { abortSignal: AbortSignal.timeout(8_000) });
+    if (!response.Body || !response.ContentLength || response.ContentLength > 4_000_000) {
+      throw new Error("Derived policy object exceeds read bounds.");
+    }
+    const bytes = await response.Body.transformToByteArray();
+    if (bytes.byteLength !== response.ContentLength || bytes.byteLength > 4_000_000) {
+      throw new Error("Derived policy object length changed.");
+    }
+    const expected = key.match(/\/([a-f0-9]{64})\.json$/)?.[1];
+    if (expected !== createHash("sha256").update(bytes).digest("hex")) {
+      throw new Error("Derived policy object digest mismatch.");
+    }
+    return bytes;
   }
 }

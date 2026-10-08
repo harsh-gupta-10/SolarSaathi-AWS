@@ -99,6 +99,19 @@ HTML shell with unchanged normalized rule text must not become an active policy
 change. The parser must never fetch links, run page scripts, or infer a subsidy
 value from an uploaded document.
 
+### Phase 9 official-source workflow
+Test exact-host/HTTPS and each redirect hop, DNS rebinding/private-address
+rejection, robots exclusions, bounded response/time/bytes, 304 and official
+rate limiting. Test initial, raw-unchanged, cosmetic, material and zero-snippet
+document changes; source URL/redirect identity changes must retain accurate
+citations. Test candidate quotes against exact archived chunks and compare
+conflict flags to actual prior reviewed evidence. Test lease/replay/failure
+paths, mixed candidate/document-change queue pagination, separate curator and
+reviewer, revision conflicts, immutable audit snapshots and no policy-fact
+publication. Browser tests cover stale/failed source feedback, link
+provenance, account changes and mobile/accessibility states. Fixtures are
+synthetic, and no local test implies a live official policy value.
+
 ### Application state
 Test:
 - valid transitions

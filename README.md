@@ -69,7 +69,7 @@ Current policy values are never treated as permanent constants. A crawler detect
 
 ## Implementation status
 
-Phases 0–7 have locally implemented source code:
+Phases 0–9 have locally implemented source code:
 - pnpm workspace, Next.js marketing site, responsive application shell, typed
   packages, quality scripts, GitHub Actions, and compiled Lambda/SAM foundation;
 - Cognito hosted sign-in, code+PKCE callback, identity verification, profile and
@@ -89,7 +89,11 @@ Phases 0–7 have locally implemented source code:
   sensitivity and an authenticated estimate API;
 - a policy evidence foundation with a reviewed official-host registry,
   versioned source/document/fact schemas, conservative precedence, bounded
-  HTML/PDF extraction, citations, and admin-only private evidence ingestion.
+  HTML/PDF extraction, citations, and admin-only private evidence ingestion;
+- an official-source crawler with bounded scheduled fetches, change detection,
+  tentative conflict signals, a mixed evidence/document-change review queue,
+  independent administrator review, immutable audit, and a policy review UI
+  with a synthetic preview at `/demo/policy-review`.
 
 Google-derived preview, analysis and cache records have a 21-day retention
 limit and an hourly bounded hard-delete worker with an error alarm. Google roof
@@ -98,9 +102,9 @@ structural safety. An area-only manual roof has no panel-count estimate or
 recommended system size. The system designer does not claim local interconnection
 eligibility, a cost, savings or subsidy. The base financial model requires
 explicit user inputs and does not establish policy benefits or export credits.
-The policy evidence archive has no active government benefit facts yet; the
-scheduled crawler, human approval workflow and benefit engine follow in later
-phases.
+The policy evidence archive has no active government benefit facts yet.
+Crawler review approval does not publish a rule or calculate a subsidy;
+verified-rule publication and the benefit engine follow in Phase 10.
 
 These phases have **local** lint, typecheck, test and build coverage. No AWS
 resources or Google Cloud project have been configured or deployed for this app;
@@ -108,7 +112,9 @@ live Cognito, DynamoDB, Google API and hosting behavior remains unverified.
 Production release also needs alarm notifications, a review of DynamoDB PITR
 backup retention for Google data, credentials in the intended AWS account, and
 live deployment checks. The policy-backed financial and policy engines in later
-phases remain unimplemented and do not provide real subsidy figures.
+phases remain unimplemented and do not provide real subsidy figures. The local
+crawler monitors registered URLs; automatic discovery of linked official
+documents and live India source coverage remain open.
 
 Local application validation uses `pnpm check`. AWS CloudFormation accepted a
 read-only template validation, and GitHub Actions is configured to run SAM

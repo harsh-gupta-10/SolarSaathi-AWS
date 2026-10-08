@@ -1,4 +1,4 @@
-# AWS SAM — Core and roof APIs
+# AWS SAM — Core, roof and policy APIs
 
 ## Resource intent and constraints
 
@@ -6,11 +6,11 @@
   core and roof routes are implemented locally. `/solar/analyze`, the advisor,
   and original `/analyze` and `/chat` scaffold aliases remain unavailable.
   Health and CORS preflight remain public. Route throttling limits accidental traffic.
-- `HealthFunction`, `CoreFunction`, `RoofFunction`, `SystemsFunction`, `FinancialsFunction`, `PolicyFunction`, `RoofRetentionFunction`, `AnalyzeFunction`,
+- `HealthFunction`, `CoreFunction`, `RoofFunction`, `SystemsFunction`, `FinancialsFunction`, `PolicyFunction`, `PolicyCrawlerFunction`, `RoofRetentionFunction`, `AnalyzeFunction`,
   `ChatFunction`: Node.js 22 functions built
   from `apps/api/dist`. SAM copies **compiled JavaScript**, not TypeScript source.
   Build the API before running SAM directly; `pnpm sam:build` does this for you.
-- `HealthLogGroup`, `CoreLogGroup`, `RoofLogGroup`, `SystemsLogGroup`, `FinancialsLogGroup`, `PolicyLogGroup`, `RoofRetentionLogGroup`, `AnalyzeLogGroup`,
+- `HealthLogGroup`, `CoreLogGroup`, `RoofLogGroup`, `SystemsLogGroup`, `FinancialsLogGroup`, `PolicyLogGroup`, `PolicyCrawlerLogGroup`, `RoofRetentionLogGroup`, `AnalyzeLogGroup`,
   `ChatLogGroup`: stack/environment-scoped
   CloudWatch groups with a bounded retention parameter. Lambda writes JSON log
   records containing request ID, severity, duration and status, never request
@@ -22,8 +22,8 @@
   `RoofRetentionFunction` can query only the expiry index and conditionally delete
   expired Google roof records from the base table;
   only core property listings may query the two property indexes. PolicyFunction
-  alone can read/write its separate PolicyTable and write/head raw or derived
-  objects under two private bucket prefixes. No Bedrock permissions are granted.
+  and PolicyCrawlerFunction have separate scoped grants to the PolicyTable and
+  raw/derived prefixes of the private policy bucket. No Bedrock permissions are granted.
   Backend code checks app-client binding,
   ownership and organization membership; gateway authorization alone is not
   application ownership enforcement.
@@ -92,8 +92,38 @@
 - `PolicyTable`, `PolicyDocumentBucket`: isolated retained DynamoDB metadata and
   private, encrypted, versioned S3 raw/derived archive. No homeowner Lambda has
   policy-table or policy-bucket access. The bucket blocks public access and
-  denies insecure transport. Admin group membership is assigned out of band;
+  denies insecure transport and unconditional raw/derived object creation.
+  A sparse approved-claim index (`GSI3`) supports a bounded, tentative
+  cross-source comparison during candidate review; indexed evidence remains
+  `UNVERIFIED` even after evidence approval.
+  Admin group membership is assigned out of band;
   the stack creates groups but grants no user membership.
+- `PolicyCrawlerFunction`: EventBridge checks at most ten due curated official
+  sources every 15 minutes with reserved concurrency one and a conditional
+  per-source lease and atomic crawl-start audit. The fetcher enforces exact official hosts, redirect and DNS
+  checks, robots rules, byte and time limits. An unchanged raw response or
+  cosmetic normalized-text change updates operational crawl state without
+  writing another document. Meaningful text changes archive raw and derived
+  versions, create an immutable change assessment, and queue exact quoted
+  evidence snippets as `UNVERIFIED`. Zero-snippet changes still enter the
+  document-change review queue. Failures preserve the prior archive and set a
+  bounded retry state (honoring a bounded `Retry-After` on HTTP 429). A
+  source requesting more than 30 days is not retried automatically; an admin
+  must record a clearance reason to queue another check. The worker raises a
+  Lambda error for failure or backlog.
+  `PolicyCrawlerFailureAlarm` observes those errors. The alarm needs a monitored
+  notification destination before production use.
+  The worker monitors registered source landing URLs. New linked official
+  circulars and PDFs need separate admin registration; automatic link discovery
+  and review is remaining Phase 9 work.
+- `PolicyFunction` Phase 9 review routes: administrators can list and curate
+  proposed sources, queue an on-demand crawl, inspect a mixed evidence/change
+  review queue, and approve or reject evidence and document changes. A reviewer
+  must differ from the source curator. Conditional current-state transitions,
+  immutable review snapshots and audit records preserve history. An approval
+  means the evidence was reviewed; it does not activate or verify a subsidy
+  rule. Publishing validated human-authored policy facts and rules is a
+  separate required gate before the live policy pipeline can be called complete.
 
 Names and tags use the stack/environment parameters. No cloud credentials or
 Google keys are embedded. API Gateway execution/access logging is not enabled

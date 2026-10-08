@@ -7,9 +7,9 @@ import { AddressForm } from "../src/components/address-form";
 import { AppShell } from "../src/components/app-shell";
 import { AnalyzeStart } from "../src/components/analyze-start";
 import { ADDRESS_DRAFT_KEY } from "../src/lib/address-draft";
-import type { UserProfile } from "@solarsaathi/types";
+import type { AuthProfile } from "../src/auth/auth-profile";
 
-const auth = vi.hoisted(() => ({ status: "unconfigured" as "unconfigured" | "signedOut" | "signedIn", profile: null as UserProfile | null }));
+const auth = vi.hoisted(() => ({ status: "unconfigured" as "unconfigured" | "signedOut" | "signedIn", profile: null as AuthProfile | null }));
 vi.mock("../src/auth/auth-provider", () => ({ useAuth: () => auth }));
 const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }), usePathname: () => "/app" }));
@@ -73,6 +73,14 @@ describe("workspace shell", () => {
     expect(screen.queryByRole("link", { name: "Customers" })).toBeNull();
     expect(screen.getByRole("link", { name: "Analyze Roof" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Account" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Policy review" })).toBeNull();
+  });
+  it("shows policy review navigation only for a signed-in admin group", () => {
+    auth.status = "signedIn";
+    auth.profile = { userId: "admin-1", cognitoSub: "admin-1", email: "admin@example.com",
+      name: "Policy administrator", role: "HOMEOWNER", policyAdmin: true };
+    render(<AppShell><h1>Workspace content</h1></AppShell>);
+    expect(screen.getByRole("link", { name: "Policy review" }).getAttribute("href")).toBe("/app/policy-admin");
   });
   it("does not allow broker preview switching when real authentication is configured", () => {
     sessionStorage.setItem("solarsaathi.navigation-preview.v1", "BROKER");

@@ -144,20 +144,24 @@ shown as unevaluated, and the synthetic demo values are labelled as fixtures.
 
 ## Policy-backed financial results (Phase 11 target)
 
+The layout below uses placeholders. Never render a benefit amount until the
+eligibility engine has returned an approved active policy version, compatible
+stack and citations for that property.
+
 Hero card:
 
 ```text
 Recommended system
-3 kW
+{system kW}
 
 Estimated gross cost
-₹195,000
+{user quote}
 
 Eligible government benefits
--₹78,000
+{verified eligible total or unavailable}
 
 Estimated net
-₹117,000
+{computed net or unavailable}
 ```
 
 Below it:
@@ -174,16 +178,16 @@ Show separate chips/cards:
 
 ```text
 Central government
-₹78,000
-✓ Eligible
+{amount from active verified policy}
+{eligibility result}
 
-Maharashtra
-₹0
-No compatible verified state subsidy found
+State
+{amount or unavailable}
+{compatibility result and reason}
 
 DISCOM/local
-₹...
-Conditional
+{amount or unavailable}
+{condition and source}
 ```
 
 Then:
@@ -202,6 +206,26 @@ Example:
 If stale:
 
 > Policy data may be outdated. Last verified 31 days ago.
+
+## Policy administration (Phase 9)
+
+Only a signed-in policy administrator can open the review workspace. The
+backend rechecks the current Cognito group on every request. The page shows
+pending candidate quotations and document-level changes in one paginated
+queue, plus a separate current source-monitoring view. A quotation shows its
+publisher, jurisdiction, effective date when known, exact HTTPS source URL,
+retrieved time, document version/hash and page or section. A document change
+with zero extracted quotations remains reviewable with a bounded plain-text
+preview when the archive is available. Label every candidate as unverified
+even after human evidence review. Show conflict and stale-source warnings in
+text, not color alone. A different administrator from the source curator must
+review; the UI disables that curator's review controls. Review decisions need
+a reason and explicit confirmation; source curation uses confirmation without
+a fictitious reason field. A source stopped for a long official rate limit
+requires a separate reasoned administrator action before an early retry. An empty queue says whether no sources are active
+or active sources have no pending changes. Neither approval path publishes a
+benefit rule or homeowner subsidy amount. `/demo/policy-review` is a clearly
+labelled synthetic interface preview without API writes.
 
 ## Application tracker
 

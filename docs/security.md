@@ -55,6 +55,18 @@ bytes privately with hashes and immutable document-version records. Parsed text
 and chunks are untrusted evidence. Ingestion never publishes a policy fact or
 grants a crawler permission to follow an arbitrary link.
 
+Phase 9 fetches only enabled, curated official sources. The fetcher validates
+the exact HTTPS host on each redirect, resolves and pins public DNS addresses,
+obeys robots exclusions, and applies response, time and byte limits. A
+15-minute EventBridge worker checks a bounded due-source batch with a
+conditional lease and one reserved concurrent execution. Failures preserve
+prior document evidence, record a bounded error code and trigger a CloudWatch
+error alarm. The private archive enforces conditional object creation for raw
+and derived prefixes. The admin review API requires a separate reviewer from
+the source curator and a revision-checked transaction; approved evidence is
+still unverified for homeowner policy/benefit use. Local checks do not prove
+deployed IAM, Cognito, network or alarm routing.
+
 ## Sensitive data
 Protect:
 - identity data

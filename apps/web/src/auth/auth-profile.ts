@@ -6,6 +6,7 @@ export interface AuthProfile {
   email: string;
   name: string;
   role: "HOMEOWNER" | "BROKER";
+  policyAdmin?: true;
   organizationId?: string;
 }
 
@@ -34,6 +35,7 @@ export function getAuthProfile(
     email: text(attributes.email ?? identity.email),
     name: text(attributes.name ?? identity.name),
     role: Array.isArray(groups) && groups.includes("BROKER") ? "BROKER" : "HOMEOWNER",
+    ...(Array.isArray(groups) && (groups.includes("ADMIN_POLICY") || groups.includes("ADMIN")) ? { policyAdmin: true as const } : {}),
     ...(organizationId ? { organizationId } : {}),
   };
 }

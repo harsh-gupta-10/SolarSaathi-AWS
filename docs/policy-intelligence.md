@@ -205,6 +205,9 @@ Initial source registry must include official sources for:
 - progressively all Indian states and DISCOMs
 
 The crawler should discover new official pages but must not automatically trust arbitrary discovered domains.
+The Phase 9 local crawler monitors only explicitly registered canonical URLs.
+Operators must register official circular/PDF URLs separately; bounded link
+discovery and source expansion remain open work before broad live coverage.
 
 ## 10. International mode
 
@@ -219,6 +222,13 @@ For non-India:
 - do not promote to authoritative curated policy until reviewed
 
 ## 11. Admin approval
+
+Phase 9 currently approves or rejects **evidence review records** only:
+document changes and exact candidate quotations. Even approved evidence stays
+outside active policy benefits. A later controlled policy-rule publication
+flow must validate eligibility, compatibility, effective dates and amounts,
+then create a verified policy version before homeowner use. Do not equate an
+evidence-review approval with the `APPROVED` policy-version state below.
 
 Material changes go:
 

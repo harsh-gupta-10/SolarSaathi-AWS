@@ -175,9 +175,11 @@ describe("session restore and identity display", () => {
     mount();
     await settled("signedIn");
     expect(current.profile?.role).toBe("HOMEOWNER");
+    expect(current.profile?.policyAdmin).toBe(true);
     expect(current.profile?.organizationId).toBe("org-admin-assigned");
     const stringGroup = { tokens: { ...session.tokens, accessToken: { payload: { sub: "user-sub", token_use: "access", "cognito:groups": "BROKER" } } } } as unknown as AuthSession;
-    expect(getAuthProfile({ userId: "user-sub", username: "username" }, stringGroup, {}).role).toBe("HOMEOWNER");
+    expect(getAuthProfile({ userId: "user-sub", username: "username" }, stringGroup, {})).toMatchObject({ role: "HOMEOWNER" });
+    expect(getAuthProfile({ userId: "user-sub", username: "username" }, stringGroup, {}).policyAdmin).toBeUndefined();
   });
   it("restores the signed-out state when there are no tokens", async () => {
     sdk.session.mockResolvedValue({});

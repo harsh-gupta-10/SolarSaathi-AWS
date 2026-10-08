@@ -16,9 +16,9 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(template.Transform).toBe("AWS::Serverless-2016-10-31");
   });
   it("uses compiled handlers with explicit log destinations", () => {
-    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "PolicyFunction", "RoofRetentionFunction"]) {
+    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "PolicyFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
       expect(properties(name).CodeUri).toBe("../../apps/api/dist");
-      expect(properties(name).Handler).toMatch(/^handlers\/[a-z]+\.handler$/);
+      expect(properties(name).Handler).toMatch(/^handlers\/[a-z-]+\.handler$/);
       expect(properties(name).LoggingConfig).toBeDefined();
     }
   });
@@ -206,6 +206,11 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     });
     expect(bucket.OwnershipControls).toEqual({ Rules: [{ ObjectOwnership: "BucketOwnerEnforced" }] });
     expect(JSON.stringify(properties("PolicyDocumentBucketPolicy"))).toContain("aws:SecureTransport");
+    const bucketStatements = ((properties("PolicyDocumentBucketPolicy").PolicyDocument as {
+      Statement: Array<{ Condition?: Record<string, Record<string, string>> }> }).Statement);
+    expect(bucketStatements[1]?.Condition).toEqual({
+      Null: { "s3:if-none-match": "true" }, Bool: { "s3:ObjectCreationOperation": "true" },
+    });
   });
 
   it("limits policy writes to a dedicated admin function and exact private resources", () => {
@@ -215,20 +220,27 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(policy.Environment).toEqual({ Variables: {
       POLICY_TABLE_NAME: "PolicyTable", POLICY_DOCUMENT_BUCKET: "PolicyDocumentBucket",
     } });
-    expect(policy.Events).toEqual({
-      RegisterPolicySource: { Type: "Api", Properties: {
-        RestApiId: "Api", Path: "/admin/policy/sources", Method: "POST",
-      } },
-      IngestPolicyDocument: { Type: "Api", Properties: {
-        RestApiId: "Api", Path: "/admin/policy/documents", Method: "POST",
-      } },
-    });
+    const routes = Object.values(policy.Events as Record<string, { Properties: { Method: string; Path: string; Auth?: unknown } }>)
+      .map(event => `${event.Properties.Method} ${event.Properties.Path}`).sort();
+    expect(routes).toEqual([
+      "POST /admin/policy/sources", "GET /admin/policy/sources", "POST /admin/policy/sources/curate",
+      "POST /admin/policy/sources/crawl", "POST /admin/policy/documents", "GET /admin/policy/queue",
+      "GET /admin/policy/candidates/{candidateId}", "POST /admin/policy/candidates/{candidateId}/approve",
+      "POST /admin/policy/candidates/{candidateId}/reject",
+      "GET /admin/policy/changes/{changeId}", "POST /admin/policy/changes/{changeId}/approve",
+      "POST /admin/policy/changes/{changeId}/reject",
+    ].sort());
+    expect(Object.values(policy.Events as Record<string, { Properties: { Auth?: unknown } }>).every(event => !event.Properties.Auth)).toBe(true);
     const statements = (policy.Policies as { Statement: { Action: string[]; Resource: unknown }[] }[])[0].Statement;
     expect(statements).toEqual([
-      expect.objectContaining({ Action: ["dynamodb:GetItem", "dynamodb:PutItem"],
+      expect.objectContaining({ Action: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query", "dynamodb:UpdateItem"],
         Resource: "PolicyTable.Arn" }),
+      expect.objectContaining({ Action: "dynamodb:Query",
+        Resource: ["${PolicyTable.Arn}/index/GSI1", "${PolicyTable.Arn}/index/GSI4"] }),
       expect.objectContaining({ Action: ["s3:PutObject", "s3:GetObject"],
         Resource: ["${PolicyDocumentBucket.Arn}/raw/*", "${PolicyDocumentBucket.Arn}/derived/*"] }),
+      expect.objectContaining({ Action: "s3:GetObjectVersion",
+        Resource: "${PolicyDocumentBucket.Arn}/derived/*" }),
     ]);
     expect(JSON.stringify(policy)).not.toMatch(/AnalysesTable|CORE_TABLE_NAME|secretsmanager|bedrock|DeleteObject|ListBucket/);
     for (const name of ["CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction"]) {
@@ -236,5 +248,37 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     }
     expect(properties("PolicyAdminGroup").GroupName).toBe("ADMIN_POLICY");
     expect(properties("AdminGroup").GroupName).toBe("ADMIN");
+  });
+
+  it("runs a bounded isolated crawler every 15 minutes with failure alarm", () => {
+    const table = properties("PolicyTable");
+    expect(table.GlobalSecondaryIndexes).toEqual([
+      expect.objectContaining({ IndexName: "GSI1", Projection: { ProjectionType: "ALL" } }),
+      expect.objectContaining({ IndexName: "GSI2", Projection: { ProjectionType: "ALL" } }),
+      expect.objectContaining({ IndexName: "GSI3", Projection: { ProjectionType: "ALL" } }),
+      expect.objectContaining({ IndexName: "GSI4", Projection: { ProjectionType: "ALL" } }),
+    ]);
+    const worker = properties("PolicyCrawlerFunction");
+    expect(worker.Handler).toBe("handlers/policy-crawler.handler");
+    expect(worker.Timeout).toBe(300);
+    expect(worker.ReservedConcurrentExecutions).toBe(1);
+    expect(worker.Environment).toEqual({ Variables: {
+      POLICY_TABLE_NAME: "PolicyTable", POLICY_DOCUMENT_BUCKET: "PolicyDocumentBucket",
+    } });
+    expect(worker.Events).toEqual({ DuePolicySourceSweep: { Type: "Schedule", Properties: {
+      Schedule: "rate(15 minutes)", Description: expect.any(String),
+    } } });
+    const statements = (worker.Policies as { Statement: { Action: string | string[]; Resource: unknown }[] }[])[0].Statement;
+    expect(statements).toEqual([
+      expect.objectContaining({ Action: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query", "dynamodb:UpdateItem"],
+        Resource: "PolicyTable.Arn" }),
+      expect.objectContaining({ Action: "dynamodb:Query", Resource: "${PolicyTable.Arn}/index/GSI2" }),
+      expect.objectContaining({ Action: "dynamodb:Query", Resource: "${PolicyTable.Arn}/index/GSI3" }),
+      expect.objectContaining({ Action: ["s3:PutObject", "s3:GetObject"],
+        Resource: ["${PolicyDocumentBucket.Arn}/raw/*", "${PolicyDocumentBucket.Arn}/derived/*"] }),
+      expect.objectContaining({ Action: "s3:GetObjectVersion", Resource: "${PolicyDocumentBucket.Arn}/derived/*" }),
+    ]);
+    expect(JSON.stringify(worker)).not.toMatch(/AnalysesTable|CORE_TABLE_NAME|secretsmanager|bedrock|DeleteObject|ListBucket/);
+    expect(properties("PolicyCrawlerFailureAlarm")).toMatchObject({ Namespace: "AWS/Lambda", MetricName: "Errors", Threshold: 1 });
   });
 });

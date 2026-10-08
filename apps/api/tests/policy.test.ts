@@ -157,7 +157,7 @@ describe("private policy source and document ingestion", () => {
     groups = ["ADMIN"];
     expect((await handler(event(sourceRequest), context)).statusCode).toBe(200);
     expect(repo.sources.size).toBe(1);
-    const wrong = { ...event(sourceRequest), httpMethod: "GET" };
+    const wrong = { ...event(sourceRequest), httpMethod: "PUT" };
     expect((await handler(wrong, context)).statusCode).toBe(405);
     const sourceId = JSON.parse(response.body).source.sourceId as string;
     const documentEvent = { ...event(documentRequest(sourceId)), resource: "/admin/policy/documents",

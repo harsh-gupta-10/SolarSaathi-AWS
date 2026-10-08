@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { ArrowUpRight, Building2, ClipboardList, FileCheck2, HelpCircle, Home, Layers, Leaf, Menu, MessageCircle, Search, Settings, Sun, Users, Wallet, Wrench } from "lucide-react";
+import { ArrowUpRight, Building2, ClipboardList, FileCheck2, HelpCircle, Home, Layers, Leaf, Menu, MessageCircle, Search, Settings, ShieldCheck, Sun, Users, Wallet, Wrench } from "lucide-react";
 import { Button, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@solarsaathi/ui";
 import type { UserRole } from "@solarsaathi/types";
 import { isSectionActive, navigationForRole, sectionPath } from "../lib/navigation";
@@ -13,12 +13,13 @@ import { useAuth } from "../auth/auth-provider";
 const icons = { overview: Home, analyze: Search, properties: Building2, savings: Wallet, benefits: FileCheck2, applications: ClipboardList, advisor: MessageCircle, designs: Leaf, accessories: Wrench, help: HelpCircle, settings: Settings, customers: Users, analyses: Layers, leads: Users };
 function WorkspaceNavigation({ onNavigate }: { onNavigate?: () => void }) {
   const { role } = useWorkspaceRole();
+  const { status, profile } = useAuth();
   const pathname = usePathname();
   return <nav aria-label="Workspace navigation"><ul className="workspace-links">{navigationForRole(role).map(item => {
     const Icon = icons[item.key as keyof typeof icons];
     const href = sectionPath(item.key);
     return <li key={item.key}><Link href={href} onClick={onNavigate} aria-current={isSectionActive(pathname, item.key) ? "page" : undefined}><Icon size={19} aria-hidden="true" />{item.label}</Link></li>;
-  })}</ul></nav>;
+  })}{status === "signedIn" && profile?.policyAdmin ? <li><Link href="/app/policy-admin" onClick={onNavigate} aria-current={pathname === "/app/policy-admin" ? "page" : undefined}><ShieldCheck size={19} aria-hidden="true" />Policy review</Link></li> : null}</ul></nav>;
 }
 function Shell({ children }: { children: ReactNode }) {
   const { role, setRole, previewAllowed } = useWorkspaceRole();
