@@ -52,8 +52,20 @@ retention review before live Google data is stored.
 
 ## Policy entities
 
+Phase 8 stores the administrative source and ingestion metadata in a separate
+policy table. This is a deliberate access boundary: homeowner and roof Lambda
+roles have no access to policy drafts or raw-document metadata. Raw bytes and
+derived normalized text/chunks live in a private, versioned S3 bucket. An
+ingested document is evidence for review, never an active benefit by itself.
+Conditional writes preserve immutable source/document versions; later crawler
+health updates and policy approvals must create their own auditable records.
+
 ### POLICY_SOURCE
-`PK=SOURCE#sourceId`, `SK=METADATA`
+`PK=SOURCE#sourceId`, `SK=CURRENT` and `SK=VERSION#registryVersion`
+
+Initial registration atomically writes the current pointer and an immutable
+version snapshot. Future curation and crawler health records must preserve
+those historical snapshots and use conditional transitions.
 
 Fields:
 - authorityLevel
@@ -67,11 +79,20 @@ Fields:
 - status
 
 ### POLICY_DOCUMENT
-`PK=SOURCE#sourceId`, `SK=DOCUMENT#version`
+`PK=SOURCE#sourceId`, `SK=DOCUMENT#documentId#VERSION#version`
+
+`documentId` is derived from the canonical document URL, so one registered
+publisher/source may archive multiple documents. Document versions are
+immutable conditional writes.
 
 Fields:
 - s3Key
+- s3VersionId
+- derivedS3Key
+- derivedS3VersionId
 - sha256
+- normalizedTextSha256
+- chunkCount
 - retrievedAt
 - publishedAt
 - effectiveFrom

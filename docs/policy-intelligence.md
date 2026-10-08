@@ -8,6 +8,16 @@ This is not a generic web scraper.
 
 It is a **policy intelligence pipeline**.
 
+## Local implementation state
+
+Phase 8 provides typed source, document, citation, fact, and policy-version
+contracts; official-domain registration; conservative source precedence;
+bounded HTML/PDF extraction; exact-byte and normalized-text hashes; and
+section/page-addressed chunks. The administrative ingestion API archives raw
+and derived evidence with immutable version keys. It does not crawl, extract
+benefit facts, or publish policy versions. Scheduled fetching, conflict review,
+approval, and activation are Phase 9 work.
+
 ## 1. Policy categories
 
 Every benefit/rule must be classified:

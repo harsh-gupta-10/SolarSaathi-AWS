@@ -175,6 +175,12 @@ Resources:
       LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/financials"
       RetentionInDays: !Ref LogRetentionDays
 
+  PolicyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/policy"
+      RetentionInDays: !Ref LogRetentionDays
+
   RoofRetentionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -300,6 +306,56 @@ Resources:
           Properties:
             RestApiId: !Ref Api
             Path: /financials/estimate
+            Method: POST
+
+  PolicyFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Registers official policy sources and archives admin-uploaded immutable raw and extracted documents.
+        must:
+          - Require a verified Cognito ADMIN_POLICY or ADMIN group in handler code.
+          - Never fetch caller URLs or publish policy facts from this ingestion path.
+          - Keep this function isolated from the homeowner core table.
+    Properties:
+      Handler: handlers/policy.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 28
+      MemorySize: 1024
+      LoggingConfig:
+        LogGroup: !Ref PolicyLogGroup
+      Environment:
+        Variables:
+          POLICY_TABLE_NAME: !Ref PolicyTable
+          POLICY_DOCUMENT_BUCKET: !Ref PolicyDocumentBucket
+      Policies:
+        - Statement:
+            - Sid: PolicySourceAndDocumentItems
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt PolicyTable.Arn
+            - Sid: ArchivePolicyObjects
+              Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+              Resource:
+                - !Sub "${PolicyDocumentBucket.Arn}/raw/*"
+                - !Sub "${PolicyDocumentBucket.Arn}/derived/*"
+      Events:
+        RegisterPolicySource:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/sources
+            Method: POST
+        IngestPolicyDocument:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/documents
             Method: POST
 
   RoofRetentionFunction:
@@ -641,6 +697,89 @@ Resources:
       GroupName: BROKER
       Description: Administrator-assigned broker membership; organization ownership is enforced separately.
 
+  PolicyAdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: ADMIN_POLICY
+      Description: Privileged policy source and document administration; membership is assigned out of band.
+
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: ADMIN
+      Description: Privileged platform administration; membership is assigned out of band.
+
+  PolicyTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      Tags:
+        - Key: Project
+          Value: SolarSaathi
+        - Key: Environment
+          Value: !Ref Environment
+
+  PolicyDocumentBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      Tags:
+        - Key: Project
+          Value: SolarSaathi
+        - Key: Environment
+          Value: !Ref Environment
+
+  PolicyDocumentBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PolicyDocumentBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt PolicyDocumentBucket.Arn
+              - !Sub "${PolicyDocumentBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
   AnalysesTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
@@ -721,6 +860,12 @@ Outputs:
   AnalysesTableName:
     Description: Private core entity table used by the authenticated core API.
     Value: !Ref AnalysesTable
+  PolicyTableName:
+    Description: Private isolated registry and immutable policy-document metadata table.
+    Value: !Ref PolicyTable
+  PolicyDocumentBucketName:
+    Description: Private versioned raw and extracted policy-document archive.
+    Value: !Ref PolicyDocumentBucket
   CognitoUserPoolId:
     Description: Public user pool identifier for frontend configuration.
     Value: !Ref UserPool

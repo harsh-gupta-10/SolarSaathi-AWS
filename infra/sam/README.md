@@ -6,11 +6,11 @@
   core and roof routes are implemented locally. `/solar/analyze`, the advisor,
   and original `/analyze` and `/chat` scaffold aliases remain unavailable.
   Health and CORS preflight remain public. Route throttling limits accidental traffic.
-- `HealthFunction`, `CoreFunction`, `RoofFunction`, `SystemsFunction`, `FinancialsFunction`, `RoofRetentionFunction`, `AnalyzeFunction`,
+- `HealthFunction`, `CoreFunction`, `RoofFunction`, `SystemsFunction`, `FinancialsFunction`, `PolicyFunction`, `RoofRetentionFunction`, `AnalyzeFunction`,
   `ChatFunction`: Node.js 22 functions built
   from `apps/api/dist`. SAM copies **compiled JavaScript**, not TypeScript source.
   Build the API before running SAM directly; `pnpm sam:build` does this for you.
-- `HealthLogGroup`, `CoreLogGroup`, `RoofLogGroup`, `SystemsLogGroup`, `FinancialsLogGroup`, `RoofRetentionLogGroup`, `AnalyzeLogGroup`,
+- `HealthLogGroup`, `CoreLogGroup`, `RoofLogGroup`, `SystemsLogGroup`, `FinancialsLogGroup`, `PolicyLogGroup`, `RoofRetentionLogGroup`, `AnalyzeLogGroup`,
   `ChatLogGroup`: stack/environment-scoped
   CloudWatch groups with a bounded retention parameter. Lambda writes JSON log
   records containing request ID, severity, duration and status, never request
@@ -21,8 +21,10 @@
   `SystemsFunction` and `FinancialsFunction` receive only table `GetItem` for owned analysis reads;
   `RoofRetentionFunction` can query only the expiry index and conditionally delete
   expired Google roof records from the base table;
-  only core property listings may query the two property indexes. No S3 or
-  Bedrock permissions are granted. Backend code checks app-client binding,
+  only core property listings may query the two property indexes. PolicyFunction
+  alone can read/write its separate PolicyTable and write/head raw or derived
+  objects under two private bucket prefixes. No Bedrock permissions are granted.
+  Backend code checks app-client binding,
   ownership and organization membership; gateway authorization alone is not
   application ownership enforcement.
 - `AnalysesTable`: the private single-table core model has `PK`/`SK`, two
@@ -70,6 +72,28 @@
   payback, and low/base/high sensitivities. Results are unsubsidized; export
   credit is a scenario assumption pending verified local settlement rules. No
   analysis or financial result is written to DynamoDB.
+- `PolicyFunction`: admin-only `POST /admin/policy/sources` and
+  `POST /admin/policy/documents` require a verified Cognito access token with
+  exact `ADMIN_POLICY` or `ADMIN` group membership and verified email. Source
+  registration uses an exact official host/type/jurisdiction registry, creates
+  a disabled `PROPOSED` record and atomically writes a `CURRENT` pointer plus
+  immutable `VERSION#00000001` snapshot. It never fetches a caller URL.
+  Document uploads are restricted to 2 MB PDF or HTML, parsed into normalized
+  text and deterministic cited chunks, and bound to the registered canonical
+  source URL or an explicit HTTPS document URL on that exact official host.
+  Multiple document URL/version series can belong to one source. The handler
+  writes immutable content-addressed raw and derived
+  S3 objects with conditional create, then writes a conditional document-version
+  record with hashes, chunk count and exact S3 version IDs. Repeat identical
+  requests return the existing record; conflicting versions return 409. An S3
+  success followed by a DynamoDB failure may leave an unreferenced object, which
+  can be reused by an identical retry and needs periodic operator review.
+  Ingestion does not publish active policy, verify facts or calculate benefits.
+- `PolicyTable`, `PolicyDocumentBucket`: isolated retained DynamoDB metadata and
+  private, encrypted, versioned S3 raw/derived archive. No homeowner Lambda has
+  policy-table or policy-bucket access. The bucket blocks public access and
+  denies insecure transport. Admin group membership is assigned out of band;
+  the stack creates groups but grants no user membership.
 
 Names and tags use the stack/environment parameters. No cloud credentials or
 Google keys are embedded. API Gateway execution/access logging is not enabled
@@ -104,7 +128,7 @@ target account; Phase 0 observability is Lambda/CloudWatch logging only.
   and per-client branding, required for functional managed login v2. Exact
   callback/logout URLs come from `ApplicationOrigin`; never use arbitrary return
   URLs or silently swap a development origin into production.
-- `HomeownerGroup`, `BrokerGroup`: identity-display groups, not database ownership
+- `HomeownerGroup`, `BrokerGroup`, `PolicyAdminGroup`, `AdminGroup`: identity-display groups, not database ownership
   or IAM permissions. Broker membership is administrator-assigned. No identity
   pool or browser AWS credentials are created.
 - `GoogleIdentityProvider`: disabled by default. Enabling it requires a Google web

@@ -91,6 +91,14 @@ Test:
 - higher-authority current source beats lower authority
 - unresolved conflict blocks verified status
 
+### Policy evidence foundation
+Test official source host/type/jurisdiction binding, immutable source and
+document versions, exact raw and normalized content hashes, HTML/PDF extraction
+limits, stable chunk locators, and rejection of non-admin ingestion. A changed
+HTML shell with unchanged normalized rule text must not become an active policy
+change. The parser must never fetch links, run page scripts, or infer a subsidy
+value from an uploaded document.
+
 ### Application state
 Test:
 - valid transitions

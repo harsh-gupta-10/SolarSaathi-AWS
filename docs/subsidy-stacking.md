@@ -50,16 +50,16 @@ If compatibility is unknown, do not count it in the final eligible total.
 
 ```json
 {
-  "benefitId": "CENTRAL_PM_SURYA_GHAR",
+  "benefitId": "SYNTHETIC_CENTRAL_EXAMPLE",
   "scope": "CENTRAL",
   "jurisdiction": "IN",
   "calculation": {
     "type": "TIERED_KW",
     "tiers": [
-      {"upToKw": 2, "inrPerKw": 30000},
-      {"upToKw": 3, "inrPerKw": 18000}
+      {"upToKw": 2, "inrPerKw": 10000},
+      {"upToKw": 3, "inrPerKw": 5000}
     ],
-    "capInr": 78000
+    "capInr": 25000
   },
   "compatibility": {
     "with": ["STATE_EXAMPLE"],
@@ -71,7 +71,9 @@ If compatibility is unknown, do not count it in the final eligible total.
 }
 ```
 
-The example values above are a representation of the currently documented PM Surya Ghar structure used by official sources; production code must retrieve active values from the policy database, not this document.
+This object is a synthetic shape example, not a current scheme or benefit
+value. Production calculations must read approved active policy versions and
+their citations from the policy database.
 
 ## Eligibility dimensions
 
@@ -114,25 +116,15 @@ Check:
 ```json
 {
   "grossCost": 195000,
-  "benefits": [
-    {
-      "name": "Central benefit",
-      "amount": 78000,
-      "status": "ELIGIBLE",
-      "source": "..."
-    },
-    {
-      "name": "State benefit",
-      "amount": 0,
-      "status": "NOT_AVAILABLE",
-      "reason": "No compatible state benefit found"
-    }
-  ],
-  "totalEligibleBenefit": 78000,
-  "netCost": 117000,
-  "policyVersion": "..."
+  "benefits": [],
+  "totalEligibleBenefit": 0,
+  "netCost": 195000,
+  "policyVersions": [],
+  "warnings": ["No approved current policy facts were available for evaluation."]
 }
 ```
+
+This example deliberately contains no unverified benefit amount.
 
 ## Explain non-eligible schemes
 

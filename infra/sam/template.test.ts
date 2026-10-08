@@ -16,14 +16,14 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(template.Transform).toBe("AWS::Serverless-2016-10-31");
   });
   it("uses compiled handlers with explicit log destinations", () => {
-    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "RoofRetentionFunction"]) {
+    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "PolicyFunction", "RoofRetentionFunction"]) {
       expect(properties(name).CodeUri).toBe("../../apps/api/dist");
       expect(properties(name).Handler).toMatch(/^handlers\/[a-z]+\.handler$/);
       expect(properties(name).LoggingConfig).toBeDefined();
     }
   });
   it("preserves stateful resources on deletion and replacement", () => {
-    for (const name of ["AnalysesTable", "UserPool"]) {
+    for (const name of ["AnalysesTable", "PolicyTable", "PolicyDocumentBucket", "UserPool"]) {
       expect(template.Resources[name].DeletionPolicy).toBe("Retain");
       expect(template.Resources[name].UpdateReplacePolicy).toBe("Retain");
     }
@@ -186,5 +186,55 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
       RestApiId: "Api", Path: "/financials/estimate", Method: "POST",
     } } });
     expect(JSON.stringify(financials)).not.toMatch(/GOOGLE_.*API_KEY|secretsmanager|BEDROCK/);
+  });
+
+  it("isolates the private policy archive and versioned encrypted object bucket", () => {
+    const table = properties("PolicyTable");
+    expect(table.BillingMode).toBe("PAY_PER_REQUEST");
+    expect(table.SSESpecification).toEqual({ SSEEnabled: true });
+    expect(table.PointInTimeRecoverySpecification).toEqual({ PointInTimeRecoveryEnabled: true });
+    expect(table.KeySchema).toEqual([
+      { AttributeName: "PK", KeyType: "HASH" }, { AttributeName: "SK", KeyType: "RANGE" },
+    ]);
+    const bucket = properties("PolicyDocumentBucket");
+    expect(bucket.VersioningConfiguration).toEqual({ Status: "Enabled" });
+    expect(bucket.BucketEncryption).toEqual({ ServerSideEncryptionConfiguration: [
+      { ServerSideEncryptionByDefault: { SSEAlgorithm: "AES256" } },
+    ] });
+    expect(bucket.PublicAccessBlockConfiguration).toEqual({
+      BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true,
+    });
+    expect(bucket.OwnershipControls).toEqual({ Rules: [{ ObjectOwnership: "BucketOwnerEnforced" }] });
+    expect(JSON.stringify(properties("PolicyDocumentBucketPolicy"))).toContain("aws:SecureTransport");
+  });
+
+  it("limits policy writes to a dedicated admin function and exact private resources", () => {
+    const policy = properties("PolicyFunction");
+    expect(policy.Handler).toBe("handlers/policy.handler");
+    expect(policy.Timeout).toBe(28);
+    expect(policy.Environment).toEqual({ Variables: {
+      POLICY_TABLE_NAME: "PolicyTable", POLICY_DOCUMENT_BUCKET: "PolicyDocumentBucket",
+    } });
+    expect(policy.Events).toEqual({
+      RegisterPolicySource: { Type: "Api", Properties: {
+        RestApiId: "Api", Path: "/admin/policy/sources", Method: "POST",
+      } },
+      IngestPolicyDocument: { Type: "Api", Properties: {
+        RestApiId: "Api", Path: "/admin/policy/documents", Method: "POST",
+      } },
+    });
+    const statements = (policy.Policies as { Statement: { Action: string[]; Resource: unknown }[] }[])[0].Statement;
+    expect(statements).toEqual([
+      expect.objectContaining({ Action: ["dynamodb:GetItem", "dynamodb:PutItem"],
+        Resource: "PolicyTable.Arn" }),
+      expect.objectContaining({ Action: ["s3:PutObject", "s3:GetObject"],
+        Resource: ["${PolicyDocumentBucket.Arn}/raw/*", "${PolicyDocumentBucket.Arn}/derived/*"] }),
+    ]);
+    expect(JSON.stringify(policy)).not.toMatch(/AnalysesTable|CORE_TABLE_NAME|secretsmanager|bedrock|DeleteObject|ListBucket/);
+    for (const name of ["CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction"]) {
+      expect(JSON.stringify(properties(name))).not.toMatch(/PolicyTable|PolicyDocumentBucket/);
+    }
+    expect(properties("PolicyAdminGroup").GroupName).toBe("ADMIN_POLICY");
+    expect(properties("AdminGroup").GroupName).toBe("ADMIN");
   });
 });

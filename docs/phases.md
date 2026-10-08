@@ -182,6 +182,22 @@ Create:
 - policy chunks
 - source citations
 
+Status: local foundation implemented. A typed policy package validates source,
+document, chunk, citation, fact and version records; six verified official
+source locations are starter discovery intents with `PROPOSED`/disabled status,
+not active policy facts. Source authority and a conservative verified display
+gate prevent a lower-authority or stale source from silently replacing current
+evidence. HTML/PDF ingestion is bounded, extracts normalized text and cited
+page/section chunks, hashes raw and derived content, and rejects encrypted or
+malformed PDFs. Admin-only routes register exact official-host sources and
+archive supplied document bytes in a private, versioned S3 bucket with
+conditional DynamoDB metadata. A source can contain multiple document URL
+series. No automatic crawl, policy fact extraction, approval, live benefit or
+subsidy amount is available yet. Lint, typecheck, 589 tests, production builds,
+SAM template tests and read-only CloudFormation template validation passed
+locally. No policy resources have been deployed, so live IAM/Cognito/S3/DynamoDB
+behavior remains unverified.
+
 ## Phase 9 — Live India policy crawler
 - EventBridge scheduled jobs
 - Lambda fetchers

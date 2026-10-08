@@ -86,7 +86,10 @@ Phases 0–7 have locally implemented source code:
   `/demo/system-designer`;
 - an unsubsidized 25-year base financial model with user-entered quote and
   energy rates, separate self-use and export values, annual cash flow, payback,
-  sensitivity and an authenticated estimate API.
+  sensitivity and an authenticated estimate API;
+- a policy evidence foundation with a reviewed official-host registry,
+  versioned source/document/fact schemas, conservative precedence, bounded
+  HTML/PDF extraction, citations, and admin-only private evidence ingestion.
 
 Google-derived preview, analysis and cache records have a 21-day retention
 limit and an hourly bounded hard-delete worker with an error alarm. Google roof
@@ -95,6 +98,9 @@ structural safety. An area-only manual roof has no panel-count estimate or
 recommended system size. The system designer does not claim local interconnection
 eligibility, a cost, savings or subsidy. The base financial model requires
 explicit user inputs and does not establish policy benefits or export credits.
+The policy evidence archive has no active government benefit facts yet; the
+scheduled crawler, human approval workflow and benefit engine follow in later
+phases.
 
 These phases have **local** lint, typecheck, test and build coverage. No AWS
 resources or Google Cloud project have been configured or deployed for this app;

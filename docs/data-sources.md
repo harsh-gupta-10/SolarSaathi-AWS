@@ -57,13 +57,26 @@ Store:
 - source URL
 - page/section references
 
-## Current official examples
+## Verified official source starting points
 
-MNRE describes central financial assistance for residential rooftop solar and directs users to national/state DISCOM mechanisms. citeturn0search0
+These are official locations checked on 8 October 2026 for source discovery.
+Their presence in this list does **not** verify any current amount, eligibility
+rule or stacking relationship; a dated policy document and approved policy
+record are still required for user-facing facts.
 
-The Maharashtra Energy Department publishes a PM Surya Ghar scheme page and directs applicants to the national portal. citeturn0search1
+| Owner | Source location | Scope |
+| --- | --- | --- |
+| MNRE | [Grid Connected Rooftop Solar Programme](https://mnre.gov.in/en/grid-connected-solar-rooftop-programme/) | Central guidelines and document links |
+| PM Surya Ghar / MNRE | [National Rooftop Solar Portal](https://solarrooftop.pmsuryaghar.gov.in/) | National portal and DISCOM links |
+| Maharashtra Energy Department | [PM Surya Ghar scheme page](https://energy.maharashtra.gov.in/en/scheme/pm-surya-ghar-yojana/) | State department scheme description |
+| MSEDCL | [I-SMART rooftop-solar portal](https://portal.mahadiscom.in/ismart/) | DISCOM process and circulars |
+| MERC | [Current renewable-energy regulations](https://new.merc.gov.in/regulation_type/current-regulations-renewable-energy/) | Current regulation listings and amendments |
+| MEDA | [Solar state policy documents](https://www.mahaurja.maharashtra.gov.in/Site/1578/Solar%20State%20Policy) | State renewable agency documents |
 
-MSEDCL publishes rooftop-solar subsidy/process information, including the currently documented ₹30,000/kW up to 2 kW, ₹18,000/kW for additional capacity up to 3 kW, and a ₹78,000 cap for larger systems. Production policy values must still be retrieved and versioned from the active policy source. citeturn0search2
+The MERC site also lists [draft regulations](https://new.merc.gov.in/regulation_type/draft-regulations/).
+Drafts must remain separate from in-force rules and cannot be published as
+current eligibility. Source URL changes, redirects and document amendments
+must be verified before the crawler trusts them.
 
 ## Source freshness
 

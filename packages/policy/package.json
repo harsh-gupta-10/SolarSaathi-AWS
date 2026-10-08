@@ -1,0 +1,17 @@
+{
+  "name": "@solarsaathi/policy",
+  "private": true,
+  "version": "0.1.0",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.1.12",
+    "parse5": "^8.0.0",
+    "pdfjs-dist": "^5.4.624"
+  }
+}

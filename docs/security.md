@@ -48,6 +48,13 @@ Only authorized policy admins may approve a production policy version.
 
 Use conditional DynamoDB writes so two admins cannot activate conflicting versions.
 
+Phase 8 ingestion accepts only exact official hosts from a reviewed registry.
+The server derives source authority from source type, verifies the current
+Cognito session and `ADMIN_POLICY`/`ADMIN` group, and archives bounded HTML/PDF
+bytes privately with hashes and immutable document-version records. Parsed text
+and chunks are untrusted evidence. Ingestion never publishes a policy fact or
+grants a crawler permission to follow an arbitrary link.
+
 ## Sensitive data
 Protect:
 - identity data

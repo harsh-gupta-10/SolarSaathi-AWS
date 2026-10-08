@@ -20,7 +20,7 @@ export function jsonResponse(statusCode: number, body: unknown): APIGatewayProxy
   };
 }
 
-export function parseJsonObject(event: APIGatewayProxyEvent): Record<string, unknown> {
+export function parseJsonObject(event: APIGatewayProxyEvent, maximumBodyBytes = 65_536): Record<string, unknown> {
   const contentType = Object.entries(event.headers).find(([name]) => name.toLowerCase() === "content-type")?.[1];
   if (contentType?.split(";")[0].trim().toLowerCase() !== "application/json") {
     throw new RequestError(415, "UNSUPPORTED_MEDIA_TYPE", "Send an application/json request.");
@@ -29,8 +29,8 @@ export function parseJsonObject(event: APIGatewayProxyEvent): Record<string, unk
   const body = event.isBase64Encoded
     ? Buffer.from(event.body ?? "", "base64").toString("utf8")
     : event.body ?? "";
-  if (Buffer.byteLength(body, "utf8") > 65_536) {
-    throw new RequestError(413, "PAYLOAD_TOO_LARGE", "The JSON request must not exceed 64 KiB.");
+  if (Buffer.byteLength(body, "utf8") > maximumBodyBytes) {
+    throw new RequestError(413, "PAYLOAD_TOO_LARGE", "The JSON request exceeds the endpoint size limit.");
   }
 
   let parsed: unknown;

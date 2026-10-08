@@ -119,6 +119,30 @@ and is not proof of deployed authorization. The identity endpoint binds the app 
 user-resource APIs must additionally enforce database ownership/organization
 checks; those APIs arrive with Phase 3. Browser navigation roles are never authorization.
 
+Phase 8 adds administrator-only policy source and document registration. The
+server verifies a current Cognito session and requires the `ADMIN_POLICY` or
+`ADMIN` group from the verified token. A registered source starts as `PROPOSED`
+and disabled; registering a document does not verify, approve, or activate any
+policy fact. The source request contains `name`, `publisherName`,
+`jurisdiction`, `sourceType`, `canonicalUrl`, `crawlFrequency`, and
+`freshnessWindowHours`. The backend derives the source ID, authority tier, and
+allowed host from its official-host registry. Only exact, curated official
+hosts are accepted.
+
+`POST /v1/admin/policy/documents` accepts `sourceId`, positive `version`,
+`title`, `documentType`, `mimeType` (`text/html` or `application/pdf`), optional
+publication/effective dates, optional `documentUrl`, and `contentBase64`.
+`documentUrl` must be HTTPS on the source's exact registered official host;
+when omitted, the source URL is used. Distinct document URLs have separate
+immutable version series. This endpoint has a separate body limit for a
+document of at most 2,000,000 bytes. It binds the document to the
+registered official host, hashes the exact bytes, extracts normalized text and
+bounded citation chunks, and stores the raw and derived artifacts in private
+S3 with immutable DynamoDB metadata. It does not fetch a URL supplied by the
+caller. Identical retries are idempotent; conflicting versions are rejected.
+These are
+administrative ingestion routes, not public policy lookup routes.
+
 Paths below are planned contracts unless listed as available above.
 
 ## Roof
