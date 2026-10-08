@@ -1,0 +1,672 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: SolarSaathi API with Cognito authentication, a private DynamoDB core model and confirmed roof analysis; advisor routes remain unavailable.
+
+Metadata:
+  AWSToolsMetrics:
+    AWSAgentToolkit: aws-cloudformation@3
+  com.aws.cloudformation.Context:
+    ref:
+      - at: README.md
+        has: Phase 0 resource intent, logging and deployment constraints
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, test, prod]
+  LogLevel:
+    Type: String
+    Default: info
+    AllowedValues: [debug, info, warn, error]
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+    AllowedValues: [7, 14, 30, 60, 90, 180, 365]
+  ApplicationOrigin:
+    Type: String
+    Default: https://app.solarsaathi.in
+    AllowedPattern: '^https://[A-Za-z0-9.-]+(:[0-9]+)?$|^http://(localhost|127\.0\.0\.1)(:[0-9]+)?$'
+    Description: Exact application origin, no trailing slash; localhost HTTP is for development only.
+  CognitoDomainPrefix:
+    Type: String
+    AllowedPattern: '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$'
+    Description: Globally unique Cognito login prefix; choose explicitly before deployment.
+  EnableGoogleFederation:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+  GoogleOAuthClientId:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$'
+    Description: Google OAuth web client ID, required only when federation is enabled.
+  GoogleOAuthSecretArn:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^arn:(aws|aws-cn|aws-us-gov):secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
+    Description: Secrets Manager ARN containing a clientSecret JSON key; never a plaintext secret.
+  GoogleGeocodingKeySecretArn:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^arn:(aws|aws-cn|aws-us-gov):secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
+    Description: Secrets Manager ARN containing an apiKey JSON key for server-side Geocoding requests.
+  GoogleSolarKeySecretArn:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^arn:(aws|aws-cn|aws-us-gov):secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
+    Description: Secrets Manager ARN containing an apiKey JSON key for server-side Solar requests.
+
+Conditions:
+  GoogleFederationEnabled: !Equals [!Ref EnableGoogleFederation, "true"]
+  GeocodingConfigured: !Not [!Equals [!Ref GoogleGeocodingKeySecretArn, ""]]
+  SolarConfigured: !Not [!Equals [!Ref GoogleSolarKeySecretArn, ""]]
+
+Rules:
+  GoogleConfigurationRequired:
+    RuleCondition: !Equals [!Ref EnableGoogleFederation, "true"]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref GoogleOAuthClientId, ""]]
+        AssertDescription: Google federation requires an OAuth client ID.
+      - Assert: !Not [!Equals [!Ref GoogleOAuthSecretArn, ""]]
+        AssertDescription: Google federation requires a Secrets Manager ARN.
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Timeout: 10
+    MemorySize: 256
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: !Ref LogLevel
+        API_ALLOWED_ORIGIN: !Ref ApplicationOrigin
+        COGNITO_USER_POOL_ID: !Ref UserPool
+        COGNITO_CLIENT_ID: !Ref UserPoolClient
+        COGNITO_REGION: !Ref AWS::Region
+    Tags:
+      Project: SolarSaathi
+      Environment: !Ref Environment
+
+Resources:
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: v1
+      EndpointConfiguration: REGIONAL
+      Cors:
+        AllowOrigin: !Sub "'${ApplicationOrigin}'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowMethods: "'GET,POST,OPTIONS'"
+      Auth:
+        DefaultAuthorizer: CognitoUserPool
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          CognitoUserPool:
+            UserPoolArn: !GetAtt UserPool.Arn
+            AuthorizationScopes:
+              - aws.cognito.signin.user.admin
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingBurstLimit: 20
+          ThrottlingRateLimit: 10
+
+  GatewayClientErrorResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref Api
+      ResponseType: DEFAULT_4XX
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: !Sub "'${ApplicationOrigin}'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+      ResponseTemplates:
+        application/json: '{"error":{"code":"GATEWAY_REQUEST_ERROR","message":"Check your sign-in session and request.","requestId":"$context.requestId"}}'
+
+  GatewayServerErrorResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref Api
+      ResponseType: DEFAULT_5XX
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: !Sub "'${ApplicationOrigin}'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+      ResponseTemplates:
+        application/json: '{"error":{"code":"GATEWAY_SERVICE_ERROR","message":"The service is unavailable. Try again later.","requestId":"$context.requestId"}}'
+
+  HealthLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/health"
+      RetentionInDays: !Ref LogRetentionDays
+
+  AnalyzeLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/analyze"
+      RetentionInDays: !Ref LogRetentionDays
+
+  ChatLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/advisor"
+      RetentionInDays: !Ref LogRetentionDays
+
+  ProfileLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/identity"
+      RetentionInDays: !Ref LogRetentionDays
+
+  CoreLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/core"
+      RetentionInDays: !Ref LogRetentionDays
+
+  RoofLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/roof"
+      RetentionInDays: !Ref LogRetentionDays
+
+  RoofRetentionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/roof-retention"
+      RetentionInDays: !Ref LogRetentionDays
+
+  RoofFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Resolves official Google roof data server-side and persists only explicitly confirmed results for owned properties.
+        must:
+          - Never log or return Google API keys.
+          - Keep Cognito authorization and backend property ownership checks on every route.
+    Properties:
+      Handler: handlers/roof.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 28
+      LoggingConfig:
+        LogGroup: !Ref RoofLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+          GOOGLE_GEOCODING_API_KEY: !If
+            - GeocodingConfigured
+            - !Sub "{{resolve:secretsmanager:${GoogleGeocodingKeySecretArn}:SecretString:apiKey}}"
+            - ""
+          GOOGLE_SOLAR_API_KEY: !If
+            - SolarConfigured
+            - !Sub "{{resolve:secretsmanager:${GoogleSolarKeySecretArn}:SecretString:apiKey}}"
+            - ""
+      Policies:
+        - Statement:
+            - Sid: RoofTableItems
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:ConditionCheckItem
+              Resource: !GetAtt AnalysesTable.Arn
+      Events:
+        Geocode:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /solar/geocode
+            Method: POST
+        BuildingInsights:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /solar/building-insights
+            Method: POST
+        ConfirmBuilding:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /solar/confirm-building
+            Method: POST
+        ConfirmRoof:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /solar/confirm-roof
+            Method: POST
+
+  RoofRetentionFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Hard-deletes expired Google-derived roof records through a sparse expiry index before the Google 30-day retention limit.
+        must:
+          - Only query GSI3 and conditionally delete expired ROOF_PREVIEW, SOLAR_ANALYSIS and SOLAR_CACHE items.
+          - Fail on bounded-sweep backlog so the CloudWatch alarm is actionable.
+    Properties:
+      Handler: handlers/retention.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 360
+      LoggingConfig:
+        LogGroup: !Ref RoofRetentionLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+      Policies:
+        - Statement:
+            - Sid: ReadExpiredGoogleRoofIndex
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${AnalysesTable.Arn}/index/GSI3"
+            - Sid: DeleteExpiredGoogleRoofItems
+              Effect: Allow
+              Action: dynamodb:DeleteItem
+              Resource: !GetAtt AnalysesTable.Arn
+      Events:
+        HourlyRetentionSweep:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 hour)
+            Description: Remove expired Google-derived roof records before their 30-day retention limit.
+
+  RoofRetentionFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Google roof hard-delete worker failed or exceeded its bounded sweep.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref RoofRetentionFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  CoreFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Serves authenticated account, customer, property and lead operations through the shared core table.
+        must:
+          - Keep the Cognito authorizer on every core route and enforce ownership in backend code.
+          - Grant access only to the core table and its two property lookup indexes.
+    Properties:
+      Handler: handlers/core.handler
+      CodeUri: ../../apps/api/dist
+      LoggingConfig:
+        LogGroup: !Ref CoreLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+      Policies:
+        - Statement:
+            - Sid: CoreTableItems
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:ConditionCheckItem
+                - dynamodb:Query
+              Resource: !GetAtt AnalysesTable.Arn
+            - Sid: CorePropertyIndexes
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource:
+                - !Sub "${AnalysesTable.Arn}/index/GSI1"
+                - !Sub "${AnalysesTable.Arn}/index/GSI2"
+      Events:
+        GetUser:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /users/me
+            Method: GET
+        BootstrapUser:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /users/bootstrap
+            Method: POST
+        GetOrganization:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /organizations/me
+            Method: GET
+        ListCustomers:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /customers
+            Method: GET
+        CreateCustomer:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /customers
+            Method: POST
+        ListProperties:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /properties
+            Method: GET
+        CreateProperty:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /properties
+            Method: POST
+        GetProperty:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /properties/{propertyId}
+            Method: GET
+        ListLeads:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /leads
+            Method: GET
+        CreateLead:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /leads
+            Method: POST
+
+  ProfileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/profile.handler
+      CodeUri: ../../apps/api/dist
+      LoggingConfig:
+        LogGroup: !Ref ProfileLogGroup
+      Events:
+        CurrentIdentity:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /me
+            Method: GET
+
+  HealthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/health.handler
+      CodeUri: ../../apps/api/dist
+      LoggingConfig:
+        LogGroup: !Ref HealthLogGroup
+      Events:
+        Health:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /health
+            Method: GET
+            Auth:
+              Authorizer: NONE
+
+  AnalyzeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/analyze.handler
+      CodeUri: ../../apps/api/dist
+      LoggingConfig:
+        LogGroup: !Ref AnalyzeLogGroup
+      Events:
+        Analyze:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /solar/analyze
+            Method: POST
+        LegacyAnalyze:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /analyze
+            Method: POST
+
+  ChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/chat.handler
+      CodeUri: ../../apps/api/dist
+      LoggingConfig:
+        LogGroup: !Ref ChatLogGroup
+      Events:
+        Chat:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /advisor/solar
+            Method: POST
+        LegacyChat:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /chat
+            Method: POST
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolTier: ESSENTIALS
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      UsernameConfiguration:
+        CaseSensitive: false
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate: [email]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+      MfaConfiguration: OPTIONAL
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+        - Name: organizationId
+          AttributeDataType: String
+          Mutable: true
+          StringAttributeConstraints:
+            MinLength: "1"
+            MaxLength: "128"
+      UserPoolTags:
+        Project: SolarSaathi
+        Environment: !Ref Environment
+
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: GoogleFederationEnabled
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleOAuthClientId
+        client_secret: !Sub "{{resolve:secretsmanager:${GoogleOAuthSecretArn}:SecretString:clientSecret}}"
+        authorize_scopes: openid email profile
+      AttributeMapping:
+        email: email
+        name: name
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AccessTokenValidity: 15
+      IdTokenValidity: 15
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      RefreshTokenRotation:
+        Feature: ENABLED
+        RetryGracePeriodSeconds: 10
+      ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile, aws.cognito.signin.user.admin]
+      CallbackURLs:
+        - !Sub "${ApplicationOrigin}/auth/callback"
+      LogoutURLs:
+        - !Sub "${ApplicationOrigin}/auth/sign-in"
+      SupportedIdentityProviders: !If
+        - GoogleFederationEnabled
+        - [COGNITO, !Ref GoogleIdentityProvider]
+        - [COGNITO]
+      ReadAttributes: [email, email_verified, name, "custom:organizationId"]
+      WriteAttributes: [email, name]
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Ref CognitoDomainPrefix
+      ManagedLoginVersion: 2
+
+  ManagedLoginBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    DependsOn: UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientId: !Ref UserPoolClient
+      UseCognitoProvidedValues: true
+
+  HomeownerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: HOMEOWNER
+      Description: Homeowner identity; property ownership is enforced separately by backend APIs.
+
+  BrokerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: BROKER
+      Description: Administrator-assigned broker membership; organization ownership is enforced separately.
+
+  AnalysesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Stores the versioned core entities in one encrypted table; owner and organization indexes support scoped property listings.
+        must:
+          - Retain data on stack deletion or replacement.
+          - GSI1 and GSI2 must project full property records for repository validation.
+          - The expiry attribute must match the SOLAR_CACHE schema; application code still checks expiry before reads.
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+        - AttributeName: GSI2PK
+          AttributeType: S
+        - AttributeName: GSI2SK
+          AttributeType: S
+        - AttributeName: GSI3PK
+          AttributeType: S
+        - AttributeName: GSI3SK
+          AttributeType: N
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI2
+          KeySchema:
+            - AttributeName: GSI2PK
+              KeyType: HASH
+            - AttributeName: GSI2SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI3
+          KeySchema:
+            - AttributeName: GSI3PK
+              KeyType: HASH
+            - AttributeName: GSI3SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: KEYS_ONLY
+      TimeToLiveSpecification:
+        AttributeName: expiresAtEpochSeconds
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: SolarSaathi
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  ApiUrl:
+    Description: API base URL; roof and advisor endpoints remain unavailable.
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/v1"
+  AnalysesTableName:
+    Description: Private core entity table used by the authenticated core API.
+    Value: !Ref AnalysesTable
+  CognitoUserPoolId:
+    Description: Public user pool identifier for frontend configuration.
+    Value: !Ref UserPool
+  CognitoClientId:
+    Description: Public app client identifier; no client secret is generated.
+    Value: !Ref UserPoolClient
+  CognitoDomainHost:
+    Description: Public managed-login hostname, without scheme or path.
+    Value: !Sub "${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com"
+  CognitoRedirectSignIn:
+    Description: Exact registered application callback URL.
+    Value: !Sub "${ApplicationOrigin}/auth/callback"
+  CognitoRedirectSignOut:
+    Description: Exact registered application sign-out URL.
+    Value: !Sub "${ApplicationOrigin}/auth/sign-in"

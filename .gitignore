@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.turbo/
+dist/
+coverage/
+.aws-sam/
+.env
+.env.*
+!.env.example
+.dev.vars
+.DS_Store
+*.log
+*.tsbuildinfo
+google-cloud-sdk/
+.agents/skills/

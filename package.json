@@ -1,0 +1,40 @@
+{
+  "name": "solarsaathi",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.34.6",
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @solarsaathi/web dev",
+    "build": "pnpm -r build",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r typecheck && tsc -p infra/sam/tsconfig.json && tsc -p scripts/tsconfig.json",
+    "test": "pnpm -r test && pnpm test:infra && pnpm test:tools",
+    "test:tools": "vitest run --config scripts/vitest.config.ts",
+    "test:infra": "vitest run --config infra/sam/vitest.config.ts",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "auth:check": "esbuild scripts/auth-check.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/auth-check.cjs --log-level=warning && node --env-file-if-exists=apps/web/.env.local dist/auth-check.cjs",
+    "sam:validate": "sam validate --lint --template-file infra/sam/template.yaml --region ap-south-1",
+    "sam:build": "pnpm --filter @solarsaathi/api build && sam build --template-file infra/sam/template.yaml",
+    "sam:local": "sam local start-api --template-file .aws-sam/build/template.yaml",
+    "sam:deploy": "sam deploy --template-file .aws-sam/build/template.yaml --guided"
+  },
+  "devDependencies": {
+    "@solarsaathi/config": "workspace:*",
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.39.0",
+    "@types/aws-lambda": "^8.10.156",
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "eslint": "^9.39.0",
+    "eslint-config-next": "^15.5.27",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.3",
+    "vitest": "^3.2.4",
+    "yaml": "^2.8.1"
+  }
+}
