@@ -48,7 +48,7 @@ export function FinancialResults({ response, demo = false }: { response: Financi
       <div><span>Modeled payback</span><strong>{payback(totals.paybackYears)}</strong><small>From year-by-year cumulative cash flow</small></div>
       <div><span>Net cash flow after 25 years</span><strong>{rupees.format(totals.netSavingsOver25YearsRupees)}</strong><small>After upfront quote and modeled maintenance</small></div>
     </div>
-    <p className="financial-boundary">Policy benefits and financing have not been evaluated. Export credit is an assumed scenario, not a verified net-metering entitlement. Local tariff rules and site performance need review.</p>
+    <p className="financial-boundary">This base cash flow excludes policy benefits and financing. Export credit is an assumed scenario, not a verified net-metering entitlement. Local tariff rules and site performance need review.</p>
     <CashFlowChart financial={financial} />
     <div className="financial-sensitivity"><div className="financial-subheading"><h4>What changes the estimate?</h4><p>Each range changes one input at a time; all other inputs stay at the base case.</p></div><div className="financial-sensitivity-grid">
       <Sensitivity title="Generation" detail={`Year-one generation ±${percent(input.sensitivity.generationVariationFraction)}`} cases={financial.sensitivity.generation} />

@@ -6,7 +6,9 @@ import userEvent from "@testing-library/user-event";
 import { BenefitEvaluator } from "../src/components/benefit-evaluator";
 
 const api = vi.hoisted(() => ({ evaluate: vi.fn() }));
-vi.mock("../src/lib/benefits-api", () => ({ benefitsApi: api }));
+vi.mock("../src/lib/benefits-api", async importOriginal => ({
+  ...(await importOriginal<typeof import("../src/lib/benefits-api")>()), benefitsApi: api,
+}));
 vi.mock("../src/lib/roof-api", () => ({ RoofRequestError: class extends Error {} }));
 
 const props = { propertyId: "property-1", analysisId: "analysis-1",

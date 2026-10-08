@@ -238,6 +238,25 @@ locator carries exact absolute character offsets and, when archived, the same
 page/section/fragment. The server verifies every excerpt against the pinned
 normalized archive before creation and again before publication.
 
+Phase 11 adds authenticated `POST /v1/financials/policy-backed/estimate`. It
+accepts the Phase 7 estimate inputs plus Phase 10 `applicantFacts` and optional
+`eligibleQuotedCostPaise`. The backend reloads the owned analysis, recomputes
+the roof-fitting system and base financial estimate, and evaluates current
+active verified rules for that same system. It does not accept client benefit
+amounts, policy IDs, source health or rooftop measurements. The response always
+contains the unsubsidized `base` and a cited `benefits` evaluation. When a
+current selected benefit can be counted, `status: "AVAILABLE"` includes a
+`projection` with gross, scope breakdown, total, modeled upfront amount, net,
+25-year cash flow, payback and policy provenance. Its
+`timingAssumption: "BENEFITS_MODELED_UPFRONT"` means the adjusted result is a
+scenario, not a claim about official payment timing. Partial scope coverage or
+unknown eligibility is labelled `PARTIAL`. When no reliable positive selected
+benefit is available, `status: "UNAVAILABLE"` omits the projection and gives
+reason codes; the base remains available.
+Selected `OTHER` benefits are disclosed in the total and
+`nonUpfrontBenefitPaise` but do not reduce net upfront cost or payback, because
+their tax/financing/regulatory cash treatment is not verified.
+
 Paths below are planned contracts unless listed as available above.
 
 ## Roof

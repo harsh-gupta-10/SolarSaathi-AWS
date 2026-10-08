@@ -110,6 +110,7 @@ async function setup() {
       eligibility: { allOf: [{ kind: "CUSTOMER_TYPE", oneOf: ["RESIDENTIAL"] }], anyOf: [] },
       compatibility: [] } };
   return { publicationService, benefits, evaluate, draftRequest, document, chunk, source,
+    createBenefitsAt: (now: () => Date) => new BenefitsService(data.service, records, workflow, publication, now),
     setState: (value: PolicyCrawlStateV1) => { state = value; }, getState: () => state,
     setCurrent: (value: PolicySourceV1) => { current = value; },
     setPrior: (value: { source: PolicySourceV1; document: PolicyDocumentV1; state: PolicyCrawlStateV1 }) => {
@@ -147,6 +148,11 @@ describe("verified benefit publication and owner-scoped evaluation", () => {
       eligibilityNotGuaranteed: true, result: { totalEligibleBenefitPaise: 100_000,
         coverageComplete: false, decisions: [{ verificationStatus: "VERIFIED", status: "SELECTED",
           sourceChecks: [{ lastCheckedAt: fixedNow.toISOString(), fresh: true }] }] } });
+    let clockTick = 0;
+    const clockResult = await test.createBenefitsAt(() => new Date(fixedNow.getTime() + clockTick++))
+      .evaluate(identity(), test.evaluate, "clock-req");
+    expect(clockResult.status).toBe("AVAILABLE");
+    if (clockResult.status === "AVAILABLE") expect(clockResult.result.evaluatedAt).toBe(clockResult.evaluatedAt);
     test.setState({ ...test.getState(), status: "ERROR", lastErrorCode: "TIMEOUT" });
     expect(await test.benefits.evaluate(identity(), test.evaluate, "req")).toMatchObject({
       status: "AVAILABLE", result: { warnings: expect.arrayContaining(["SOURCE_CHECK_DEGRADED"]) } });

@@ -106,17 +106,32 @@ system-size test uses modeled actual DC watts; tariff or DISCOM AC-capacity
 requirements need separately verified rules before they can be asserted.
 
 The homeowner API recomputes the system from an owned, unexpired analysis. Its
-policy result is shown alongside the Phase 7 unsubsidized estimate. The Phase 7
-cash-flow rows and payback are not recalculated with a policy deduction yet.
+policy result is shown alongside the Phase 7 unsubsidized estimate. Phase 11
+adds a separate policy-backed scenario, preserving the base result.
 An unknown policy-eligible cost is not assumed to equal the whole installation
 quote. An incomplete or oversized relevant rule catalog yields an unavailable
 result rather than a made-up zero or maximum benefit.
 
 ## Net cost
 
-`netCost = max(0, grossCost - totalEligibleBenefit)`
+`modeledNetUpfrontCost = max(0, grossCost - modeledUpfrontBenefit)`
 
 Do not subtract optional accessories unless the user explicitly includes them and policy permits them in benefit calculation.
+
+Phase 11 calculates gross, selected central/state/DISCOM/local/other benefits,
+the amount modeled against the quote, any benefit above the quote, and net
+upfront cost in integer paise. `OTHER` may include tax, financing or regulatory
+benefits, so it remains in the selected total but is excluded from the modeled
+upfront reduction until its cash treatment is verified. The
+`nonUpfrontBenefitPaise` field shows that exclusion; excess is measured only
+against the scopes modeled upfront. The engine shifts 25 annual cumulative
+cash-flow rows and payback from the Phase 7 base using the **explicit assumption
+that modeled benefits are received upfront**. Current policy rules verify
+eligibility and amounts, not payment dates; this scenario is not a forecast of
+when the homeowner receives money or how much cash is needed at installation.
+An incomplete policy catalog or unknown applicant fact makes the scenario
+partial. If no current, selected benefit that can be modeled upfront is available, the API leaves
+the adjusted scenario unavailable and still returns the unsubsidized base.
 
 ## Annual savings
 
@@ -169,4 +184,6 @@ Every financial result that uses a policy benefit stores:
 
 Phase 10 benefit evaluations return this provenance and archived clause
 citations, source checks, jurisdiction, effective window and verification time
-to the caller. Persisting a policy-adjusted financial result is later work.
+to the caller. Phase 11 returns the benefit evaluation with the adjusted
+financial scenario in one response; it does not persist applicant facts or a
+policy-adjusted financial result.

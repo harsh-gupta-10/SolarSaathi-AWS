@@ -147,6 +147,9 @@ importers:
 
   packages/calculations:
     dependencies:
+      '@solarsaathi/policy':
+        specifier: workspace:*
+        version: link:../policy
       '@solarsaathi/types':
         specifier: workspace:*
         version: link:../types

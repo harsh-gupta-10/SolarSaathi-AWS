@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@solarsaathi/policy": "workspace:*",
     "@solarsaathi/types": "workspace:*"
   }
 }

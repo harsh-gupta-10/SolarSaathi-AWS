@@ -129,6 +129,20 @@ screens; accessibility checks reported no WCAG A/AA violations in the inspected
 states. These fixtures do not establish live India policy coverage or deployed
 AWS authorization.
 
+### Phase 11 policy-backed financial scenario
+
+The Phase 11 local `pnpm check` gate passed 692 tests across the workspace,
+infrastructure and tools suites, plus lint, typechecking and production builds.
+Pure calculation tests cover selected scope totals, integer-paise rounding,
+net cost floors, excess benefit disclosure, year-zero payback, 25 annual rows,
+unavailable payback and incomplete coverage. API tests require owner-scoped
+saved analysis and current verified rule evidence, reject client benefit or
+system overrides, retain the base result when policy is unavailable, and
+verify response provenance. Web tests cover policy-unavailable, partial and
+source-cited scenarios without doing financial arithmetic in the browser.
+Neither local tests nor the modeled-upfront scenario establishes a real subsidy
+payment date or live India policy coverage.
+
 ### Application state
 Test:
 - valid transitions

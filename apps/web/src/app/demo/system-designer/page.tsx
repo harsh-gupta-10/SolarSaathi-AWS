@@ -17,6 +17,7 @@ export default function SystemDesignerDemoPage() {
       <div className="system-designer-heading"><div><span className="system-designer-kicker">Deterministic demo result</span><h2 id="demo-system-title">Compare system sizes</h2><p>These results are calculated from the synthetic inputs above. In the application, a signed-in user supplies demand and receives a result for their confirmed roof from the backend.</p></div></div>
       <SystemDesignResults design={demoDesign} analysisId="demo-fixture-only" demo />
       <FinancialResults response={demoFinancialResponse} demo />
+      <p className="mt-6 text-sm"><Link href="/demo/policy-financial" className="text-primary underline underline-offset-4">View a synthetic policy-adjusted financial scenario</Link></p>
     </section>
   </main>;
 }

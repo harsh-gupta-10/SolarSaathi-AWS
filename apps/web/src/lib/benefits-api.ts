@@ -38,7 +38,7 @@ const stackResult = z.object({
 });
 const coverage = z.object({ central: z.boolean(), state: z.boolean(), discom: z.boolean(),
   local: z.boolean(), other: z.boolean() });
-const responseSchema = z.object({
+export const benefitEvaluationResponseSchema = z.object({
   schemaVersion: z.literal(1), source: z.literal("DETERMINISTIC_BENEFIT_STACK_V1"),
   status: z.enum(["AVAILABLE", "UNAVAILABLE"]), requestId: z.string().min(1),
   applicantFactsSource: z.literal("USER_DECLARED"), eligibilityNotGuaranteed: z.literal(true),
@@ -50,7 +50,7 @@ const responseSchema = z.object({
     message: "Available evaluations require a result, unavailable ones cannot contain one." });
 });
 
-export type BenefitEvaluationResponse = z.infer<typeof responseSchema>;
+export type BenefitEvaluationResponse = z.infer<typeof benefitEvaluationResponseSchema>;
 export interface BenefitApplicantFacts {
   country: "IN";
   state?: string;
@@ -77,7 +77,7 @@ export const benefitsApi = {
     const response = await postAuthenticated("/benefits/evaluate", {
       propertyId, analysisId, demand, generationKwhPerKwYear, nominalKw,
       ...(eligibleQuotedCostPaise === undefined ? {} : { eligibleQuotedCostPaise }), applicantFacts,
-    }, responseSchema, signal);
+    }, benefitEvaluationResponseSchema, signal);
     if (response.propertyId !== propertyId || response.analysisId !== analysisId ||
       response.system.nominalKw !== nominalKw || response.result?.evaluatedAt !== undefined &&
       response.result.evaluatedAt !== response.evaluatedAt) {

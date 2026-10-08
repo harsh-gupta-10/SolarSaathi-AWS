@@ -142,11 +142,20 @@ assumptions, and a full annual table. The export value remains a user scenario
 until local metering rules are verified. Government benefits and financing are
 shown as unevaluated, and the synthetic demo values are labelled as fixtures.
 
-## Policy-backed financial results (Phase 11 target)
+## Policy-backed financial results (Phase 11)
 
-The layout below uses placeholders. Never render a benefit amount until the
-eligibility engine has returned an approved active policy version, compatible
-stack and citations for that property.
+The policy-backed result follows the confirmed roof, system and gross quote.
+It shows the original unsubsidized financial estimate beside an optional
+policy-adjusted scenario from the same authenticated backend response. The
+scenario shows gross, central, state, DISCOM, local and other selected benefits,
+total, net upfront cost, modeled payback and 25-year cash flow. It must label
+incomplete coverage and unknown eligibility, link every selected rule to its
+source/version, and state that the benefit is modeled as received upfront
+because actual disbursement timing is not verified. If policy evaluation is
+unavailable, only the unsubsidized estimate is shown. No amount is generated
+in React.
+Selected other benefits remain visible but are separated from the amount
+modeled against the installation quote until their cash treatment is verified.
 
 ## Phase 10 benefit evaluation UI
 
@@ -162,8 +171,8 @@ rules, separate scope coverage, reason codes, and policy/source/version,
 effective window, verification and last source-check timestamps. Missing or
 stale data is textually labelled and never presented as a zero benefit.
 Incomplete coverage never produces a "maximum subsidy" claim. The Phase 7
-financial chart stays unsubsidized until Phase 11 recalculates it through the
-policy-backed financial engine. Published rules depend on official processing;
+financial chart remains the unsubsidized baseline; Phase 11 adds a separate
+policy-adjusted scenario. Published rules depend on official processing;
 the UI calls the result an estimate based on self-reported facts.
 
 The administrator policy workspace adds a benefit-rule publication tab.

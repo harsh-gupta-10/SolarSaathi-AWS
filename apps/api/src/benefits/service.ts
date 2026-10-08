@@ -1,4 +1,4 @@
-import { designSolarSystem, getSystemDesignAssumptionsV1 } from "@solarsaathi/calculations";
+import { designSolarSystem, getSystemDesignAssumptionsV1, type SystemCandidate } from "@solarsaathi/calculations";
 import {
   benefitEvaluationContextSchema, evaluateBenefitStackV1, policyDocumentSchema, policyFactSchema,
   policySourceSchema, policyVersionSchema, validateOfficialSourceRecord,
@@ -31,29 +31,43 @@ export class BenefitsService {
     private readonly workflow: PolicyWorkflowRepository, private readonly publication: PolicyPublicationRepository,
     private readonly now: () => Date = () => new Date()) {}
 
-  async evaluate(identity: CurrentIdentityResponse, body: unknown, requestId: string) {
+  async evaluate(identity: CurrentIdentityResponse, body: unknown, requestId: string,
+    trustedSystem?: { propertyId: string; analysisId: string; system: SystemCandidate }) {
     const input = parseInput(benefitEvaluateRequestSchema, body);
-    const analysis = await this.core.getAnalysis(identity, input.propertyId, input.analysisId);
-    if (!analysis.roofModel) throw new RequestError(409, "ROOF_MODEL_REQUIRED", "Confirm a roof before evaluating benefits.");
-    let system;
-    try {
-      const design = designSolarSystem(analysis.roofModel, input.demand,
-        { ...getSystemDesignAssumptionsV1(analysis.roofModel),
-          generationKwhPerKwYear: input.generationKwhPerKwYear });
-      system = design.candidates.find(candidate => candidate.nominalKw === input.nominalKw);
-      if (!system) throw new RequestError(400, "INVALID_CANDIDATE", "Select a supported system size.");
-      if (!system.recommendationEligible || system.estimatedAnnualGenerationKwh <= 0 ||
-        system.roofFit === "UNDETERMINED" || system.roofFit === "EXCEEDS_MODELED_ROOF") {
-        throw new RequestError(422, "CANDIDATE_UNFIT", "The selected system does not fit this confirmed roof and demand estimate.");
+    let system: SystemCandidate;
+    if (trustedSystem) {
+      // Only the server-side composite service can supply a candidate after its own owned-analysis check.
+      if (trustedSystem.propertyId !== input.propertyId || trustedSystem.analysisId !== input.analysisId ||
+        trustedSystem.system.nominalKw !== input.nominalKw || !trustedSystem.system.recommendationEligible ||
+        trustedSystem.system.estimatedAnnualGenerationKwh <= 0 || trustedSystem.system.actualDcKw <= 0 ||
+        trustedSystem.system.roofFit === "UNDETERMINED" || trustedSystem.system.roofFit === "EXCEEDS_MODELED_ROOF") {
+        throw unavailable();
       }
-    } catch (error) {
-      if (error instanceof RequestError) throw error;
-      throw unavailable();
+      system = trustedSystem.system;
+    } else {
+      const analysis = await this.core.getAnalysis(identity, input.propertyId, input.analysisId);
+      if (!analysis.roofModel) throw new RequestError(409, "ROOF_MODEL_REQUIRED", "Confirm a roof before evaluating benefits.");
+      try {
+        const design = designSolarSystem(analysis.roofModel, input.demand,
+          { ...getSystemDesignAssumptionsV1(analysis.roofModel),
+            generationKwhPerKwYear: input.generationKwhPerKwYear });
+        const selected = design.candidates.find(candidate => candidate.nominalKw === input.nominalKw);
+        if (!selected) throw new RequestError(400, "INVALID_CANDIDATE", "Select a supported system size.");
+        if (!selected.recommendationEligible || selected.estimatedAnnualGenerationKwh <= 0 ||
+          selected.roofFit === "UNDETERMINED" || selected.roofFit === "EXCEEDS_MODELED_ROOF") {
+          throw new RequestError(422, "CANDIDATE_UNFIT", "The selected system does not fit this confirmed roof and demand estimate.");
+        }
+        system = selected;
+      } catch (error) {
+        if (error instanceof RequestError) throw error;
+        throw unavailable();
+      }
     }
     const systemSummary = { nominalKw: system.nominalKw, actualDcKw: system.actualDcKw };
+    const evaluatedAt = this.now();
     const common = { schemaVersion: 1 as const, source: "DETERMINISTIC_BENEFIT_STACK_V1" as const,
       requestId, propertyId: input.propertyId, analysisId: input.analysisId,
-      system: systemSummary, evaluatedAt: this.now().toISOString(), coverage,
+      system: systemSummary, evaluatedAt: evaluatedAt.toISOString(), coverage,
       applicantFactsSource: "USER_DECLARED" as const, eligibilityNotGuaranteed: true as const };
     try {
       const jurisdictions = [input.applicantFacts.country];
@@ -98,7 +112,7 @@ export class BenefitsService {
         const source = validateOfficialSourceRecord(policySourceSchema.parse(sourceVersion));
         const archived = policyDocumentSchema.parse(document);
         const bundleEvidence = facts.map(fact => ({ source, document: archived, version, fact }));
-        const fresh = currentSourceFresh(currentSource, state, this.now()) &&
+        const fresh = currentSourceFresh(currentSource, state, evaluatedAt) &&
           state?.lastDocumentId === citation.documentId &&
           state.lastDocumentVersion === citation.documentVersion &&
           state.lastObservedSha256 === citation.documentSha256;
@@ -118,7 +132,7 @@ export class BenefitsService {
       }
       if (sourceHealth.every(item => item.status === "STALE")) return { ...common,
         status: "UNAVAILABLE" as const, reasonCodes: ["NO_CURRENT_VERIFIED_RULES"] };
-      const result = evaluateBenefitStackV1({ at: this.now(),
+      const result = evaluateBenefitStackV1({ at: evaluatedAt,
         context: benefitEvaluationContextSchema.parse({ ...input.applicantFacts,
           systemWatts: Math.round(system.actualDcKw * 1_000),
           ...(input.eligibleQuotedCostPaise !== undefined ? { eligibleQuotedCostPaise: input.eligibleQuotedCostPaise } : {}) }),

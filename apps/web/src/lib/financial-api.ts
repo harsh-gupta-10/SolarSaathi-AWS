@@ -20,7 +20,7 @@ const totals = z.object({
   totalExportValueRupees: finite.nonnegative(), totalGrossSavingsRupees: finite.nonnegative(),
   totalMaintenanceCostRupees: finite.nonnegative(),
 });
-const annualRow = z.object({
+export const baseFinancialYearSchema = z.object({
   year: z.number().int().min(1).max(25), generationKwh: finite.nonnegative(),
   selfConsumedKwh: finite.nonnegative(), exportedKwh: finite.nonnegative(), annualConsumptionKwh: finite.positive(),
   importTariffRupeesPerKwh: finite.nonnegative(), exportRateRupeesPerKwh: finite.nonnegative(),
@@ -34,7 +34,7 @@ const sensitivityCase = z.object({
   exportRateRupeesPerKwh: finite.nonnegative(), totals,
 });
 const sensitivityTriplet = z.object({ low: sensitivityCase, base: sensitivityCase, high: sensitivityCase });
-const financialSchema: z.ZodType<BaseFinancialResultV1> = z.object({
+export const baseFinancialResultSchema: z.ZodType<BaseFinancialResultV1> = z.object({
   schemaVersion: z.literal(1), source: z.literal("DETERMINISTIC_BASE_FINANCIAL_V1"),
   policyBenefitsEvaluated: z.literal(false), financingModeled: z.literal(false), horizonYears: z.literal(25),
   input: z.object({
@@ -50,7 +50,7 @@ const financialSchema: z.ZodType<BaseFinancialResultV1> = z.object({
     sensitivity: z.object({ generationVariationFraction: finite.min(0).max(1),
       tariffVariationFraction: finite.min(0).max(1), systemCostVariationFraction: finite.min(0).max(1) }),
   }),
-  initialCashFlowRupees: finite, annualRows: z.array(annualRow).length(25), totals,
+  initialCashFlowRupees: finite, annualRows: z.array(baseFinancialYearSchema).length(25), totals,
   sensitivity: z.object({ generation: sensitivityTriplet, importTariff: sensitivityTriplet, systemCost: sensitivityTriplet }),
   warnings: z.array(z.enum(["AVOIDABLE_IMPORT_TARIFF_ASSUMED", "EXPORT_SETTLEMENT_UNVERIFIED",
     "ANNUAL_CONSUMPTION_HELD_FLAT", "GENERATION_USES_ASSUMED_YIELD", "NO_PAYBACK_WITHIN_25_YEARS"])),
@@ -63,7 +63,7 @@ const responseSchema = z.object({
   systemDesignWarnings: z.array(z.enum(["LOCAL_RULES_NOT_CHECKED", "SANCTIONED_LOAD_NOT_PROVIDED",
     "SANCTIONED_LOAD_REVIEW_NEEDED", "BILL_TO_KWH_IS_APPROXIMATE", "GOOGLE_ROOF_FIT_APPROXIMATE",
     "MANUAL_FIT_NEEDS_SITE_SURVEY", "ASSUMED_YIELD_USED", "GOOGLE_DC_TO_AC_FACTOR_ASSUMED"])),
-  financial: financialSchema,
+  financial: baseFinancialResultSchema,
 });
 
 export interface FinancialEstimateResponse {

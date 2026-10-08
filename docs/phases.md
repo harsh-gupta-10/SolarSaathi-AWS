@@ -322,6 +322,29 @@ Financial result must show:
 - payback
 - source/version
 
+Status: locally implemented. The authenticated policy-backed estimate reloads
+the owned confirmed roof, recomputes a fitting system and Phase 7 base, and
+evaluates current Phase 10 active verified rules for the same system. The
+response always retains the unsubsidized base. When a positive selected
+central, state, DISCOM or local benefit exists, a pure integer-paise engine
+shows gross quote, selected amounts by scope, total benefits, modeled upfront
+reduction, net cost, 25-year cash flow, payback and policy/source/version
+provenance. Unknown eligibility and unverified scope coverage are marked
+partial. Policy outages, no current rules and no upfront-modelable benefit
+leave the adjusted scenario unavailable without erasing the base.
+
+The adjusted cash flow assumes selected cash incentives arrive upfront. Current
+policy facts do not verify disbursement timing, so this is an illustrative
+scenario, not a forecast of cash required at installation or a guaranteed
+payment date. Selected `OTHER` benefits can represent tax, financing or
+regulatory value; they remain disclosed but do not reduce modeled upfront
+cost or payback. Benefits above the quote cannot create negative net cost.
+The financial browser screen and synthetic demo preserve source citations and
+keep the Phase 7 baseline visible. No active India policy corpus or cloud
+stack is deployed, so live benefit amounts and authorization are unverified.
+The local gate passed 692 tests, lint, typechecking, production builds, SAM
+invariant checks and browser inspection of the synthetic policy financial demo.
+
 ## Phase 12 — Application / subsidy tracker
 - policy-specific checklist
 - user-created application

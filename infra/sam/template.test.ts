@@ -16,7 +16,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(template.Transform).toBe("AWS::Serverless-2016-10-31");
   });
   it("uses compiled handlers with explicit log destinations", () => {
-    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "BenefitsFunction", "PolicyFunction", "PolicyPublicationFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
+    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "PolicyFinancialsFunction", "BenefitsFunction", "PolicyFunction", "PolicyPublicationFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
       expect(properties(name).CodeUri).toBe("../../apps/api/dist");
       expect(properties(name).Handler).toMatch(/^handlers\/[a-z-]+\.handler$/);
       expect(properties(name).LoggingConfig).toBeDefined();
@@ -186,6 +186,24 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
       RestApiId: "Api", Path: "/financials/estimate", Method: "POST",
     } } });
     expect(JSON.stringify(financials)).not.toMatch(/GOOGLE_.*API_KEY|secretsmanager|BEDROCK/);
+  });
+
+  it("routes policy-backed finances through owned and verified-policy read permissions only", () => {
+    const financials = properties("PolicyFinancialsFunction");
+    expect(financials.Handler).toBe("handlers/policy-financials.handler");
+    expect(financials.Environment).toEqual({ Variables: {
+      CORE_TABLE_NAME: "AnalysesTable", POLICY_TABLE_NAME: "PolicyTable",
+    } });
+    expect(financials.Timeout).toBe(28);
+    expect(financials.Events).toEqual({ EstimatePolicyFinancials: { Type: "Api", Properties: {
+      RestApiId: "Api", Path: "/financials/policy-backed/estimate", Method: "POST",
+    } } });
+    const policy = JSON.stringify(financials.Policies);
+    expect(policy).toContain("AnalysesTable.Arn");
+    expect(policy).toContain("PUBLISHED_POLICY#*");
+    expect(policy).toContain("SOURCE#*");
+    expect(policy).toContain("index/GSI5");
+    expect(policy).not.toMatch(/PutItem|UpdateItem|DeleteItem|s3:|secretsmanager|bedrock/);
   });
 
   it("isolates the private policy archive and versioned encrypted object bucket", () => {

@@ -587,6 +587,66 @@
 .benefit-result-warnings h5 { font-size: 0.83rem; font-weight: 650; }
 .benefit-result-warnings ul { margin-top: 0.4rem; padding-left: 1.1rem; color: var(--muted-foreground); font-size: 0.74rem; }
 .benefit-request-id { margin-top: 0.7rem; color: var(--muted-foreground); font-size: 0.68rem; }
+.policy-financial-results { margin-top: 1.5rem; }
+.policy-financial-heading { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 0.65rem 1rem; }
+.policy-financial-heading > div > span { color: var(--primary); font-size: 0.8rem; font-weight: 700; }
+.policy-financial-heading h4 { margin-top: 0.35rem; font-size: clamp(1.2rem, 2.3vw, 1.7rem); line-height: 1.25; }
+.policy-financial-coverage { padding: 0.4rem 0.7rem; border: 1px solid #cfba80; border-radius: 0.4rem; color: #5d4c1d; background: #fff9e9; font-size: 0.75rem; font-weight: 700; }
+.policy-financial-ledger { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.3fr) minmax(0, 0.95fr); gap: 1rem; align-items: stretch; margin-top: 1rem; padding: clamp(1rem, 2vw, 1.5rem); border: 1px solid #bbd0bd; border-radius: 0.8rem; background: #f3f8f1; }
+.policy-financial-gross, .policy-financial-net { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: clamp(1rem, 2vw, 1.5rem); }
+.policy-financial-gross { border-left: 4px solid #c7d8c7; background: #fff; }
+.policy-financial-gross span, .policy-financial-net span { font-size: 0.8rem; font-weight: 700; }
+.policy-financial-gross strong, .policy-financial-net strong { display: block; margin: 0.55rem 0; font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -0.04em; overflow-wrap: anywhere; }
+.policy-financial-gross small, .policy-financial-net small { font-size: 0.75rem; line-height: 1.45; }
+.policy-financial-gross small { color: var(--muted-foreground); }
+.policy-financial-breakdown { min-width: 0; padding: 0.15rem 0; }
+.policy-financial-breakdown > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.15rem 0.6rem; align-items: baseline; padding: 0.55rem 0; border-bottom: 1px solid #d3dfd2; font-size: 0.8rem; }
+.policy-financial-breakdown > div:first-child { padding-top: 0; }
+.policy-financial-breakdown > div span { color: #435a4a; }
+.policy-financial-breakdown > div strong { text-align: right; font-size: 0.83rem; overflow-wrap: anywhere; }
+.policy-financial-breakdown > div small { grid-column: 1 / -1; color: #586a5c; font-size: 0.75rem; text-align: right; }
+.policy-financial-breakdown > .policy-financial-total { margin-top: 0.2rem; border-bottom: 0; font-weight: 700; }
+.policy-financial-breakdown > .policy-financial-total span { color: #153f2d; }
+.policy-financial-breakdown > .policy-financial-total strong { color: #12633f; font-size: 1.04rem; }
+.policy-financial-breakdown > .policy-financial-upfront { padding-top: 0.25rem; border-bottom: 0; font-weight: 700; }
+.policy-financial-breakdown > .policy-financial-upfront span { color: #153f2d; }
+.policy-financial-net { position: relative; border: 1px solid #164b34; border-radius: 0.55rem; background: #173c31; color: #f5faf3; box-shadow: 0 6px 0 #b8ceb8; }
+.policy-financial-net::before { content: ""; position: absolute; right: 0.8rem; top: 0.8rem; width: 2.8rem; height: 2.8rem; border: 1px solid #6ba17a; border-radius: 0.35rem; transform: rotate(27deg); opacity: 0.6; pointer-events: none; }
+.policy-financial-net span, .policy-financial-net strong, .policy-financial-net small { position: relative; }
+.policy-financial-net small { color: #d3e7d3; }
+.policy-financial-outcomes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+.policy-financial-outcomes > div { padding: 0.85rem 1rem; border-bottom: 2px solid #c7d9cb; }
+.policy-financial-outcomes span, .policy-financial-outcomes small { display: block; font-size: 0.76rem; }
+.policy-financial-outcomes span { color: #405d48; font-weight: 700; }
+.policy-financial-outcomes strong { display: block; margin: 0.3rem 0; font-size: 1.2rem; overflow-wrap: anywhere; }
+.policy-financial-outcomes small { color: var(--muted-foreground); line-height: 1.45; }
+.policy-financial-caveat { display: flex; gap: 0.7rem; margin-top: 1rem; padding: 0.8rem 1rem; border-left: 3px solid var(--solar); background: #fbf8ee; color: #4e543f; }
+.policy-financial-caveat svg { flex: 0 0 auto; margin-top: 0.15rem; }
+.policy-financial-caveat p { font-size: 0.78rem; line-height: 1.55; }
+.policy-financial-caveat p + p { margin-top: 0.4rem; }
+.policy-financial-sources { margin-top: 1.3rem; }
+.policy-financial-sources h5 { font-size: 0.88rem; }
+.policy-financial-sources ul { display: grid; gap: 0.6rem; margin-top: 0.6rem; padding: 0; list-style: none; }
+.policy-financial-sources li { display: grid; gap: 0.2rem; padding: 0.75rem 0.9rem; border-left: 3px solid #aacbab; background: #f8fbf8; font-size: 0.75rem; overflow-wrap: anywhere; }
+.policy-financial-sources li > span, .policy-financial-sources li > small { color: var(--muted-foreground); line-height: 1.45; }
+.policy-financial-sources a { display: inline-flex; align-items: baseline; gap: 0.25rem; width: fit-content; min-height: 30px; color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+.policy-financial-sources a svg { flex-shrink: 0; }
+.policy-financial-decisions { margin-top: 1rem; border: 1px solid var(--border); border-radius: 0.65rem; }
+.policy-financial-decisions > summary { min-height: 44px; padding: 0.8rem 1rem; color: var(--primary); font-size: 0.84rem; font-weight: 700; }
+.policy-financial-decisions[open] > summary { border-bottom: 1px solid var(--border); }
+.policy-financial-decisions > .benefit-results { margin: 0; padding: 1rem; }
+.policy-financial-table-wrap { max-width: 100%; overflow-x: auto; }
+.policy-financial-table-wrap table { width: 100%; min-width: 550px; border-collapse: collapse; text-align: left; font-size: 0.76rem; }
+.policy-financial-table-wrap caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.policy-financial-table-wrap th, .policy-financial-table-wrap td { padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.policy-financial-table-wrap thead { background: var(--muted); color: var(--muted-foreground); }
+.policy-financial-table-wrap tbody tr:last-child th, .policy-financial-table-wrap tbody tr:last-child td { border-bottom: 0; }
+.policy-financial-unavailable { display: flex; gap: 0.8rem; margin-top: 1.5rem; padding: 1rem; border: 1px solid #e4d5a7; border-radius: 0.7rem; background: #fbf8ee; }
+.policy-financial-unavailable svg { flex: 0 0 auto; color: #8a6415; }
+.policy-financial-unavailable h4 { font-size: 1rem; }
+.policy-financial-unavailable p { margin-top: 0.4rem; color: #5d5541; font-size: 0.79rem; line-height: 1.5; }
+@media (max-width: 900px) { .policy-financial-ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); } .policy-financial-breakdown { grid-row: 2; grid-column: 1 / -1; } }
+@media (max-width: 620px) { .policy-financial-ledger { grid-template-columns: 1fr; } .policy-financial-breakdown { grid-row: auto; grid-column: auto; } .policy-financial-outcomes { grid-template-columns: 1fr; } }
 @media (max-width: 800px) { .benefits-entry { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .benefit-form-grid, .benefit-decision-grid { grid-template-columns: 1fr; } .benefit-total { align-items: flex-start; flex-direction: column; } }
 

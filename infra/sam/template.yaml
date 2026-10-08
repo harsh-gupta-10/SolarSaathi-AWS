@@ -175,6 +175,12 @@ Resources:
       LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/financials"
       RetentionInDays: !Ref LogRetentionDays
 
+  PolicyFinancialsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/policy-financials"
+      RetentionInDays: !Ref LogRetentionDays
+
   PolicyLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -324,6 +330,52 @@ Resources:
           Properties:
             RestApiId: !Ref Api
             Path: /financials/estimate
+            Method: POST
+
+  PolicyFinancialsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Calculates a policy-adjusted upfront scenario from an owned roof and current verified benefit rules.
+        must:
+          - Recompute the roof-fitting system and base cash flow before applying active verified benefits.
+          - Keep source citations and incomplete coverage visible; never infer benefit payment timing.
+          - Read only the owned core analysis and published policy/source records.
+    Properties:
+      Handler: handlers/policy-financials.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 28
+      LoggingConfig:
+        LogGroup: !Ref PolicyFinancialsLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+          POLICY_TABLE_NAME: !Ref PolicyTable
+      Policies:
+        - Statement:
+            - Sid: ReadOwnedPolicyFinancialRoof
+              Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt AnalysesTable.Arn
+            - Sid: ReadActivePolicyFinancialRules
+              Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt PolicyTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["PUBLISHED_POLICY#*", "SOURCE#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: ListActivePolicyFinancialIndex
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${PolicyTable.Arn}/index/GSI5"
+      Events:
+        EstimatePolicyFinancials:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /financials/policy-backed/estimate
             Method: POST
 
   PolicyPublicationFunction:

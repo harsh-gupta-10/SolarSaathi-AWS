@@ -5,7 +5,10 @@ import { ArrowUpRight, BadgeCheck, CircleHelp, Landmark, ShieldAlert } from "luc
 import { Button, Input, Label } from "@solarsaathi/ui";
 import type { SystemDemand } from "@solarsaathi/calculations";
 import { benefitsApi, type BenefitApplicantFacts, type BenefitEvaluationResponse } from "../lib/benefits-api";
+import { policyFinancialApi, type PolicyFinancialEstimateResponse } from "../lib/policy-financial-api";
+import type { FinancialInputs } from "../lib/financial-api";
 import { RoofRequestError } from "../lib/roof-api";
+import { PolicyFinancialResults } from "./policy-financial-results";
 
 const rupees = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const dateTime = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
@@ -101,17 +104,18 @@ function BenefitResults({ response }: { response: BenefitEvaluationResponse }) {
 }
 
 export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwhPerKwYear, nominalKw,
-  grossSystemCostRupees }: { propertyId: string; analysisId: string; demand: SystemDemand;
-  generationKwhPerKwYear: number; nominalKw: number; grossSystemCostRupees: number }) {
+  grossSystemCostRupees, financialInputs }: { propertyId: string; analysisId: string; demand: SystemDemand;
+  generationKwhPerKwYear: number; nominalKw: number; grossSystemCostRupees: number; financialInputs?: FinancialInputs }) {
   const [fields, setFields] = useState<Fields>({ ...initialFields,
     sanctionedLoadKw: demand.sanctionedLoadKw === undefined ? "" : String(demand.sanctionedLoadKw) });
   const [response, setResponse] = useState<BenefitEvaluationResponse>();
+  const [policyResponse, setPolicyResponse] = useState<PolicyFinancialEstimateResponse>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
   function update(key: keyof Fields, value: string) {
-    request.current?.abort(); request.current = null; setBusy(false); setResponse(undefined); setError(undefined);
+    request.current?.abort(); request.current = null; setBusy(false); setResponse(undefined); setPolicyResponse(undefined); setError(undefined);
     setFields(previous => ({ ...previous, [key]: value }));
   }
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -148,10 +152,17 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
       ...(schemes.length ? { participatingSchemeIds: schemes } : {}),
     };
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
-    setBusy(true); setError(undefined); setResponse(undefined);
-    void benefitsApi.evaluate(propertyId, analysisId, demand, generationKwhPerKwYear, nominalKw,
-      eligibleQuotedCostPaise, applicantFacts, controller.signal)
-      .then(result => { if (!controller.signal.aborted) setResponse(result); })
+    setBusy(true); setError(undefined); setResponse(undefined); setPolicyResponse(undefined);
+    const operation = financialInputs
+      ? policyFinancialApi.estimate(propertyId, analysisId, demand, generationKwhPerKwYear, nominalKw,
+        financialInputs, eligibleQuotedCostPaise, applicantFacts, controller.signal)
+      : benefitsApi.evaluate(propertyId, analysisId, demand, generationKwhPerKwYear, nominalKw,
+        eligibleQuotedCostPaise, applicantFacts, controller.signal);
+    void operation
+      .then(result => { if (!controller.signal.aborted) {
+        if ("benefits" in result) setPolicyResponse(result);
+        else setResponse(result);
+      } })
       .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof RoofRequestError ? cause.message :
         "The benefit service could not complete this evaluation. Try again."); })
       .finally(() => { if (request.current === controller) { request.current = null; setBusy(false); } });
@@ -204,11 +215,14 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
           value={fields.participatingSchemeIds} onChange={event => update("participatingSchemeIds", event.target.value)}
           placeholder="Comma-separated IDs, if known" maxLength={500} /></div>
       </div></details>
-      <div className="benefit-form-footer"><Button type="submit" disabled={busy}>{busy ? "Checking verified rules…" : "Evaluate benefits"}</Button>
+      <div className="benefit-form-footer"><Button type="submit" disabled={busy}>{busy ? "Checking verified rules…" : financialInputs ? "Estimate with verified benefits" : "Evaluate benefits"}</Button>
         <p><CircleHelp size={15} aria-hidden="true" /> This is an eligibility estimate, not a government approval or application.</p></div>
       {busy && <p role="status" className="system-form-status">Checking the saved system, current sources and rule compatibility…</p>}
       {error && <p role="alert" className="form-error">{error}</p>}
     </form>
     {response && <BenefitResults response={response} />}
+    {policyResponse && <><PolicyFinancialResults response={policyResponse} />
+      {policyResponse.benefits.result && <details className="policy-financial-decisions"><summary>View rule decisions and source details</summary>
+        <BenefitResults response={policyResponse.benefits} /></details>}</>}
   </section>;
 }

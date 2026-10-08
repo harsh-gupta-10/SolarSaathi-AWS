@@ -240,6 +240,9 @@ The Phase 10 API computes a request-scoped result and returns its request ID,
 policy versions and cited decisions. It does not persist this entity yet.
 Persisting a property-scoped audit snapshot requires a retention and privacy
 design, because applicant eligibility inputs are self-reported and sensitive.
+Phase 11 likewise returns a request-scoped policy-backed financial scenario
+with the base result and cited benefit evaluation, without storing an adjusted
+estimate or applicant facts.
 
 ## Access patterns
 

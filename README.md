@@ -69,7 +69,7 @@ Current policy values are never treated as permanent constants. A crawler detect
 
 ## Implementation status
 
-Phases 0–10 have locally implemented source code:
+Phases 0–11 have locally implemented source code:
 - pnpm workspace, Next.js marketing site, responsive application shell, typed
   packages, quality scripts, GitHub Actions, and compiled Lambda/SAM foundation;
 - Cognito hosted sign-in, code+PKCE callback, identity verification, profile and
@@ -97,6 +97,9 @@ Phases 0–10 have locally implemented source code:
 - a deterministic benefit engine with tri-state eligibility, cited numeric and
   clause evidence, compatibility/overlap/caps, an exact bounded optimizer,
   owner-scoped evaluation API, and separate administrator rule publication.
+- a policy-backed financial scenario that recomputes the owned roof and base
+  estimate, then presents current selected benefits, modeled net upfront cost,
+  adjusted cash flow and payback with cited policy provenance.
 
 Google-derived preview, analysis and cache records have a 21-day retention
 limit and an hourly bounded hard-delete worker with an error alarm. Google roof
@@ -111,15 +114,18 @@ Phase 10's publication workflow requires a separate reviewer and exact current
 official archive excerpts for every numeric value and rule clause. The
 homeowner benefit view labels applicant facts self-reported, leaves incomplete
 coverage visible, and never uses an unknown rule to increase the total.
+Phase 11 retains the unsubsidized base estimate when policy is unavailable.
+Its adjusted scenario assumes selected central/state/DISCOM/local benefits are
+received upfront; actual payment timing is unverified. Selected other benefits
+remain disclosed but do not reduce the modeled net cost or payback.
 
 These phases have **local** lint, typecheck, test and build coverage. No AWS
 resources or Google Cloud project have been configured or deployed for this app;
 live Cognito, DynamoDB, Google API and hosting behavior remains unverified.
 Production release also needs alarm notifications, a review of DynamoDB PITR
 backup retention for Google data, credentials in the intended AWS account, and
-live deployment checks. The Phase 11 policy-backed financial integration is
-not implemented; Phase 10 has no live policy data and provides no real subsidy
-figure in the local preview. The local
+live deployment checks. The policy engine has no live India benefit data and
+provides no real subsidy figure in the local preview. The local
 crawler monitors registered URLs; automatic discovery of linked official
 documents and live India source coverage remain open.
 

@@ -57,14 +57,15 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
-export async function postAuthenticated<T>(path: string, body: unknown, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+export async function postAuthenticated<T>(path: string, body: unknown, schema: z.ZodType<T>, signal?: AbortSignal,
+  timeoutMs = 12_000): Promise<T> {
   const url = endpoint(path);
   const controller = new AbortController();
   const cancel = () => controller.abort();
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) controller.abort();
   let timedOut = false;
-  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 12_000);
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
   try {
     if (controller.signal.aborted) throw new RoofRequestError("CANCELLED", "The request was cancelled.");
     let session: Awaited<ReturnType<typeof fetchAuthSession>>;

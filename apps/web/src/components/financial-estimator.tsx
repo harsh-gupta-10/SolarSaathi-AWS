@@ -80,7 +80,12 @@ export function FinancialEstimator({ propertyId, analysisId, demand, generationK
     {result && <><FinancialResults response={result} />
       <BenefitEvaluator key={result.requestId} propertyId={propertyId} analysisId={analysisId} demand={demand}
         generationKwhPerKwYear={generationKwhPerKwYear} nominalKw={result.system.nominalKw}
-        grossSystemCostRupees={result.financial.input.quote.grossSystemCostRupees} />
+        grossSystemCostRupees={result.financial.input.quote.grossSystemCostRupees}
+        financialInputs={{ grossSystemCostRupees: result.financial.input.quote.grossSystemCostRupees,
+          selfConsumptionFraction: result.financial.input.usage.selfConsumptionFraction,
+          importTariffRupeesPerKwh: result.financial.input.usage.importTariffRupeesPerKwh,
+          exportRateRupeesPerKwh: result.financial.input.usage.exportRateRupeesPerKwh,
+          annualMaintenanceRupees: result.financial.input.assumptions.annualMaintenanceRupees }} />
     </>}
   </section>;
 }

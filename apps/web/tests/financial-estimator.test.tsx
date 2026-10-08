@@ -7,7 +7,9 @@ import { FinancialEstimator } from "../src/components/financial-estimator";
 import { demoDesign, demoFinancialResponse } from "../src/app/demo/system-financial-fixture";
 
 const api = vi.hoisted(() => ({ estimate: vi.fn() }));
-vi.mock("../src/lib/financial-api", () => ({ financialApi: api }));
+vi.mock("../src/lib/financial-api", async importOriginal => ({
+  ...(await importOriginal<typeof import("../src/lib/financial-api")>()), financialApi: api,
+}));
 vi.mock("../src/lib/roof-api", () => ({ RoofRequestError: class extends Error {} }));
 
 const props = { propertyId: "property-1", analysisId: "analysis-1",
@@ -41,7 +43,7 @@ describe("base financial estimate UI", () => {
     expect(api.estimate).toHaveBeenCalledWith("property-1", "analysis-1", props.demand, 1500,
       props.recommendedNominalKw, { grossSystemCostRupees: 200000, selfConsumptionFraction: 0.7,
         importTariffRupeesPerKwh: 8, exportRateRupeesPerKwh: 0, annualMaintenanceRupees: 3000 }, expect.any(AbortSignal));
-    expect(screen.getByText(/Policy benefits and financing have not been evaluated/)).toBeTruthy();
+    expect(screen.getByText(/This base cash flow excludes policy benefits and financing/)).toBeTruthy();
     expect(screen.getByRole("img", { name: /Cumulative modeled cash flow/ })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "What changes the estimate?" })).toBeTruthy();
     await user.click(screen.getByText("Year-by-year cash flow (25 years)"));
