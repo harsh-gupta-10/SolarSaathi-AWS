@@ -16,24 +16,6 @@ export default function Home() {
 
   return (
     <div className="marketing-page">
-      {/* Samara Dark Announcement / Top Hero Banner */}
-      <aside className="samara-announcement-bar" aria-label="System environment status">
-        <div className="container samara-announcement-content">
-          <p className="availability">
-            <span className="availability-dot" aria-hidden="true" />
-            {liveServicesConfigured
-              ? "Development environment — live map and account services configured"
-              : "Local preview — live integrations need cloud configuration"}
-          </p>
-          <div className="announcement-actions">
-            <span className="announcement-spec" aria-hidden="true">MODEL: SAMARA ARCHITECTURAL 2026</span>
-            <Link href="/demo" className="samara-urgent-cta">
-              Explore guided demo <ArrowUpRight size={13} aria-hidden="true" />
-            </Link>
-          </div>
-        </div>
-      </aside>
-
       {/* Main Site Header */}
       <header className="site-header container">
         <Link className="brand" href="/" aria-label="SolarSaathi home">
@@ -293,8 +275,13 @@ export default function Home() {
           </Link>
           <p className="footer-motto">India-first rooftop solar, built on facts.</p>
         </div>
-        <div className="footer-stamp" aria-hidden="true">
-          <span>SAMARA ARCHITECTURAL SYSTEM • SUNLIT MODEL LIGHT THEME</span>
+        <div className="footer-stamp">
+          <p className="footer-env-status text-xs text-muted-foreground/80 m-0">
+            {liveServicesConfigured
+              ? "Development environment — live map and account services configured"
+              : "Local preview — live integrations need cloud configuration"}
+          </p>
+          <span aria-hidden="true">SAMARA ARCHITECTURAL SYSTEM • SUNLIT MODEL LIGHT THEME</span>
         </div>
         <div className="footer-links">
           <Link href="/demo">Guided demo</Link>

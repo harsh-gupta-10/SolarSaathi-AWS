@@ -6,7 +6,7 @@ import { CheckCircle2, ChevronRight, Layers, LocateFixed, MapPin, Ruler, ShieldC
 import { Button, Input, Label } from "@solarsaathi/ui";
 import type { GeocodeCandidate, ManualRoofMeasurements, NormalizedRoofV1, RoofConfirmationResponse, RoofPoint, RoofPreviewResponse } from "@solarsaathi/types";
 import { useAuth } from "../auth/auth-provider";
-import { ADDRESS_DRAFT_KEY, readAddressDraft } from "../lib/address-draft";
+import { ADDRESS_DRAFT_KEY, readAddressDraft, saveAddressDraft } from "../lib/address-draft";
 import { getPublicEnvironment } from "../lib/env";
 import { roofApi, RoofRequestError } from "../lib/roof-api";
 import { brokerApi } from "../lib/broker-api";
@@ -48,6 +48,9 @@ export function AnalyzeStart() {
   const [error, setError] = useState<string>();
   const [existingLookup, setExistingLookup] = useState(false);
   const [existingLookupError, setExistingLookupError] = useState<string>();
+  const [gpsLocating, setGpsLocating] = useState(false);
+  const [gpsError, setGpsError] = useState<string>();
+  const [gpsSuccess, setGpsSuccess] = useState<string>();
   const request = useRef<AbortController | null>(null);
   const propertyLookup = useRef<AbortController | null>(null);
   const locationAttempt = useRef(0);
@@ -70,6 +73,7 @@ export function AnalyzeStart() {
     setSelected(undefined); setPoint(undefined); setMapCenter(undefined); setDeviceLocation(undefined);
     setLocationStatus("idle"); setLocationMessage(undefined); setPreview(undefined);
     setBuildingConfirmed(false); setResult(undefined); setManualMode(false);
+    setGpsLocating(false); setGpsError(undefined); setGpsSuccess(undefined);
     setActiveTab(1);
   }, [account, status]);
 
@@ -127,6 +131,7 @@ export function AnalyzeStart() {
     setSelected(undefined); setPoint(undefined); setMapCenter(undefined); setDeviceLocation(undefined);
     setLocationStatus("idle"); setLocationMessage(undefined); setPreview(undefined);
     setBuildingConfirmed(false); setResult(undefined); setManualMode(false);
+    setGpsLocating(false); setGpsError(undefined); setGpsSuccess(undefined);
     setActiveTab(1);
   }
 
@@ -159,24 +164,132 @@ export function AnalyzeStart() {
       .finally(() => { if (request.current === controller) { request.current = null; setBusy(undefined); } });
   }
 
-  async function ensureProperty(signal: AbortSignal) {
+  async function ensureProperty(signal: AbortSignal, addrOverride?: string) {
     if (propertyId) return propertyId;
-    if (!address || status !== "signedIn" || !profile) throw new RoofRequestError("SESSION_UNAVAILABLE", "Sign in and enter a property address first.");
+    const targetAddress = addrOverride ?? address;
+    if (!targetAddress || status !== "signedIn" || !profile) throw new RoofRequestError("SESSION_UNAVAILABLE", "Sign in and enter a property address first.");
     if (profile.role === "BROKER" && !customerName.trim()) throw new RoofRequestError("CUSTOMER_REQUIRED", "Enter the customer’s name before creating a broker property.");
     await roofApi.bootstrap(signal);
     const customerId = profile.role === "BROKER" ? await roofApi.createCustomer(customerName.trim(), signal) : undefined;
-    const id = await roofApi.createProperty(address, customerId, signal);
+    const id = await roofApi.createProperty(targetAddress, customerId, signal);
     if (!signal.aborted) {
       setPropertyId(id);
       saveStoredProperty({
         propertyId: id,
         label: customerName.trim() ? `${customerName.trim()} - Rooftop` : "My Home Rooftop",
-        address,
+        address: targetAddress,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }, profile.userId);
     }
     return id;
+  }
+
+  function handleAutoFetchLocation() {
+    setGpsError(undefined);
+    setGpsSuccess(undefined);
+    if (typeof window === "undefined" || !navigator?.geolocation) {
+      setGpsError("Geolocation is not supported by your browser. Please enter your address manually.");
+      return;
+    }
+    setGpsLocating(true);
+    try {
+      navigator.geolocation.getCurrentPosition(
+        async position => {
+          const { latitude: lat, longitude: lng, accuracy } = position.coords;
+          if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+            setGpsLocating(false);
+            setGpsError("Device returned invalid GPS coordinates. Please enter your address manually.");
+            return;
+          }
+          const current: RoofPoint = { latitude: lat, longitude: lng };
+          const formattedAddress = `Current Location (${lat.toFixed(5)}° N, ${lng.toFixed(5)}° E)`;
+          try {
+            saveAddressDraft(sessionStorage, formattedAddress);
+          } catch {
+            // sessionStorage blocked
+          }
+          setAddress(formattedAddress);
+          setEditing(false);
+          setPoint(current);
+          setLatitude(lat.toFixed(6));
+          setLongitude(lng.toFixed(6));
+          setMapCenter(current);
+          setDeviceLocation({ point: current, accuracyMeters: accuracy });
+          setLocationStatus("ready");
+          setLocationMessage(`Device location detected (accuracy ~${Math.round(accuracy)} m).`);
+
+          const gpsCandidate: GeocodeCandidate = {
+            placeId: `gps-${lat.toFixed(4)}-${lng.toFixed(4)}`,
+            address: formattedAddress,
+            location: current,
+            locationType: "ROOFTOP",
+            partialMatch: false,
+          };
+          setCandidates([gpsCandidate]);
+          setSelected(gpsCandidate);
+          setGpsSuccess(`GPS location locked (~${Math.round(accuracy)}m accuracy).`);
+
+          if (status === "signedIn" && profile) {
+            run("property", async signal => {
+              const id = await ensureProperty(signal, formattedAddress);
+              if (signal.aborted) return;
+              setActiveTab(2);
+              setGpsLocating(false);
+              run("insights", async insightsSignal => {
+                const data = await roofApi.insights(id, gpsCandidate, current, insightsSignal);
+                if (!insightsSignal.aborted) {
+                  setPreview(data);
+                  setBuildingConfirmed(false);
+                  if (data.roof?.center) {
+                    setPoint(data.roof.center);
+                    setLatitude(data.roof.center.latitude.toFixed(6));
+                    setLongitude(data.roof.center.latitude.toFixed(6));
+                    setMapCenter(data.roof.center);
+                  }
+                }
+              });
+            });
+          } else {
+            setGpsLocating(false);
+          }
+        },
+        failure => {
+          setGpsLocating(false);
+          if (failure.code === 1) {
+            setGpsError("Location permission denied. Please allow location access in your browser or enter your address manually.");
+          } else if (failure.code === 3) {
+            setGpsError("Location request timed out. Please try again or enter your address manually.");
+          } else {
+            setGpsError("Could not retrieve device location. Please enter your address manually.");
+          }
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+      );
+    } catch {
+      setGpsLocating(false);
+      setGpsError("Could not initiate location request. Please enter your address manually.");
+    }
+  }
+
+  function handleQuickCity(cityName: string) {
+    const cityAddresses: Record<string, string> = {
+      Pune: "FC Road, Shivajinagar, Pune, Maharashtra 411005",
+      Mumbai: "Bandra West, Mumbai, Maharashtra 400050",
+      Bengaluru: "Indiranagar 100ft Road, Bengaluru, Karnataka 560038",
+      "Delhi NCR": "Connaught Place, New Delhi, Delhi 110001",
+      Hyderabad: "Banjara Hills, Road No 12, Hyderabad, Telangana 500034",
+      Nagpur: "Civil Lines, Nagpur, Maharashtra 440001",
+    };
+    const target = cityAddresses[cityName] || `${cityName}, India`;
+    reset();
+    try {
+      saveAddressDraft(sessionStorage, target);
+    } catch {
+      // sessionStorage blocked
+    }
+    setAddress(target);
+    setEditing(false);
   }
 
   function findBuilding() {
@@ -437,14 +550,16 @@ export function AnalyzeStart() {
             <button
               type="button"
               onClick={() => setActiveTab(1)}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors border ${
+              className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all border ${
                 activeTab === 1
-                  ? "bg-primary text-primary-foreground border-primary shadow-xs"
-                  : "bg-muted/40 text-foreground hover:bg-muted border-border/60"
+                  ? "bg-primary text-primary-foreground border-primary shadow-xs ring-1 ring-primary/20"
+                  : "bg-background text-foreground hover:bg-muted border-border/80 shadow-2xs"
               }`}
             >
-              <MapPin className="size-3.5" />
-              1. Address &amp; Property
+              <span className={`inline-flex items-center justify-center size-5 rounded-full text-[11px] font-bold ${
+                activeTab === 1 ? "bg-white/20 text-white" : "bg-muted text-foreground"
+              }`}>1</span>
+              <span>1. Address &amp; Property</span>
             </button>
           </li>
           <li aria-current={activeTab === 2 ? "step" : undefined}>
@@ -452,16 +567,18 @@ export function AnalyzeStart() {
               type="button"
               onClick={() => canAccessTab2 && setActiveTab(2)}
               disabled={!canAccessTab2}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors border ${
+              className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all border ${
                 activeTab === 2
-                  ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                  ? "bg-primary text-primary-foreground border-primary shadow-xs ring-1 ring-primary/20"
                   : canAccessTab2
-                  ? "bg-muted/40 text-foreground hover:bg-muted border-border/60"
-                  : "opacity-40 cursor-not-allowed border-transparent text-muted-foreground"
+                  ? "bg-background text-foreground hover:bg-muted border-border/80 shadow-2xs"
+                  : "bg-muted/30 border-border/60 text-muted-foreground/85 cursor-not-allowed"
               }`}
             >
-              <LocateFixed className="size-3.5" />
-              2. Satellite &amp; Pin
+              <span className={`inline-flex items-center justify-center size-5 rounded-full text-[11px] font-bold ${
+                activeTab === 2 ? "bg-white/20 text-white" : canAccessTab2 ? "bg-muted text-foreground" : "bg-muted/70 text-muted-foreground/80"
+              }`}>2</span>
+              <span>2. Satellite &amp; Pin</span>
             </button>
           </li>
           <li aria-current={activeTab === 3 ? "step" : undefined}>
@@ -469,16 +586,18 @@ export function AnalyzeStart() {
               type="button"
               onClick={() => canAccessTab3 && setActiveTab(3)}
               disabled={!canAccessTab3}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors border ${
+              className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all border ${
                 activeTab === 3
-                  ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                  ? "bg-primary text-primary-foreground border-primary shadow-xs ring-1 ring-primary/20"
                   : canAccessTab3
-                  ? "bg-muted/40 text-foreground hover:bg-muted border-border/60"
-                  : "opacity-40 cursor-not-allowed border-transparent text-muted-foreground"
+                  ? "bg-background text-foreground hover:bg-muted border-border/80 shadow-2xs"
+                  : "bg-muted/30 border-border/60 text-muted-foreground/85 cursor-not-allowed"
               }`}
             >
-              <Layers className="size-3.5" />
-              3. 3D Roof Model
+              <span className={`inline-flex items-center justify-center size-5 rounded-full text-[11px] font-bold ${
+                activeTab === 3 ? "bg-white/20 text-white" : canAccessTab3 ? "bg-muted text-foreground" : "bg-muted/70 text-muted-foreground/80"
+              }`}>3</span>
+              <span>3. 3D Roof Model</span>
             </button>
           </li>
           <li aria-current={activeTab === 4 ? "step" : undefined}>
@@ -486,16 +605,18 @@ export function AnalyzeStart() {
               type="button"
               onClick={() => canAccessTab4 && setActiveTab(4)}
               disabled={!canAccessTab4}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors border ${
+              className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all border ${
                 activeTab === 4
-                  ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                  ? "bg-primary text-primary-foreground border-primary shadow-xs ring-1 ring-primary/20"
                   : canAccessTab4
-                  ? "bg-muted/40 text-foreground hover:bg-muted border-border/60"
-                  : "opacity-40 cursor-not-allowed border-transparent text-muted-foreground"
+                  ? "bg-background text-foreground hover:bg-muted border-border/80 shadow-2xs"
+                  : "bg-muted/30 border-border/60 text-muted-foreground/85 cursor-not-allowed"
               }`}
             >
-              <Sun className="size-3.5" />
-              4. Solar &amp; Subsidies
+              <span className={`inline-flex items-center justify-center size-5 rounded-full text-[11px] font-bold ${
+                activeTab === 4 ? "bg-white/20 text-white" : canAccessTab4 ? "bg-muted text-foreground" : "bg-muted/70 text-muted-foreground/80"
+              }`}>4</span>
+              <span>4. Solar &amp; Subsidies</span>
             </button>
           </li>
         </ol>
@@ -505,7 +626,7 @@ export function AnalyzeStart() {
           variant="outline"
           size="sm"
           onClick={fillSampleRoofData}
-          className="self-start sm:self-auto border-dashed border-amber-500/60 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 text-xs font-medium"
+          className="self-start sm:self-auto border-dashed border-amber-500/70 text-amber-800 dark:text-amber-300 hover:bg-amber-500/10 text-xs font-medium shadow-2xs"
         >
           <Sparkles className="mr-1.5 size-3.5 text-amber-500" />
           ⚡ Auto-Fill Sample Data (Mumbai 3 kW)
@@ -556,23 +677,93 @@ export function AnalyzeStart() {
       {activeTab === 1 && (
         <div className="space-y-6">
           <section className="workspace-start" aria-labelledby="address-draft-title">
-            <MapPin className="start-icon" aria-hidden="true" />
-            <h2 id="address-draft-title">Your property address</h2>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center size-10 rounded-xl bg-primary/10 text-primary shrink-0">
+                  <MapPin className="size-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <h2 id="address-draft-title" className="text-xl font-bold tracking-tight text-foreground m-0">
+                    Property Location &amp; Rooftop Details
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5 m-0">
+                    Enter your street address or auto-detect via GPS to inspect your rooftop solar geometry.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* GPS Auto-Fetch Feature Callout */}
+            <div className="mb-5 rounded-xl border border-primary/20 bg-primary/5 p-3.5 transition-colors">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                    <LocateFixed className={`size-4 ${gpsLocating ? "animate-spin" : ""}`} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-foreground m-0">Auto-Fetch Current Location (GPS)</p>
+                    <p className="text-[11px] text-muted-foreground m-0">
+                      Grant browser permission to automatically detect your coordinates and inspect your roof on satellite view.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  onClick={handleAutoFetchLocation}
+                  disabled={gpsLocating}
+                  className="shrink-0 text-xs font-semibold shadow-xs"
+                >
+                  {gpsLocating ? (
+                    <>
+                      <span className="inline-block size-3 border-2 border-current border-r-transparent rounded-full animate-spin mr-1.5" />
+                      Locating rooftop…
+                    </>
+                  ) : (
+                    <>
+                      <LocateFixed className="size-3.5 mr-1.5" />
+                      Auto-Fetch Location
+                    </>
+                  )}
+                </Button>
+              </div>
+              {gpsSuccess && (
+                <p className="mt-2 text-xs text-primary font-medium m-0 flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3.5" />
+                  {gpsSuccess}
+                </p>
+              )}
+              {gpsError && (
+                <div className="mt-2.5 flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/30 p-2.5 text-xs text-amber-800 dark:text-amber-200">
+                  <span className="font-bold shrink-0">⚠️</span>
+                  <span className="flex-1">{gpsError}</span>
+                  <button type="button" onClick={() => setGpsError(undefined)} className="ml-1 text-xs font-bold hover:underline">✕</button>
+                </div>
+              )}
+            </div>
+
             {existingLookup && accountRef.current === account ? (
               <p role="status">Loading the saved property…</p>
             ) : visibleAddress === null ? (
               <p role="status">Loading your tab’s draft…</p>
             ) : visibleAddress && !editing ? (
-              <>
-                <p className="draft-address">{visibleAddress}</p>
-                <p className="muted">
-                  {propertyId
-                    ? "Saved property in your organization. The address was loaded from the backend."
-                    : "This is a browser tab draft until you start an assessment."}
-                </p>
-                <div className="draft-actions">
+              <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">Selected Property Address</span>
+                    <p className="draft-address font-semibold text-foreground text-base mt-0.5">{visibleAddress}</p>
+                    <p className="muted text-xs">
+                      {propertyId
+                        ? "Saved property in your organization. The address was loaded from the backend."
+                        : "This is a browser tab draft until you start an assessment."}
+                    </p>
+                  </div>
+                </div>
+                <div className="draft-actions flex flex-wrap gap-2 pt-1">
                   <Button
                     variant="outline"
+                    size="sm"
                     onClick={() => {
                       reset();
                       setEditing(true);
@@ -580,22 +771,38 @@ export function AnalyzeStart() {
                   >
                     Edit address
                   </Button>
-                  <Button variant="ghost" onClick={clear}>
+                  <Button variant="ghost" size="sm" onClick={clear}>
                     Clear draft
                   </Button>
                 </div>
-              </>
+              </div>
             ) : (
-              <AddressForm
-                key={visibleAddress ?? ""}
-                initialAddress={visibleAddress ?? ""}
-                compact
-                onSaved={value => {
-                  reset();
-                  setAddress(value);
-                  setEditing(false);
-                }}
-              />
+              <div className="space-y-3">
+                <AddressForm
+                  key={visibleAddress ?? ""}
+                  initialAddress={visibleAddress ?? ""}
+                  compact
+                  onSaved={value => {
+                    reset();
+                    setAddress(value);
+                    setEditing(false);
+                  }}
+                />
+                {/* Quick Select Preset Indian Cities */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
+                  <span className="text-muted-foreground font-medium">Quick search:</span>
+                  {["Pune", "Mumbai", "Bengaluru", "Delhi NCR", "Hyderabad", "Nagpur"].map(city => (
+                    <button
+                      key={city}
+                      type="button"
+                      onClick={() => handleQuickCity(city)}
+                      className="rounded-full border border-border/80 bg-background px-2.5 py-0.5 text-xs font-medium text-foreground hover:bg-muted hover:border-primary/40 transition-colors cursor-pointer"
+                    >
+                      {city}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
 
             {profile?.role === "BROKER" && enabled && !propertyId && (
