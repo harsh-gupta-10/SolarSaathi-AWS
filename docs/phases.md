@@ -535,6 +535,28 @@ template inventory are outside this phase's implemented scope.
 - explicit "live researched" status
 - no false global coverage
 
+Status: **implemented locally (2026-10-09)**. The authenticated non-India
+research route accepts an explicit country or user-triggered device location,
+using Amazon Location for one-time country detection with a distance bound.
+An exact-host registry starts with official US, Great Britain and Australian
+agency pages. Bounded public-DNS, pinned-TLS, robots-aware fetches create
+cited live page metadata; optional Brave discovery proposes only same-host
+URLs using generic country/host terms. Region and utility are user-declared
+context, and unsupported or unverified scope stays incomplete or unavailable.
+Research never supplies eligibility or a benefit amount to the India engine.
+Permitted citation metadata has short DynamoDB TTL; coordinates and pages
+forbidding storage are never cached. The UI exposes retrieval, expiry,
+source/date and coverage limits, plus a plainly fictional demo.
+
+The full local gate passed lint, typechecking, **794 tests**, API bundle/PDF
+smoke and production builds. Real local official-page fetches succeeded for
+the three starter hosts, with no-store responses kept transient. Browser
+inspection covered the demo, signed-out account guard and a narrow viewport
+without horizontal overflow. No live AWS geocoding, DynamoDB, Cognito or
+deployed API was verified; optional search needs a server-side key, and source
+coverage is intentionally limited. CloudFormation/SAM deployment validation
+remains pending cloud access.
+
 ## Phase 18 — Admin policy console
 - sources
 - crawler runs

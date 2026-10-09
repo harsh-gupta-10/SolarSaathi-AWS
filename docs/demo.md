@@ -116,6 +116,16 @@ quote and assumptions. Save and reopen the as-of snapshot to show source
 version, last check and coverage status. The `/demo/broker` screen is a
 fictional layout preview; its records and policy states are not live data.
 
+### International research fallback
+
+Open `/app/international` with a signed-in account to request a country source
+check or deliberately choose **Use my location once**. The response must show
+official source links, retrieval time and incomplete coverage; a supplied
+region or utility is context, not verified applicability. If the research API
+or its dependencies are unavailable, show that state plainly. The
+`/demo/international` screen is synthetic and visibly fictional; it never
+claims that its source cards were fetched during the demo session.
+
 ## Demo reliability
 
 Live services should be used when available.

@@ -56,6 +56,11 @@ Parameters:
     Default: ""
     AllowedPattern: '^$|^arn:(aws|aws-cn|aws-us-gov):secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
     Description: Secrets Manager ARN containing an apiKey JSON key for server-side Solar requests.
+  BraveSearchKeySecretArn:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^arn:(aws|aws-cn|aws-us-gov):secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
+    Description: Optional Secrets Manager ARN containing an apiKey JSON key for transient official-host discovery only.
   AdvisorBedrockModelId:
     Type: String
     Default: ""
@@ -91,6 +96,7 @@ Conditions:
   GoogleFederationEnabled: !Equals [!Ref EnableGoogleFederation, "true"]
   GeocodingConfigured: !Not [!Equals [!Ref GoogleGeocodingKeySecretArn, ""]]
   SolarConfigured: !Not [!Equals [!Ref GoogleSolarKeySecretArn, ""]]
+  BraveSearchConfigured: !Not [!Equals [!Ref BraveSearchKeySecretArn, ""]]
   AdvisorBedrockConfigured: !Not [!Equals [!Ref AdvisorBedrockModelArn, ""]]
   AdvisorFoundationModelConfigured: !Not [!Equals [!Ref AdvisorBedrockFoundationModelArn, ""]]
   DesignImageConfigured: !Not [!Equals [!Ref DesignImageModelId, ""]]
@@ -228,6 +234,12 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/policy-financials"
+      RetentionInDays: !Ref LogRetentionDays
+
+  InternationalResearchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/international-research"
       RetentionInDays: !Ref LogRetentionDays
 
   BrokerLogGroup:
@@ -509,6 +521,60 @@ Resources:
           Properties:
             RestApiId: !Ref Api
             Path: /financials/policy-backed/estimate
+            Method: POST
+
+  InternationalResearchFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Fetches bounded official international policy source metadata on demand without activating or calculating benefits.
+        must:
+          - Reverse geocode user-triggered coordinates with SingleUse and never persist coordinates or geocode responses.
+          - Fetch only reviewed official hosts after public DNS, pinned TLS, robots, content and time checks.
+          - Never pass user context to external discovery or expose the server search key.
+    Properties:
+      Handler: handlers/international-research.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 28
+      LoggingConfig:
+        LogGroup: !Ref InternationalResearchLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+          BRAVE_SEARCH_API_KEY: !If
+            - BraveSearchConfigured
+            - !Sub "{{resolve:secretsmanager:${BraveSearchKeySecretArn}:SecretString:apiKey}}"
+            - ""
+      Policies:
+        - Statement:
+            - Sid: ReverseGeocodeSingleUse
+              Effect: Allow
+              Action: geo-places:ReverseGeocode
+              Resource: !Sub "arn:${AWS::Partition}:geo-places:${AWS::Region}::provider/default"
+            - Sid: ReadResearchCache
+              Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["INTL_RESEARCH#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: WriteResearchCache
+              Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["INTL_RESEARCH#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+      Events:
+        ResearchInternationalPolicies:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /policies/research
             Method: POST
 
   BrokerFunction:

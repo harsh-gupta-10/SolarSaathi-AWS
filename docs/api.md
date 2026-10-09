@@ -311,7 +311,23 @@ Paths below are planned contracts unless listed as available above.
 
 `POST /v1/policies/research`
 
-For international research, return a clearly labelled live-research result.
+Phase 17 uses this authenticated endpoint for on-demand, non-India source
+research. Supply either an ISO two-letter `countryCode` or one-time
+`location: { latitude, longitude }`, with optional user-declared `region` and
+`utility`. A location is reverse geocoded on the AWS backend; uncertain
+locations require manual country entry. India requests are directed to the
+curated India workflow. The response contains `status` (`LIVE_RESEARCHED`,
+`INCOMPLETE`, or `UNAVAILABLE`), jurisdiction and detection origin, checked and
+expiry times, temporary-cache status, coverage reason codes, and bounded
+official-page citations with URL, source date when established, retrieval time
+and content hash. `coverage.complete` is always false. Region and utility
+entries are context supplied by the user, not verified applicability. This
+endpoint does not return an eligibility decision, benefit amount, or active
+policy fact, and its results do not enter the India stacking engine. Only
+official pages fetched under the server's exact-host registry are cited;
+search results alone are not evidence.
+Official pages with no-store headers may be cited transiently in the response
+but never enter the research cache.
 
 ## Applications
 

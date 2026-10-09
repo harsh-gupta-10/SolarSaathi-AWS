@@ -223,6 +223,16 @@ For non-India:
 - cache temporarily
 - do not promote to authoritative curated policy until reviewed
 
+The Phase 17 fallback starts from a small, explicitly reviewed official-host
+registry. It can verify current pages for the United States Department of
+Energy, Great Britain's Ofgem, and Australia's Clean Energy Regulator. These
+are discovery starting points, not national, state, utility, or incentive
+coverage. Search is optional and only proposes official-host URLs; the server
+must separately fetch, validate robots rules, and pin public DNS/TLS before a
+page is cited. User-entered region or utility names are unverified context;
+without scoped evidence the result is incomplete. Research metadata expires
+quickly and never becomes an active rule, eligibility result, or subsidy amount.
+
 ## 11. Admin approval
 
 Phase 9 approves or rejects **evidence review records** only: document changes

@@ -168,9 +168,17 @@ field diffs and rollback remain future work. This is distinct from Phase 9
 document-change evidence above.
 
 ### POLICY_RESEARCH_CACHE
-`PK=RESEARCH#fingerprint`, `SK=RESULT#version`
-
-For international/on-demand research.
+Phase 17 stores bounded, temporary international source metadata in the core
+table at `PK=INTL_RESEARCH#sha256(normalized jurisdiction and registry version)`,
+`SK=VERSION#1`. The record contains a versioned response, research timestamp,
+and `expiresAtEpochSeconds` for read-time expiry and DynamoDB TTL. The cache
+holds fetched official-page citations, not Brave search-result content,
+coordinates, reverse-geocode results, benefit amounts, or active policy facts.
+Requests using device coordinates bypass this cache. A cache hit retains the
+original source retrieval time and gets a new request ID; expiry is never
+extended by reading. A source forbidding storage with `Cache-Control:
+no-store` can be cited for the current request but is never written to this
+cache. Unsupported jurisdictions and failed fetches are not stored.
 
 ## Subsidy/application entities
 

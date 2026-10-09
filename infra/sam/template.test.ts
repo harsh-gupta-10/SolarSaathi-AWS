@@ -17,7 +17,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(template.Transform).toBe("AWS::Serverless-2016-10-31");
   });
   it("uses compiled handlers with explicit log destinations", () => {
-    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "DesignsFunction", "FinancialsFunction", "PolicyFinancialsFunction", "BrokerFunction", "BenefitsFunction", "ApplicationsFunction", "PolicyFunction", "PolicyPublicationFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
+    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "DesignsFunction", "FinancialsFunction", "PolicyFinancialsFunction", "InternationalResearchFunction", "BrokerFunction", "BenefitsFunction", "ApplicationsFunction", "PolicyFunction", "PolicyPublicationFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
       expect(properties(name).CodeUri).toBe("../../apps/api/dist");
       expect(properties(name).Handler).toMatch(/^handlers\/[a-z-]+\.handler$/);
       expect(properties(name).LoggingConfig).toBeDefined();
@@ -79,6 +79,25 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(properties("Api").Auth).toMatchObject({ DefaultAuthorizer: "CognitoUserPool", AddDefaultAuthorizerToCorsPreflight: false });
     const events = properties("HealthFunction").Events as Record<string, { Properties: Record<string, unknown> }>;
     expect(events.Health.Properties.Auth).toEqual({ Authorizer: "NONE" });
+  });
+
+  it("keeps international research authenticated, temporary and limited to geocode plus cache keys", () => {
+    const research = properties("InternationalResearchFunction");
+    expect(research.Handler).toBe("handlers/international-research.handler");
+    expect(research.Timeout).toBe(28);
+    expect(research.Events).toEqual({ ResearchInternationalPolicies: { Type: "Api", Properties: {
+      RestApiId: "Api", Path: "/policies/research", Method: "POST",
+    } } });
+    expect(research.Environment).toMatchObject({ Variables: { CORE_TABLE_NAME: "AnalysesTable",
+      BRAVE_SEARCH_API_KEY: ["BraveSearchConfigured", expect.stringContaining("resolve:secretsmanager"), ""] } });
+    const statements = (research.Policies as { Statement: { Sid: string; Action: string; Resource: unknown; Condition?: unknown }[] }[])[0]!.Statement;
+    expect(statements.map(statement => statement.Sid)).toEqual([
+      "ReverseGeocodeSingleUse", "ReadResearchCache", "WriteResearchCache",
+    ]);
+    expect(statements[0]!.Action).toBe("geo-places:ReverseGeocode");
+    expect(statements[0]!.Resource).toBe("arn:${AWS::Partition}:geo-places:${AWS::Region}::provider/default");
+    expect(statements[1]!.Condition).toMatchObject({ "Null": { "dynamodb:LeadingKeys": "false" } });
+    expect(statements[2]!.Condition).toMatchObject({ "Null": { "dynamodb:LeadingKeys": "false" } });
   });
 
   it("routes authenticated core operations through the stage-relative API", () => {

@@ -389,10 +389,20 @@ recommendations.
 
 When researching:
 
-> Checking current solar incentives for your location...
+> Checking official solar sources for your location...
 
 Then show:
 - source
 - retrieval time
-- "Live researched"
-- confidence
+- "Live researched", "Research incomplete", or "Research unavailable"
+- source date when known, expiry and cache state
+- explicit incomplete coverage and reason codes
+
+The Phase 17 research page accepts a country code or a user-triggered,
+one-time device location. A location request clears the manually selected
+country and is sent only to the AWS research API for country detection. Region
+and utility fields provide user-declared context; they do not establish that
+the cited source applies to that area or customer. Official source links open
+separately. The page never shows a researched subsidy amount or eligibility
+result. A visibly fictional demo explains the result format without calling
+live services.

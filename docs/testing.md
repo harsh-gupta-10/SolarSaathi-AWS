@@ -228,6 +228,25 @@ smoke and production builds. Browser inspection covered the fictional broker
 demo at desktop and 390-pixel mobile widths and the signed-out broker guard;
 authenticated broker behavior remains unverified against deployed services.
 
+### Phase 17 international fallback
+
+Test explicit and one-time location input, unsupported countries, India
+handoff, Great Britain versus Northern Ireland, uncertain geocodes, country
+and region mismatches, request bounds and authenticated access. Search
+candidates must never become citations until a robots-allowed, exact-host,
+public-DNS, pinned-TLS official fetch succeeds. Cover redirect, private DNS,
+oversized response, timeout, malformed HTML and search failure. Validate
+cache hits, expiry, corrupt cache rejection and optional cache failures without
+retaining coordinates or turning research into an active policy or amount.
+Check desktop/mobile states for source/retrieval/expiry metadata, incomplete
+coverage and signed-out/fictional-demo separation. Mock tests and a synthetic
+demo do not verify live government data or cloud permissions.
+The Phase 17 full local gate passed 794 tests, lint, typechecking, API
+bundle/PDF smoke and production builds. The authenticated route guard and
+fictional demo were inspected in the browser; narrow-viewport DOM metrics
+showed no horizontal overflow. These checks do not establish deployed
+Amazon Location, Cognito, DynamoDB, or Brave-key behavior.
+
 ### Phase 11 policy-backed financial scenario
 
 The Phase 11 local `pnpm check` gate passed 692 tests across the workspace,

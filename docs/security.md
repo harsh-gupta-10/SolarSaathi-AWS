@@ -150,6 +150,17 @@ Use environment configuration / AWS secret management where required.
 - sanitize extracted content
 - never execute downloaded documents
 
+Phase 17 international research accepts no browser-supplied URL. Only exact
+reviewed official hosts can be fetched; redirects stay on that host, DNS
+answers must be public, and the TLS connection is pinned to the checked
+address. Apply robots, response byte and time limits. Optional external search
+gets a fixed generic country/host query only; no user region, utility, free
+text or coordinates go to the search provider. Browser geolocation happens
+only on a button click and coordinates are sent to the AWS backend for a
+single-use reverse geocode; neither coordinates nor geocode output are cached.
+Cache data is versioned, validated on read and bounded by TTL. Live research
+cannot feed the verified India benefit engine or be published as policy.
+
 ## Prompt injection
 Government web pages and uploaded documents are untrusted content.
 
