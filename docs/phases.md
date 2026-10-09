@@ -431,6 +431,33 @@ renewed AWS credentials respectively.
 
 No pay-to-rank logic in MVP.
 
+Status: locally implemented with explicitly unavailable prices and policy
+mandates. The authenticated endpoint reloads an owned, confirmed unexpired
+roof, recomputes the Phase 6 system candidate and rejects unsupported or
+unfit choices. A deterministic equipment/check taxonomy ranks electrical
+safety, monitoring, backup, EV and maintenance items from declared goals and
+site/inverter context. Each item includes a necessity classification,
+compatibility review state, reason and safety note. Battery and EV equipment
+remain conditional on user goals and qualified design review. The catalog has
+no vendor or commission inputs. No accessory is marked `REQUIRED_BY_RULE`
+without verified exact policy evidence; no current evidence is configured, so
+policy relevance is `NOT_EVALUATED`. No sourced current price catalog exists,
+so cost ranges are `UNAVAILABLE`. Accessory costs never change the base solar
+estimate or benefit amount. The authenticated UI shows a concise shortlist,
+full category review and explicit missing price/policy states; its
+`/demo/accessories` route is fictional.
+
+The local gate passed 735 tests before a focused pagination regression test;
+the final Phase 14 source has 736 passing tests, lint, typechecking, API
+bundle/PDF smoke tests,
+SAM invariant checks and a production build. The demo returned HTTP 200 with
+synthetic labels in the server-rendered HTML. Interactive browser and visual
+accessibility checks could not run on this host because no browser surface or
+binary was available. Live Cognito, DynamoDB, Google, policy and installer
+behavior remain unverified. Numeric ranges and a verified rule requirement
+remain open pending sourced data; this phase does not claim product prices or
+electrical certification.
+
 ## Phase 15 — Rooftop remaining-space advisor
 - calculate remaining modeled usable area
 - deterministic feasibility

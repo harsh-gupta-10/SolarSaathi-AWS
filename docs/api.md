@@ -360,16 +360,26 @@ financial and eligibility claims. Details are in [advisor design](advisor.md).
 
 ## Accessories
 
-`POST /v1/accessories/recommend`
+Authenticated `POST /v1/accessories/recommend` accepts `propertyId`,
+`analysisId`, the Phase 6 `demand` and `generationKwhPerKwYear` inputs, and a
+supported `nominalKw` candidate. Optional declared context includes `goals`
+(`backupPower`, `evCharging`, `monitoring`, `easierMaintenance` booleans),
+`inverterType` (`GRID_TIED`, `HYBRID`, `UNKNOWN`), `evStatus` (`NONE`,
+`PLANNING`, `OWNS_EV`), and `site` observations (`lightningExposure`,
+`birdActivity`, `safeCleaningAccess`). The server loads the owned confirmed
+unexpired roof and recomputes Phase 6 candidates. It rejects an unsupported
+or unfit candidate; the browser cannot submit a trusted system design.
 
-Input:
-- analysis
-- system
-- inverter
-- user goals
-- EV
-- backup
-- budget
+The `DETERMINISTIC_ACCESSORY_ADVISOR_V1` response contains the selected system
+summary, ranked `recommendations`, `warnings`, and
+`financialIntegration:{includedInBaseEstimate:false,
+benefitEligibilityEvaluated:false}`. Each recommendation has a category,
+classification, deterministic score, compatibility status, reason, safety
+notes, and explicit policy and cost states. Current policy relevance is
+`NOT_EVALUATED`; INR cost range is `UNAVAILABLE`. No verified accessory mandate,
+supplier price, subsidy amount or quote is returned. `REQUIRED_BY_RULE` is
+reserved for future exact verified policy evidence and is not issued by this
+catalog. See [accessory design](accessories.md).
 
 ## Rooftop designs
 

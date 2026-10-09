@@ -170,9 +170,14 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(systems.Policies).toEqual([{ Statement: [expect.objectContaining({
       Sid: "ReadOwnedSystemAnalysis", Effect: "Allow", Action: "dynamodb:GetItem", Resource: "AnalysesTable.Arn",
     })] }]);
-    expect(systems.Events).toEqual({ RecommendSystems: { Type: "Api", Properties: {
-      RestApiId: "Api", Path: "/systems/recommend", Method: "POST",
-    } } });
+    expect(systems.Events).toEqual({
+      RecommendSystems: { Type: "Api", Properties: {
+        RestApiId: "Api", Path: "/systems/recommend", Method: "POST",
+      } },
+      RecommendAccessories: { Type: "Api", Properties: {
+        RestApiId: "Api", Path: "/accessories/recommend", Method: "POST",
+      } },
+    });
     expect(JSON.stringify(systems)).not.toMatch(/GOOGLE_.*API_KEY|secretsmanager|BEDROCK/);
   });
 

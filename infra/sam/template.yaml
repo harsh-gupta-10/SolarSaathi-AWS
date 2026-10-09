@@ -307,10 +307,10 @@ Resources:
     Type: AWS::Serverless::Function
     Metadata:
       com.aws.cloudformation.Context:
-        why: Designs deterministic solar system candidates from an authenticated, owned roof analysis.
+        why: Designs deterministic solar systems and accessory advice from an authenticated, owned roof analysis.
         must:
           - Load the confirmed analysis server-side and reject expired Google roof data.
-          - Allow only table GetItem reads; no policy, cost, secret or model access.
+          - Allow only table GetItem reads; no policy, price, secret or model access.
     Properties:
       Handler: handlers/systems.handler
       CodeUri: ../../apps/api/dist
@@ -331,6 +331,12 @@ Resources:
           Properties:
             RestApiId: !Ref Api
             Path: /systems/recommend
+            Method: POST
+        RecommendAccessories:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /accessories/recommend
             Method: POST
 
   FinancialsFunction:

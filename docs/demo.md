@@ -89,7 +89,11 @@ For an offline presentation, `/demo/advisor` is a visibly fictional,
 read-only layout fixture with no live subsidy or model claim.
 
 ### 9. Accessories
-Show 2–4 useful recommendations based on the installation.
+Show 2–4 deterministic recommendations from the selected owned roof, a
+roof-fitting system and stated goals. Explain classification, compatibility
+review and safety notes. Current prices and accessory-specific policy
+requirements are unavailable; do not show a guessed cost or mandate. An
+offline preview, if used, must be clearly synthetic.
 
 ### 10. Remaining roof
 Show:

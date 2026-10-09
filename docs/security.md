@@ -168,6 +168,14 @@ Do not guarantee:
 AI rooftop images are conceptual only.
 No structural approval is implied.
 
+Accessory advice must use an owned, confirmed roof and backend-recomputed
+system candidate. Self-reported inverter, EV, electrical and site details are
+planning context. Do not claim circuit, voltage/current, battery, charger,
+earthing, lightning, or structural compatibility without a qualified design
+review. No accessory may be labelled legally required, subsidy eligible, or
+priced from a generic catalog without current supporting evidence. Never add
+an optional accessory to the policy-eligible solar quote automatically.
+
 ## Audit
 Keep:
 - policy changes

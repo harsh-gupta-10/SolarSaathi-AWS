@@ -91,11 +91,36 @@ Do not recommend:
 - equipment solely because it increases cart value
 - structural rooftop additions without structural review
 
+## Phase 14 fact and price boundaries
+
+The recommendation endpoint uses the same owned, confirmed, unexpired roof and
+recomputed Phase 6 candidate as the system designer. User goals, EV intent,
+inverter description, and site observations are declared context, not verified
+equipment specifications or installation approval. A catalog rule may rank an
+item for discussion and state what a professional must check. It may not claim
+electrical compatibility from DC capacity alone. Battery, EV, earthing,
+lightning, protection and roof-access choices require a qualified site and
+electrical design review before procurement or installation.
+
+No current policy record establishes an accessory mandate, and no sourced
+regional price catalog is deployed. Therefore `REQUIRED_BY_RULE` and numeric
+cost ranges must remain unavailable until exact verified policy evidence or
+current sourced vendor prices are integrated. Policy relevance is labelled
+not evaluated, and a generic recommendation never establishes subsidy
+eligibility. Score is deterministic usefulness to the declared goal; vendors
+cannot buy a higher rank. Accessory costs do not change the base solar quote,
+policy-eligible cost or benefit calculation.
+The confirmed, roof-fitting system is a prerequisite for advice and is shown
+for context. Current ranking does not infer equipment compatibility or change
+scores from system size or roof source; those facts do not establish a
+defensible accessory specification without site and electrical design.
+
 ## Financial integration
 
 Accessories must be separated from the base solar financial model unless the user explicitly includes them.
 
-Show:
+When a separately sourced accessory quote exists, show it outside the solar
+base model, for example:
 
 ```text
 Solar system
@@ -112,3 +137,5 @@ Net solar investment
 ```
 
 Do not subtract optional accessory costs from subsidy calculations unless the policy explicitly allows those costs.
+Until a sourced quote exists, display "Cost range unavailable" in place of
+`₹Z` and do not produce a combined investment number.

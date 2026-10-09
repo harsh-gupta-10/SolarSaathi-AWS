@@ -70,7 +70,7 @@ Current policy values are never treated as permanent constants. A crawler detect
 
 ## Implementation status
 
-Phases 0–13 have locally implemented source code:
+Phases 0–14 have locally implemented source code:
 - pnpm workspace, Next.js marketing site, responsive application shell, typed
   packages, quality scripts, GitHub Actions, and compiled Lambda/SAM foundation;
 - Cognito hosted sign-in, code+PKCE callback, identity verification, profile and
@@ -113,7 +113,12 @@ Phases 0–13 have locally implemented source code:
   deterministic financial/policy scenarios and user reported application
   progress through provenance-labelled fact cards. Optional Bedrock selection
   can organize those cards; the server writes the final sourced answer and
-  falls back without a model. A fictional visual preview is at `/demo/advisor`.
+  falls back without a model. A fictional visual preview is at `/demo/advisor`;
+- a deterministic accessory review tied to an owned roof-fitting system and
+  declared backup, EV, monitoring and maintenance goals. It shows category,
+  relevance, compatibility and safety review, with no invented market price,
+  policy mandate or paid ranking. A fictional preview is at
+  `/demo/accessories`.
 
 Google-derived preview, analysis and cache records have a 21-day retention
 limit and an hourly bounded hard-delete worker with an error alarm. Google roof
@@ -140,6 +145,9 @@ The advisor cannot establish eligibility, official progress, savings or
 structural safety. Without a verified policy corpus or user-entered scenario,
 it gives a limited roof explanation and identifies missing context. No Bedrock
 model is configured or exercised live.
+Accessory policy relevance and cost ranges remain unavailable until verified
+rule evidence and sourced regional prices exist. The accessory list is a
+planning discussion for a qualified installer, not equipment specification.
 
 These phases have **local** lint, typecheck, test and build coverage. No AWS
 resources or Google Cloud project have been configured or deployed for this app;

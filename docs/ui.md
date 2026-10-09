@@ -344,6 +344,17 @@ Show:
 
 Never make every accessory look mandatory.
 
+The Phase 14 authenticated screen should select an owned property and
+confirmed roof, then require explicit consumption, planning yield and a
+supported system candidate. Optional goal, EV, inverter and site inputs are
+labelled as user reported. Display the backend's ranked recommendations with
+category, classification, compatibility review, reason and safety notes.
+Group unavailable costs and unevaluated policy requirements as clear states;
+do not draw a price, subsidy or mandatory badge from the catalog alone. A
+fictional preview, if provided, must remain visibly separate from live account
+actions. Changing account, property, roof or planning inputs clears old
+recommendations.
+
 ## International
 
 When researching:

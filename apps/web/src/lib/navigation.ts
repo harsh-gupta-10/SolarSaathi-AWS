@@ -18,7 +18,7 @@ const items: Record<string, NavigationItem> = {
   leads: { key: "leads", label: "Leads", description: "Track opportunities and next steps for your organization.", phase: 16 },
 };
 const homeowner = ["overview", "analyze", "properties", "savings", "benefits", "applications", "advisor", "designs", "accessories", "help", "settings"];
-const broker = ["overview", "customers", "properties", "analyses", "benefits", "applications", "leads", "advisor", "designs", "settings"];
+const broker = ["overview", "customers", "properties", "analyses", "benefits", "applications", "leads", "advisor", "designs", "accessories", "settings"];
 
 export function navigationForRole(role: UserRole): NavigationItem[] {
   return (role === "BROKER" ? broker : homeowner).map(key => ({

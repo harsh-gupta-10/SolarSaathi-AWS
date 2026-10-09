@@ -165,6 +165,25 @@ horizontal overflow, and automated WCAG 2 A/AA and 2.1 A/AA checks reported
 zero violations and zero incomplete items in the inspected states. This does
 not verify deployed authorization, live model access or a real policy corpus.
 
+### Phase 14 accessory advisor
+
+Test each recommendation against a server-loaded owned roof and recomputed
+fitting system. Cover malformed goals, unsupported inverter/EV states,
+area-only roofs, unsuitable candidates, cross-owner access, and unknown site
+conditions. Ranking must be stable, deterministic, and independent of price,
+vendor or affiliate data. Verify that unavailable price and policy evidence
+never becomes a numeric estimate or `REQUIRED_BY_RULE` classification, and
+that electrical/structural cautions remain visible for battery, EV, lightning
+and access items. The browser must clear old recommendations when the account,
+property, roof or declared inputs change. A synthetic demo must remain plainly
+fictional and must not present a regulation, compatibility or price as live.
+The Phase 14 local gate passed 735 tests, lint, typechecking and production
+builds. A focused pagination regression test added afterward passed, bringing
+the source total to 736. The accessory API and web focused suites added 12 tests; SAM invariant
+checks passed 25. The demo route returned HTTP 200 with synthetic labels in
+server-rendered HTML. Interactive layout and accessibility checks were not
+available because this host lacked a browser surface or executable.
+
 ### Phase 11 policy-backed financial scenario
 
 The Phase 11 local `pnpm check` gate passed 692 tests across the workspace,
