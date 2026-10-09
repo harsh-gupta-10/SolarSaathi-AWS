@@ -27,4 +27,19 @@ describe("truthful development site", () => {
       vi.unstubAllEnvs();
     }
   });
+
+  it("labels a configured development deployment without claiming live policy coverage", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.com/v1");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_MAPS_KEY", "restrictedBrowserKeyForTestsOnly");
+    vi.stubEnv("NEXT_PUBLIC_COGNITO_USER_POOL_ID", "ap-south-1_example");
+    vi.stubEnv("NEXT_PUBLIC_COGNITO_CLIENT_ID", "publicclient");
+    try {
+      const html = renderToStaticMarkup(<Home />);
+      expect(html).toContain("Development environment — live map and account services configured");
+      expect(html).toContain("no verified live policy corpus yet");
+      expect(html).not.toContain("Local preview");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });

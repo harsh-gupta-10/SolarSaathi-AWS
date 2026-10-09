@@ -3,8 +3,16 @@ import { ArrowUpRight, Building2, Check, ShieldCheck, Sun } from "lucide-react";
 import { Button } from "@solarsaathi/ui";
 import { AddressForm } from "../components/address-form";
 import { RoofIllustration } from "../components/roof-illustration";
+import { getPublicEnvironment } from "../lib/env";
 
 export default function Home() {
+  const environment = getPublicEnvironment();
+  const liveServicesConfigured = Boolean(
+    environment.NEXT_PUBLIC_API_BASE_URL &&
+    environment.NEXT_PUBLIC_GOOGLE_MAPS_KEY &&
+    environment.NEXT_PUBLIC_COGNITO_USER_POOL_ID &&
+    environment.NEXT_PUBLIC_COGNITO_CLIENT_ID,
+  );
   return (
     <>
       <header className="site-header container">
@@ -15,7 +23,9 @@ export default function Home() {
       <main id="main-content">
         <section className="hero container" aria-labelledby="hero-title">
           <div className="hero-content">
-            <p className="availability"><span aria-hidden="true" />Local preview — live integrations need cloud configuration</p>
+            <p className="availability"><span aria-hidden="true" />{liveServicesConfigured
+              ? "Development environment — live map and account services configured"
+              : "Local preview — live integrations need cloud configuration"}</p>
             <h1 id="hero-title">Your roof. A clearer path to solar.</h1>
             <p className="hero-description">From the space above your home to the steps ahead. Plan your rooftop, understand the costs, and follow benefits back to their source.</p>
             <AddressForm />
@@ -33,7 +43,7 @@ export default function Home() {
           </ol>
         </section>
         <section className="trust-section container" aria-labelledby="trust-title">
-          <div><ShieldCheck size={30} aria-hidden="true" /><h2 id="trust-title">A benefit is a rule, not a promise.</h2><p>SolarSaathi checks eligibility and compatibility before adding benefits. Policy results carry their source, version and verification status.</p><p className="muted">This local preview has no verified live policy corpus. Demo amounts are visibly fictional.</p></div>
+          <div><ShieldCheck size={30} aria-hidden="true" /><h2 id="trust-title">A benefit is a rule, not a promise.</h2><p>SolarSaathi checks eligibility and compatibility before adding benefits. Policy results carry their source, version and verification status.</p><p className="muted">There is no verified live policy corpus yet. Demo amounts are visibly fictional.</p></div>
           <ul className="trust-list"><li><Check aria-hidden="true" />Deterministic calculations</li><li><Check aria-hidden="true" />Official sources, with a trail</li><li><Check aria-hidden="true" />Central, state and local benefits checked separately</li><li><Check aria-hidden="true" />Concepts, never structural approvals</li></ul>
         </section>
         <section className="consultant-section container" id="consultants" aria-labelledby="consultant-title">

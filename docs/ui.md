@@ -21,8 +21,9 @@ Avoid:
 ## Phase 1 implementation
 
 The marketing site is `/` locally; the application shell is `/app`. Production
-host routing serves `solarsaathi.in` as marketing and rewrites
-`app.solarsaathi.in` to the application routes. DNS/hosting is not deployed.
+host routing is designed to serve `solarsaathi.in` as marketing and rewrite
+`app.solarsaathi.in` to the application routes. The development site is hosted
+on Amplify's default domain; custom DNS is not connected.
 
 UI primitives are generated with shadcn/ui in `packages/ui` and styled with
 Tailwind CSS. The single distinctive hero element is an illustrative roof plan,

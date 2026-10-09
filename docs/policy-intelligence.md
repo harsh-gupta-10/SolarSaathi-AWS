@@ -18,7 +18,8 @@ archives are immutable. Phase 10 adds a separate human-authored, evidence-bound
 benefit-rule draft and independent publication gate. A reviewer verifies the
 numeric values and rule clauses against archived official excerpts before an
 active version can enter deterministic homeowner evaluation. This local
-workflow has not been deployed or populated with live India coverage.
+workflow is deployed in development but has not been populated with live India
+coverage. See [development deployment](live-deployment.md).
 
 ## 1. Policy categories
 

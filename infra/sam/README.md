@@ -198,10 +198,10 @@ target account; Phase 0 observability is Lambda/CloudWatch logging only.
   by CloudFormation, not shipped to the browser. Keep the secret in the deployment
   region and register Cognito's `/oauth2/idpresponse` URL with Google first.
 
-No deployment or live login/federation/Google test has been performed. Template
-invariant tests run as part of `pnpm check`; they do not establish service-schema
-validity, correct IAM permissions or working live authentication. Public outputs
-provide configuration identifiers only, not credentials.
+A development stack has been deployed; see [live deployment status](../../docs/live-deployment.md).
+Template invariant tests run as part of `pnpm check`; they do not establish
+working interactive login, federation, Google API calls or every IAM path.
+Public outputs provide configuration identifiers only, not credentials.
 
 ## Local commands
 
@@ -218,13 +218,10 @@ for these precompiled bundles. Local invocation requires Docker. Test health at
 `http://127.0.0.1:3000/health`; local SAM routes do not include the deployed `v1`
 stage prefix. Use JSON bodies for POST scaffold routes.
 
-Tool installation is not automatic and should use an isolated environment with
-approval. The current development environment lacks SAM CLI, cfn-lint and
-cfn-guard. Local checks cover YAML syntax, compiled handlers and references;
-CloudFormation schema validation is configured in CI but has not been run
-locally. A read-only `aws cloudformation validate-template` in `ap-south-1`
-succeeded, but this does not replace SAM schema/lint or deployment validation.
-Security/compliance and account-aware checks have not been performed.
+SAM CLI is installed locally; cfn-lint and cfn-guard are not. The GitHub quality
+workflow runs SAM lint and build. The deployed CloudFormation change set and
+basic local SAM validation succeeded. An operational security, cost and
+compliance review is still needed before production use.
 
 ## Deployment gate
 

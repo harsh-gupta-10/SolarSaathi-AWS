@@ -41,6 +41,8 @@ Requires AWS SAM CLI and cfn-lint for `pnpm sam:validate`.
 Do not deploy until infrastructure validation, authorization and environment
 configuration appropriate to the target deployment have been reviewed.
 See [SAM resource intent and limitations](../infra/sam/README.md).
+The current development targets and smoke checks are recorded in
+[live deployment status](live-deployment.md).
 
 ## Amplify Hosting
 
