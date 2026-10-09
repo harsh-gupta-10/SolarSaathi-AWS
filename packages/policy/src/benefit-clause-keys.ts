@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { benefitCompatibilityEdgeSchema, benefitConditionSchema,
+import { benefitCompatibilityEdgeSchema, benefitConditionSchema, policyProcessStepSchema,
   type PolicyBenefitRuleV1 } from "./benefit-rules";
 
-export type BenefitClauseKindV1 = "ELIGIBILITY" | "COMPATIBILITY" | "SIZE" | "OVERLAP";
+export type BenefitClauseKindV1 = "ELIGIBILITY" | "COMPATIBILITY" | "SIZE" | "OVERLAP" | "PROCESS_STEP";
 
 /** A stable key binds a verified TEXT fact to one concrete rule clause, not just to the policy version. */
 export function benefitClauseClaimKeyV1(kind: BenefitClauseKindV1, clause: unknown): string {
@@ -24,6 +24,10 @@ export function benefitClauseClaimKeyV1(kind: BenefitClauseKindV1, clause: unkno
     const rule = clause as Pick<PolicyBenefitRuleV1, "overlapGroupId">;
     if (!rule?.overlapGroupId) throw new RangeError("An overlap clause needs a group ID.");
     payload = { overlapGroupId: rule.overlapGroupId };
+  } else if (kind === "PROCESS_STEP") {
+    const { evidenceFactIds: _factIds, ...step } = policyProcessStepSchema.parse(clause);
+    void _factIds;
+    payload = step;
   } else {
     throw new RangeError("Unsupported policy clause kind.");
   }

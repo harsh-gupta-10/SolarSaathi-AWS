@@ -169,36 +169,30 @@ For international/on-demand research.
 ### SOLAR_APPLICATION
 `PK=PROPERTY#propertyId`, `SK=APPLICATION#applicationId`
 
-Fields:
-- schemeId
-- jurisdiction
-- discom
-- systemKw
-- status
-- referenceNumber
-- vendorId
-- policyVersion
-- createdAt
-- updatedAt
+Phase 12 stores the application and bounded (up to 20) checklist steps in one
+revision-checked item. The snapshot includes the selected benefit and confirmed
+analysis IDs, system, policy/rule version, cited verified process steps, source
+checks, user reported status, expected next step, optional application reference
+and vendor name, and up to 30 document metadata notes. No document contents or
+official portal credentials are stored. Checklist mutations replace this item
+conditionally on revision and append an audit event atomically. Creation also
+condition-checks the active policy version/rule pointer in the policy table.
 
-### APPLICATION_STEP
-`PK=APPLICATION#applicationId`, `SK=STEP#stepId`
-
-Fields:
-- status
-- required
-- completedAt
-- notes
-- policyRuleId
+Steps are embedded because every tracker read needs the whole bounded
+checklist; there is no separate `APPLICATION_STEP` item in the Phase 12
+implementation. Historical process citations remain fixed in the application
+snapshot when a newer policy version becomes active.
 
 ### APPLICATION_EVENT
 `PK=APPLICATION#applicationId`, `SK=EVENT#timestamp#id`
 
 Fields:
-- actor
-- fromStatus
-- toStatus
-- note
+- actor and timestamp
+- action (`CREATED`, `STEP_TRANSITION`, `DETAILS_UPDATED`, `DOCUMENT_RECORDED`)
+- changed step/fields, previous and new status, and optional note/document ID
+
+Events are immutable, property scoped through their parent application, and
+returned by a bounded paginated API after ownership checks.
 
 ## Design entities
 

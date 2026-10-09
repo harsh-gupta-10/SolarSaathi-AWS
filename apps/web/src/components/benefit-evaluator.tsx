@@ -9,6 +9,8 @@ import { policyFinancialApi, type PolicyFinancialEstimateResponse } from "../lib
 import type { FinancialInputs } from "../lib/financial-api";
 import { RoofRequestError } from "../lib/roof-api";
 import { PolicyFinancialResults } from "./policy-financial-results";
+import { ApplicationStart } from "./application-start";
+import type { CreateApplicationInput } from "../lib/applications-api";
 
 const rupees = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const dateTime = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
@@ -110,12 +112,14 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
     sanctionedLoadKw: demand.sanctionedLoadKw === undefined ? "" : String(demand.sanctionedLoadKw) });
   const [response, setResponse] = useState<BenefitEvaluationResponse>();
   const [policyResponse, setPolicyResponse] = useState<PolicyFinancialEstimateResponse>();
+  const [evaluatedInput, setEvaluatedInput] = useState<Omit<CreateApplicationInput, "policyId">>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
   function update(key: keyof Fields, value: string) {
-    request.current?.abort(); request.current = null; setBusy(false); setResponse(undefined); setPolicyResponse(undefined); setError(undefined);
+    request.current?.abort(); request.current = null; setBusy(false); setResponse(undefined); setPolicyResponse(undefined);
+    setEvaluatedInput(undefined); setError(undefined);
     setFields(previous => ({ ...previous, [key]: value }));
   }
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -160,6 +164,8 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
         eligibleQuotedCostPaise, applicantFacts, controller.signal);
     void operation
       .then(result => { if (!controller.signal.aborted) {
+        setEvaluatedInput({ propertyId, analysisId, demand, generationKwhPerKwYear, nominalKw,
+          ...(eligibleQuotedCostPaise === undefined ? {} : { eligibleQuotedCostPaise }), applicantFacts });
         if ("benefits" in result) setPolicyResponse(result);
         else setResponse(result);
       } })
@@ -221,8 +227,10 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
       {error && <p role="alert" className="form-error">{error}</p>}
     </form>
     {response && <BenefitResults response={response} />}
+    {response && evaluatedInput && <ApplicationStart key={response.requestId} response={response} input={evaluatedInput} />}
     {policyResponse && <><PolicyFinancialResults response={policyResponse} />
       {policyResponse.benefits.result && <details className="policy-financial-decisions"><summary>View rule decisions and source details</summary>
-        <BenefitResults response={policyResponse.benefits} /></details>}</>}
+        <BenefitResults response={policyResponse.benefits} /></details>}
+      {evaluatedInput && <ApplicationStart key={policyResponse.requestId} response={policyResponse.benefits} input={evaluatedInput} />}</>}
   </section>;
 }

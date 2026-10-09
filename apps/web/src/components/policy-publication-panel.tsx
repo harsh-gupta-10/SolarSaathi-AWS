@@ -40,6 +40,7 @@ function requiredClauseKeys(rule: unknown): string[] | undefined {
         keys.push(`COMPATIBILITY_${index}_CONDITION_${conditionIndex}`));
     }
   });
+  if (Array.isArray(value.processSteps)) value.processSteps.forEach((_, index) => keys.push(`PROCESS_STEP_${index}`));
   return keys;
 }
 

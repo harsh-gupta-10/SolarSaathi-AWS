@@ -13,6 +13,10 @@ Enter a demo residential address.
 
 ### 2. Building selection
 Show satellite map.
+Optionally use the one-time device-location button to center it; this does
+not select a building. Tap the house to request Google Solar preview and show
+the approximate building bounds overlay. If Google configuration is absent,
+use the labelled manual/coordinate path.
 Select building.
 Confirm:
 > Is this the correct building?
@@ -65,9 +69,12 @@ Show:
 
 ### 7. Application tracker
 Click:
-> Track my subsidy
+> Start application tracker
 
-Show policy-specific checklist.
+Show a policy-specific, cited checklist only when the selected benefit has a
+verified process template. Update a user reported step and explain that an
+official portal has not been changed. For an offline presentation use the
+clearly fictional, disabled `/demo/application-tracker` fixture.
 
 ### 8. AI advisor
 Ask:

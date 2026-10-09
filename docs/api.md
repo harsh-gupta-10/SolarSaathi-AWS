@@ -234,6 +234,9 @@ field exists. Every `eligibility.allOf` predicate uses
 `ELIGIBILITY_ANY_<group>_<index>`, and compatibility edges and conditional
 predicates use `COMPATIBILITY_<index>` and
 `COMPATIBILITY_<index>_CONDITION_<index>`. Empty eligibility is rejected. Each
+optional `processSteps` item uses `PROCESS_STEP_<index>` with a separate
+archived TEXT excerpt. Process steps have unique IDs and consecutive order;
+older published rules may omit them but cannot start a tracker. Each
 locator carries exact absolute character offsets and, when archived, the same
 page/section/fragment. The server verifies every excerpt against the pinned
 normalized archive before creation and again before publication.
@@ -256,6 +259,32 @@ reason codes; the base remains available.
 Selected `OTHER` benefits are disclosed in the total and
 `nonUpfrontBenefitPaise` but do not reduce net upfront cost or payback, because
 their tax/financing/regulatory cash treatment is not verified.
+
+Phase 12 adds authenticated, property-scoped application routes. Creation
+accepts `{ propertyId, analysisId, policyId, nominalKw,
+generationKwhPerKwYear, demand, applicantFacts, eligibleQuotedCostPaise? }`.
+The backend reevaluates the saved roof and current benefit stack, requires the
+requested policy to be positively selected with fresh healthy source checks,
+then snapshots a verified, cited process template. No browser supplied step or
+benefit amount is accepted. Missing process evidence returns
+`409 PROCESS_TEMPLATE_UNAVAILABLE`; a nonselected benefit returns
+`409 BENEFIT_NOT_SELECTED`.
+
+| Route | Request | Result |
+| --- | --- | --- |
+| `POST /v1/applications` | Creation fields above | `201` with created `application` |
+| `GET /v1/applications?propertyId=...&cursor=...` | Owned property, optional page cursor | `applications` and `nextCursor?` |
+| `GET /v1/applications/{applicationId}?propertyId=...` | Owned property | Current application snapshot |
+| `POST /v1/applications/{applicationId}/steps/{stepId}` | `{ propertyId, expectedRevision, status, note? }` | Audited user reported step update |
+| `POST /v1/applications/{applicationId}/details` | `{ propertyId, expectedRevision, referenceNumber?, vendorName? }` | Audited user supplied details |
+| `POST /v1/applications/{applicationId}/documents` | `{ propertyId, expectedRevision, documentType, label, obtainedOn? }` | Metadata only; no upload |
+| `GET /v1/applications/{applicationId}/events?propertyId=...` | Owned property, optional cursor | Immutable event history |
+| `POST /v1/applications/{applicationId}/chat-update` | `{ propertyId, stepId, message }` | Nonmutating suggestion; always requires explicit confirmation |
+
+Application responses use `DYNAMODB_APPLICATION_TRACKER_V1`. Progress is
+`USER_REPORTED`; process steps are a `VERIFIED_POLICY_SNAPSHOT`. Revision
+conflicts return `409 APPLICATION_CONFLICT`. Chat suggestions store no message
+and do not change state; a separate step request is required to save progress.
 
 Paths below are planned contracts unless listed as available above.
 
@@ -285,15 +314,8 @@ For international research, return a clearly labelled live-research result.
 
 ## Applications
 
-`POST /v1/applications`
-
-`GET /v1/applications/:id`
-
-`POST /v1/applications/:id/steps/:stepId`
-
-`POST /v1/applications/:id/events`
-
-`POST /v1/applications/:id/chat-update`
+The Phase 12 routes above are implemented locally. No official portal
+submission or status sync endpoint exists.
 
 ## Advisor
 

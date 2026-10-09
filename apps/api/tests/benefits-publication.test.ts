@@ -19,7 +19,7 @@ const author = "author-admin";
 const reviewer = "reviewer-admin";
 const sourceId = `SRC#${"a".repeat(32)}`;
 const documentId = `DOC#${"b".repeat(32)}`;
-const quoteText = "Central subsidy INR 1000 for 2 kW residential rooftop solar effective from 2026-01-01.";
+const quoteText = "Central subsidy INR 1000 for 2 kW residential rooftop solar effective from 2026-01-01. Submit the application through the official portal.";
 
 async function setup() {
   const source = policySourceSchema.parse({ schemaVersion: 1, sourceId, registryVersion: 2,
@@ -109,7 +109,7 @@ async function setup() {
       amount: { kind: "FIXED", amountPaise: 100_000 },
       eligibility: { allOf: [{ kind: "CUSTOMER_TYPE", oneOf: ["RESIDENTIAL"] }], anyOf: [] },
       compatibility: [] } };
-  return { publicationService, benefits, evaluate, draftRequest, document, chunk, source,
+  return { publicationService, benefits, evaluate, draftRequest, document, chunk, source, excerpt,
     createBenefitsAt: (now: () => Date) => new BenefitsService(data.service, records, workflow, publication, now),
     setState: (value: PolicyCrawlStateV1) => { state = value; }, getState: () => state,
     setCurrent: (value: PolicySourceV1) => { current = value; },
@@ -124,6 +124,30 @@ async function setup() {
 }
 
 describe("verified benefit publication and owner-scoped evaluation", () => {
+  it("publishes a sourced process checklist only with exact archived excerpts", async () => {
+    const test = await setup();
+    const request = { ...test.draftRequest,
+      rule: { ...test.draftRequest.rule, processSteps: [{ stepId: "APPLICATION_SUBMITTED", order: 1,
+        title: "Submit the application", description: "Submit the application through the official portal.",
+        required: true }] },
+      clauseEvidence: [...test.draftRequest.clauseEvidence,
+        { clauseKey: "PROCESS_STEP_0", ...test.excerpt("Submit the application through the official portal.") }] };
+    await expect(test.publicationService.createDraft({ ...request,
+      clauseEvidence: test.draftRequest.clauseEvidence }, author, "req"))
+      .rejects.toMatchObject({ code: "CLAUSE_EVIDENCE_REQUIRED" });
+    const created = await test.publicationService.createDraft(request, author, "req");
+    const factId = created.draft.rule.processSteps?.[0]?.evidenceFactIds[0];
+    expect(factId).toBeTruthy();
+    expect(created.draft.rule.factIds).toContain(factId);
+    await test.publicationService.transition(created.draft.draftId, "submit", { expectedRevision: 1 }, author, "req");
+    await test.publicationService.transition(created.draft.draftId, "publish",
+      { expectedRevision: 2, reason: "Verified the archived process clause." }, reviewer, "req");
+    expect(test.getActive()?.facts.find(fact => fact.factId === factId)).toMatchObject({
+      verificationStatus: "VERIFIED", value: { kind: "TEXT" },
+      statement: "Submit the application through the official portal.",
+    });
+  });
+
   it("publishes only independently reviewed numeric evidence and evaluates a trusted owned system", async () => {
     const test = await setup();
     expect(await test.benefits.evaluate(identity(), test.evaluate, "req")).toMatchObject({

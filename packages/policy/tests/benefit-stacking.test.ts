@@ -32,6 +32,9 @@ function evidenceFor(benefit: PolicyBenefitRuleV1): PolicyEvidenceV1[] {
   }
   for (const id of benefit.sizeEvidenceFactIds ?? []) claims.set(id, benefitClauseClaimKeyV1("SIZE", benefit));
   for (const id of benefit.overlapEvidenceFactIds ?? []) claims.set(id, benefitClauseClaimKeyV1("OVERLAP", benefit));
+  for (const step of benefit.processSteps ?? []) {
+    for (const id of step.evidenceFactIds) claims.set(id, benefitClauseClaimKeyV1("PROCESS_STEP", step));
+  }
   const document: PolicyDocumentV1 = { schemaVersion: 1, documentId: `DOC#${benefit.ruleId.slice(5)}`,
     sourceId: source.sourceId, sourceRegistryVersion: source.registryVersion, version: 1,
     title: "Synthetic fixture notice", documentType: "GUIDELINE", mimeType: "text/html",
@@ -136,6 +139,22 @@ describe("verified deterministic benefit stack", () => {
     expect(() => evaluateBenefitStackV1({ ...base,
       evidence: base.evidence.filter(item => item.fact.factId !== "FACT#B#EDGE#A") }))
       .toThrow(/immutable evidence binding/i);
+  });
+
+  it("requires each published process step to bind to verified text in the same policy version", () => {
+    const step = { stepId: "APPLICATION_SUBMITTED", order: 1,
+      title: "Submit the application", description: "Submit the application through the official portal.",
+      required: true, evidenceFactIds: ["FACT#PROCESS"] };
+    const benefit = rule("PROCESS", 10_000, { factIds: ["FACT#PROCESS#AMOUNT", "FACT#PROCESS"],
+      processSteps: [step] });
+    expect(policyBenefitRuleSchema.safeParse(benefit).success).toBe(true);
+    expect(policyBenefitRuleSchema.safeParse({ ...benefit,
+      processSteps: [step, { ...step, evidenceFactIds: ["FACT#PROCESS"] }] }).success).toBe(false);
+    const base = input([benefit]);
+    expect(evaluateBenefitStackV1(base).decisions[0]?.status).toBe("SELECTED");
+    expect(() => evaluateBenefitStackV1({ ...base, evidence: base.evidence.map(item =>
+      item.fact.factId === "FACT#PROCESS" ? { ...item, fact: { ...item.fact,
+        claimKey: "clause.process_step.wrong" } } : item) })).toThrow(/quoted text evidence/i);
   });
 
   it("evaluates alternative applicant routes as OR and missing facts as unknown", () => {

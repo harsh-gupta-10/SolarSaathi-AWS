@@ -199,6 +199,12 @@ Resources:
       LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/benefits"
       RetentionInDays: !Ref LogRetentionDays
 
+  ApplicationsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/applications"
+      RetentionInDays: !Ref LogRetentionDays
+
   PolicyCrawlerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -473,6 +479,93 @@ Resources:
         EvaluateBenefits:
           Type: Api
           Properties: { RestApiId: !Ref Api, Path: /benefits/evaluate, Method: POST }
+
+  ApplicationsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Tracks a user-created application against a snapshot of selected verified policy process steps.
+        must:
+          - Verify current selected benefit and property ownership before creating a tracker.
+          - Snapshot cited official process steps, then label all user progress and document notes as user reported.
+          - Write every transition with a revision condition and an audit event; never imply official completion or deadline.
+    Properties:
+      Handler: handlers/applications.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 28
+      LoggingConfig:
+        LogGroup: !Ref ApplicationsLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+          POLICY_TABLE_NAME: !Ref PolicyTable
+      Policies:
+        - Statement:
+            - Sid: ReadOwnedApplicationRecords
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query]
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["USER#*", "ORG#*", "CUSTOMER#*", "PROPERTY#*", "APPLICATION#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: WriteApplicationAndAudit
+              Effect: Allow
+              Action: [dynamodb:PutItem, dynamodb:ConditionCheckItem]
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["PROPERTY#*", "APPLICATION#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: ReadCurrentVerifiedPolicy
+              Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt PolicyTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["PUBLISHED_POLICY#*", "SOURCE#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: GuardActiveApplicationPolicy
+              Effect: Allow
+              Action: dynamodb:ConditionCheckItem
+              Resource: !GetAtt PolicyTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["PUBLISHED_POLICY#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: ListActiveApplicationPolicy
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${PolicyTable.Arn}/index/GSI5"
+      Events:
+        CreateApplication:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /applications, Method: POST }
+        ListApplications:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /applications, Method: GET }
+        ApplicationDetail:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/applications/{applicationId}", Method: GET }
+        ApplicationStepTransition:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/applications/{applicationId}/steps/{stepId}", Method: POST }
+        ApplicationDetailsUpdate:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/applications/{applicationId}/details", Method: POST }
+        ApplicationDocumentMetadata:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/applications/{applicationId}/documents", Method: POST }
+        ApplicationEvents:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/applications/{applicationId}/events", Method: GET }
+        ApplicationChatUpdate:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/applications/{applicationId}/chat-update", Method: POST }
 
   PolicyFunction:
     Type: AWS::Serverless::Function

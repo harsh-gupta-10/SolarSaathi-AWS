@@ -56,6 +56,15 @@ export const benefitCompatibilityEdgeSchema = z.object({
     path: ["conditions"], message: "Only conditional compatibility requires conditions." });
 });
 
+export const policyProcessStepSchema = z.object({
+  stepId: z.string().regex(/^[A-Z][A-Z0-9_]{1,63}$/),
+  order: z.number().int().min(1).max(20),
+  title: z.string().trim().min(3).max(120),
+  description: z.string().trim().min(10).max(1_000),
+  required: z.boolean(),
+  evidenceFactIds,
+}).strict();
+
 export const policyBenefitRuleSchema = z.object({
   schemaVersion: z.literal(1), ruleId: identifier("RULE"), benefitId: identifier("BENEFIT"),
   policyId: identifier("POLICY"), policyVersion: z.number().int().positive(),
@@ -69,6 +78,7 @@ export const policyBenefitRuleSchema = z.object({
   compatibility: z.array(benefitCompatibilityEdgeSchema).max(100),
   overlapGroupId: code.optional(), overlapEvidenceFactIds: evidenceFactIds.optional(),
   combinedCapGroupId: code.optional(), combinedCapPaise: paise.optional(),
+  processSteps: z.array(policyProcessStepSchema).min(1).max(20).optional(),
 }).strict().superRefine((rule, context) => {
   if (rule.effectiveTo && rule.effectiveTo < rule.effectiveFrom) context.addIssue({ code: "custom", path: ["effectiveTo"], message: "Inverted effective period." });
   if (rule.minSystemWatts !== undefined && rule.maxSystemWatts !== undefined && rule.minSystemWatts > rule.maxSystemWatts) {
@@ -89,6 +99,7 @@ export const policyBenefitRuleSchema = z.object({
     ...rule.compatibility.flatMap(value => [
       ...value.evidenceFactIds, ...(value.conditions ?? []).flatMap(condition => condition.evidenceFactIds),
     ]),
+    ...(rule.processSteps ?? []).flatMap(value => value.evidenceFactIds),
   ];
   if (clauseIds.some(factId => !rule.factIds.includes(factId))) {
     context.addIssue({ code: "custom", path: ["factIds"],
@@ -98,6 +109,12 @@ export const policyBenefitRuleSchema = z.object({
     new Set(rule.compatibility.map(edge => edge.withBenefitId)).size !== rule.compatibility.length ||
     rule.compatibility.some(edge => edge.withBenefitId === rule.benefitId)) {
     context.addIssue({ code: "custom", path: ["compatibility"], message: "Duplicate or self-referential rule linkage." });
+  }
+  if (rule.processSteps && (new Set(rule.processSteps.map(step => step.stepId)).size !== rule.processSteps.length ||
+    new Set(rule.processSteps.map(step => step.order)).size !== rule.processSteps.length ||
+    rule.processSteps.some((step, index) => step.order !== index + 1))) {
+    context.addIssue({ code: "custom", path: ["processSteps"],
+      message: "Process step IDs and consecutive order values must be unique." });
   }
 });
 

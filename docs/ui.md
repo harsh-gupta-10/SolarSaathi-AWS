@@ -63,6 +63,15 @@ point invalidates downstream previews. Manual measurements remain available
 when lookup is unavailable; length and width describe horizontal footprint
 dimensions and must agree with the entered area and pitch.
 
+When the satellite map is configured, a user can explicitly request one device
+location reading. A blue point and accuracy circle recenter the map; they never
+select a house or persist a location. Tapping a house sends its point to the
+existing property-bound Solar preview endpoint and draws a lightly filled,
+approximate returned building bounds overlay. The overlay is not a surveyed
+roof polygon. Permission refusal, timeout and unavailable location leave the
+manual map/coordinate path usable; building and roof confirmations still
+require separate actions.
+
 Google roof area is labelled modeled, with imagery quality/date when returned
 and attribution next to the data. Neither path claims structural suitability,
 panel clearance, a subsidy, or a financial estimate. A restricted browser Maps
@@ -156,6 +165,20 @@ unavailable, only the unsubsidized estimate is shown. No amount is generated
 in React.
 Selected other benefits remain visible but are separated from the amount
 modeled against the installation quote until their cash treatment is verified.
+
+## Phase 12 application tracker UI
+
+A selected benefit offers a tracker creation action. The backend checks for a
+current sourced process template; a missing template produces an explicit
+message instead of a generic checklist. `/app/applications` lists only the
+signed-in user's property-scoped trackers. Switching account or property clears
+and scopes the displayed data. A selected tracker shows process step order and
+official citations, separate user reported progress, the derived next step,
+and forms for status, notes, reference, vendor and document metadata. A
+conversation style message can suggest a status but cannot save it without a
+second explicit confirmation. No official portal status is implied. The
+fictional `/demo/application-tracker` route is visibly synthetic and has
+disabled controls.
 
 ## Phase 10 benefit evaluation UI
 

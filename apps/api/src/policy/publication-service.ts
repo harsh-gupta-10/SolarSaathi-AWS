@@ -74,6 +74,7 @@ function requiredClauseKeys(rule: PolicyBenefitRuleV1): string[] {
     keys.push(`COMPATIBILITY_${index}`);
     edge.conditions?.forEach((_, conditionIndex) => keys.push(`COMPATIBILITY_${index}_CONDITION_${conditionIndex}`));
   });
+  rule.processSteps?.forEach((_, index) => keys.push(`PROCESS_STEP_${index}`));
   return keys;
 }
 function clauseFactId(policyId: string, version: number, key: string): string {
@@ -92,6 +93,8 @@ function clauseClaimKey(rule: PolicyBenefitRuleV1, key: string): string {
     rule.compatibility[Number(edgeCondition[1])]?.conditions?.[Number(edgeCondition[2])]);
   const edge = /^COMPATIBILITY_(\d+)$/.exec(key);
   if (edge) return benefitClauseClaimKeyV1("COMPATIBILITY", rule.compatibility[Number(edge[1])]);
+  const processStep = /^PROCESS_STEP_(\d+)$/.exec(key);
+  if (processStep) return benefitClauseClaimKeyV1("PROCESS_STEP", rule.processSteps?.[Number(processStep[1])]);
   return `benefit.${digest(rule.benefitId).slice(0, 20)}.${key.toLowerCase()}`;
 }
 
@@ -224,6 +227,9 @@ export class PolicyPublicationService {
             ({ ...(condition as object), evidenceFactIds: [clauseFactId(policyId, version,
               `COMPATIBILITY_${index}_CONDITION_${conditionIndex}`)] })) } : {}) };
       }),
+      ...(Array.isArray(rawRule.processSteps) ? { processSteps: rawRule.processSteps.map((value, index) => ({
+        ...(value as object), evidenceFactIds: [clauseFactId(policyId, version, `PROCESS_STEP_${index}`)],
+      })) } : {}),
     };
     const preliminaryClauseKeys = ["EFFECTIVE_PERIOD",
       ...(rawRule.capPaise !== undefined ? ["CAP"] : []),
@@ -237,7 +243,8 @@ export class PolicyPublicationService {
         const edge = value && typeof value === "object" ? value as Record<string, unknown> : {};
         return [`COMPATIBILITY_${index}`, ...(Array.isArray(edge.conditions) ?
           edge.conditions.map((_, inner) => `COMPATIBILITY_${index}_CONDITION_${inner}`) : [])];
-      })];
+      }),
+      ...(Array.isArray(rawRule.processSteps) ? rawRule.processSteps.map((_, index) => `PROCESS_STEP_${index}`) : [])];
     const preliminaryFactIds = [`FACT#${digest(`${policyId}:${version}:0`).slice(0, 32)}`,
       ...preliminaryClauseKeys.map(key => clauseFactId(policyId, version, key))];
     const provisional = policyBenefitRuleSchema.safeParse({ ...withEvidence, schemaVersion: 1,

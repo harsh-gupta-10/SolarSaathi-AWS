@@ -10,14 +10,21 @@ import { ADDRESS_DRAFT_KEY } from "../src/lib/address-draft";
 const identity = vi.hoisted(() => ({ status: "signedIn" as "signedIn" | "signedOut", profile: {
   userId: "owner-1", cognitoSub: "owner-1", email: "owner@example.com", name: "Owner", role: "HOMEOWNER",
 } as UserProfile | null }));
+const mapEnvironment = vi.hoisted(() => ({ key: undefined as string | undefined }));
 const api = vi.hoisted(() => ({
   bootstrap: vi.fn(), createCustomer: vi.fn(), createProperty: vi.fn(), geocode: vi.fn(),
   insights: vi.fn(), confirmBuilding: vi.fn(), confirmRoof: vi.fn(), confirmManualRoof: vi.fn(),
 }));
 vi.mock("../src/auth/auth-provider", () => ({ useAuth: () => identity }));
 vi.mock("../src/lib/roof-api", () => ({ roofApi: api, RoofRequestError: class extends Error {} }));
-vi.mock("../src/lib/env", () => ({ getPublicEnvironment: () => ({ NEXT_PUBLIC_GOOGLE_MAPS_KEY: undefined }) }));
-vi.mock("../src/components/satellite-building-map", () => ({ SatelliteBuildingMap: () => <div>Satellite map</div> }));
+vi.mock("../src/lib/env", () => ({ getPublicEnvironment: () => ({ NEXT_PUBLIC_GOOGLE_MAPS_KEY: mapEnvironment.key }) }));
+vi.mock("../src/components/satellite-building-map", () => ({ SatelliteBuildingMap: ({ center, deviceLocation, roofBounds, onPointChange }: {
+  center: { latitude: number; longitude: number };
+  deviceLocation?: { point: { latitude: number; longitude: number }; accuracyMeters: number };
+  roofBounds?: object;
+  onPointChange: (point: { latitude: number; longitude: number }) => void;
+}) => <div data-testid="satellite-map" data-center={JSON.stringify(center)} data-device={JSON.stringify(deviceLocation)}
+  data-overlay={Boolean(roofBounds)}><button onClick={() => onPointChange({ latitude: 19.07601, longitude: 72.87771 })}>Select house on map</button></div> }));
 
 const roof = { schemaVersion: 1, source: "GOOGLE_SOLAR", measuredAt: "2026-10-08T10:00:00.000Z",
   roofAreaSquareMeters: 42, segmentCount: 1, segments: [{ segmentId: "roof-1", areaSquareMeters: 42 }],
@@ -26,6 +33,7 @@ const candidate = { placeId: "place-1", address: "Example Road, Mumbai 400001",
   location: { latitude: 19.076, longitude: 72.8777 }, locationType: "ROOFTOP", partialMatch: false };
 
 beforeEach(() => {
+  mapEnvironment.key = undefined;
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => null);
   sessionStorage.clear();
   sessionStorage.setItem(ADDRESS_DRAFT_KEY, JSON.stringify({ version: 1, address: candidate.address }));
@@ -147,5 +155,84 @@ describe("roof analysis flow", () => {
     await user.click(screen.getByRole("button", { name: "Use coordinates" }));
     expect(screen.queryByText("Is this the correct building?")).toBeNull();
     expect(api.confirmBuilding).not.toHaveBeenCalled();
+  });
+  it("requests device location only on click, recenters the map, and previews a selected house without saving it", async () => {
+    mapEnvironment.key = "public-browser-map-key";
+    const getCurrentPosition = vi.fn((success: PositionCallback, error?: PositionErrorCallback, options?: PositionOptions) => {
+      void error; void options;
+      success({ coords: { latitude: 19.07602, longitude: 72.87772, accuracy: 14 } } as GeolocationPosition);
+    });
+    const previous = Object.getOwnPropertyDescriptor(navigator, "geolocation");
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition } });
+    try {
+      const user = userEvent.setup();
+      api.insights.mockResolvedValue({ schemaVersion: 1, source: "GOOGLE_SOLAR", requestId: "request-3",
+        previewId: "preview-1", roof: { ...roof, center: { latitude: 19.07601, longitude: 72.87771 },
+          bounds: { southwest: { latitude: 19.076, longitude: 72.8777 }, northeast: { latitude: 19.07603, longitude: 72.87773 } } } });
+      render(<AnalyzeStart />);
+      await screen.findByText(candidate.address);
+      await user.click(screen.getByRole("button", { name: "Find my building" }));
+      await screen.findByRole("button", { name: "Show my current location on the map" });
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+      await user.click(screen.getByRole("button", { name: "Show my current location on the map" }));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+      expect(getCurrentPosition.mock.calls[0]?.[2]).toEqual({ enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 });
+      expect(screen.getByRole("status").textContent).toContain("Device location shown in blue");
+      expect(screen.getByTestId("satellite-map").getAttribute("data-center")).toBe(JSON.stringify({ latitude: 19.07602, longitude: 72.87772 }));
+      expect(api.insights).not.toHaveBeenCalled();
+      await user.click(screen.getByRole("button", { name: "Select house on map" }));
+      await screen.findByText("Is this the correct building?");
+      expect(api.insights).toHaveBeenCalledWith("property-1", candidate,
+        { latitude: 19.07601, longitude: 72.87771 }, expect.any(AbortSignal));
+      expect(screen.getByTestId("satellite-map").getAttribute("data-overlay")).toBe("true");
+      expect(api.confirmBuilding).not.toHaveBeenCalled();
+      expect(api.confirmRoof).not.toHaveBeenCalled();
+    } finally {
+      if (previous) Object.defineProperty(navigator, "geolocation", previous);
+      else Reflect.deleteProperty(navigator, "geolocation");
+    }
+  });
+  it("explains denied location permission and keeps manual selection available", async () => {
+    mapEnvironment.key = "public-browser-map-key";
+    const previous = Object.getOwnPropertyDescriptor(navigator, "geolocation");
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: {
+      getCurrentPosition: (_success: PositionCallback, error: PositionErrorCallback) => error({ code: 1 } as GeolocationPositionError),
+    } });
+    try {
+      const user = userEvent.setup();
+      render(<AnalyzeStart />);
+      await screen.findByText(candidate.address);
+      await user.click(screen.getByRole("button", { name: "Find my building" }));
+      await user.click(await screen.findByRole("button", { name: "Show my current location on the map" }));
+      expect(screen.getByRole("alert").textContent).toContain("Location permission was denied");
+      expect(screen.getByRole("button", { name: "Select house on map" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Inspect roof at this point" })).toBeTruthy();
+    } finally {
+      if (previous) Object.defineProperty(navigator, "geolocation", previous);
+      else Reflect.deleteProperty(navigator, "geolocation");
+    }
+  });
+  it("ignores a device location result that arrives after sign-out", async () => {
+    mapEnvironment.key = "public-browser-map-key";
+    let resolveLocation: PositionCallback | undefined;
+    const previous = Object.getOwnPropertyDescriptor(navigator, "geolocation");
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: {
+      getCurrentPosition: (success: PositionCallback) => { resolveLocation = success; },
+    } });
+    try {
+      const user = userEvent.setup();
+      const view = render(<AnalyzeStart />);
+      await screen.findByText(candidate.address);
+      await user.click(screen.getByRole("button", { name: "Find my building" }));
+      await user.click(await screen.findByRole("button", { name: "Show my current location on the map" }));
+      identity.status = "signedOut"; identity.profile = null;
+      view.rerender(<AnalyzeStart />);
+      resolveLocation?.({ coords: { latitude: 19.07602, longitude: 72.87772, accuracy: 12 } } as GeolocationPosition);
+      expect(screen.queryByText(/Device location shown in blue/)).toBeNull();
+      expect(screen.queryByTestId("satellite-map")).toBeNull();
+    } finally {
+      if (previous) Object.defineProperty(navigator, "geolocation", previous);
+      else Reflect.deleteProperty(navigator, "geolocation");
+    }
   });
 });

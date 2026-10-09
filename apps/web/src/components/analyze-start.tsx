@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { CheckCircle2, MapPin, Ruler, ShieldCheck } from "lucide-react";
+import { CheckCircle2, LocateFixed, MapPin, Ruler, ShieldCheck } from "lucide-react";
 import { Button, Input, Label } from "@solarsaathi/ui";
 import type { GeocodeCandidate, ManualRoofMeasurements, RoofConfirmationResponse, RoofPoint, RoofPreviewResponse } from "@solarsaathi/types";
 import { useAuth } from "../auth/auth-provider";
@@ -30,6 +30,10 @@ export function AnalyzeStart() {
   const [candidates, setCandidates] = useState<GeocodeCandidate[]>([]);
   const [selected, setSelected] = useState<GeocodeCandidate>();
   const [point, setPoint] = useState<RoofPoint>();
+  const [mapCenter, setMapCenter] = useState<RoofPoint>();
+  const [deviceLocation, setDeviceLocation] = useState<{ point: RoofPoint; accuracyMeters: number }>();
+  const [locationStatus, setLocationStatus] = useState<"idle" | "locating" | "ready" | "error">("idle");
+  const [locationMessage, setLocationMessage] = useState<string>();
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [preview, setPreview] = useState<RoofPreviewResponse>();
@@ -40,6 +44,7 @@ export function AnalyzeStart() {
   const [busy, setBusy] = useState<Busy>();
   const [error, setError] = useState<string>();
   const request = useRef<AbortController | null>(null);
+  const locationAttempt = useRef(0);
   const account = status === "signedIn" ? profile?.userId : undefined;
   const accountRef = useRef(account);
   const mapKey = getPublicEnvironment().NEXT_PUBLIC_GOOGLE_MAPS_KEY;
@@ -49,15 +54,19 @@ export function AnalyzeStart() {
     if (status === "loading" || accountRef.current === account) return;
     accountRef.current = account;
     request.current?.abort(); request.current = null;
+    locationAttempt.current += 1;
     setBusy(undefined); setError(undefined); setPropertyId(undefined); setCandidates([]);
-    setSelected(undefined); setPoint(undefined); setPreview(undefined);
+    setSelected(undefined); setPoint(undefined); setMapCenter(undefined); setDeviceLocation(undefined);
+    setLocationStatus("idle"); setLocationMessage(undefined); setPreview(undefined);
     setBuildingConfirmed(false); setResult(undefined); setManualMode(false);
   }, [account, status]);
 
   function reset() {
     request.current?.abort(); request.current = null;
+    locationAttempt.current += 1;
     setBusy(undefined); setError(undefined); setPropertyId(undefined); setCandidates([]);
-    setSelected(undefined); setPoint(undefined); setPreview(undefined);
+    setSelected(undefined); setPoint(undefined); setMapCenter(undefined); setDeviceLocation(undefined);
+    setLocationStatus("idle"); setLocationMessage(undefined); setPreview(undefined);
     setBuildingConfirmed(false); setResult(undefined); setManualMode(false);
   }
   function clear() {
@@ -67,9 +76,13 @@ export function AnalyzeStart() {
   }
   function choose(candidate: GeocodeCandidate) {
     request.current?.abort(); setBusy(undefined);
+    locationAttempt.current += 1;
+    setMapCenter(candidate.location); setDeviceLocation(undefined); setLocationStatus("idle"); setLocationMessage(undefined);
     setSelected(candidate); changePoint(candidate.location);
   }
   function changePoint(next: RoofPoint) {
+    locationAttempt.current += 1;
+    if (locationStatus === "locating") { setLocationStatus("idle"); setLocationMessage(undefined); }
     request.current?.abort(); setBusy(undefined);
     setPoint(next); setLatitude(next.latitude.toFixed(6)); setLongitude(next.longitude.toFixed(6));
     setPreview(undefined); setBuildingConfirmed(false); setResult(undefined); setError(undefined);
@@ -105,14 +118,58 @@ export function AnalyzeStart() {
   }
   function startManual() {
     request.current?.abort(); setBusy(undefined); setError(undefined);
+    locationAttempt.current += 1;
+    setDeviceLocation(undefined); setLocationStatus("idle"); setLocationMessage(undefined);
     setManualMode(true); setCandidates([]); setSelected(undefined); setPreview(undefined); setResult(undefined);
   }
-  function inspect() {
-    if (!propertyId || !selected || !point) return;
+  function inspectAt(housePoint: RoofPoint) {
+    if (!propertyId || !selected) return;
     run("insights", async signal => {
-      const data = await roofApi.insights(propertyId, selected, point, signal);
+      const data = await roofApi.insights(propertyId, selected, housePoint, signal);
       if (!signal.aborted) { setPreview(data); setBuildingConfirmed(false); }
     });
+  }
+  function selectHouseOnMap(housePoint: RoofPoint) {
+    changePoint(housePoint);
+    inspectAt(housePoint);
+  }
+  function locateOnce() {
+    const attempt = ++locationAttempt.current;
+    setLocationMessage(undefined);
+    setLocationStatus("locating");
+    if (!navigator.geolocation) {
+      setLocationStatus("error");
+      setLocationMessage("Your browser cannot share its location. Select your house on the map or use coordinates.");
+      return;
+    }
+    try {
+      navigator.geolocation.getCurrentPosition(position => {
+        if (attempt !== locationAttempt.current) return;
+        const { latitude: lat, longitude: lng, accuracy } = position.coords;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 ||
+          !Number.isFinite(accuracy) || accuracy < 0) {
+          setLocationStatus("error");
+          setLocationMessage("Your device returned an invalid location. Select your house on the map instead.");
+          return;
+        }
+        const current = { latitude: lat, longitude: lng };
+        request.current?.abort(); request.current = null; setBusy(undefined);
+        setPreview(undefined); setBuildingConfirmed(false); setResult(undefined); setError(undefined);
+        setDeviceLocation({ point: current, accuracyMeters: accuracy });
+        setMapCenter(current); setLocationStatus("ready");
+        setLocationMessage(`Device location shown in blue (accuracy about ${Math.round(accuracy)} m). Your house is selected separately.`);
+      }, failure => {
+        if (attempt !== locationAttempt.current) return;
+        setLocationStatus("error");
+        setLocationMessage(failure.code === 1 ? "Location permission was denied. Allow it in your browser settings, or select your house on the map." :
+          failure.code === 3 ? "Finding your location timed out. Try again, or select your house on the map." :
+            "Your device location is unavailable. Select your house on the map or use coordinates.");
+      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 });
+    } catch {
+      if (attempt !== locationAttempt.current) return;
+      setLocationStatus("error");
+      setLocationMessage("Your browser could not request location. Select your house on the map or use coordinates.");
+    }
   }
   function confirmBuilding() {
     if (!propertyId || !preview) return;
@@ -183,14 +240,15 @@ export function AnalyzeStart() {
       </div>
       {error && <p className="form-error" role="alert">{error}</p>}
       {!manualMode && candidates.length > 0 && <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(19rem,1fr)]">
-        <div className="space-y-3"><h2 className="text-xl">Select your building</h2>
-          {mapReady ? <SatelliteBuildingMap apiKey={mapKey!} center={selected!.location} point={point!} roofCenter={preview?.roof.center} roofBounds={preview?.roof.bounds} onPointChange={changePoint} /> : <div className="flex min-h-72 items-center justify-center rounded-xl border bg-muted p-6 text-center text-muted-foreground" role="status">{mapKey ? "Choose an address match to view satellite imagery." : "Satellite map is not configured. You can still select an address match and use coordinates."}</div>}
+        <div className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl">Select your building</h2>{mapReady && <Button variant="outline" onClick={locateOnce} disabled={locationStatus === "locating"} aria-label="Show my current location on the map"><LocateFixed aria-hidden="true" className="mr-2 size-4" />{locationStatus === "locating" ? "Finding your location…" : "Use my location"}</Button>}</div>
+          {locationMessage && <p className={locationStatus === "error" ? "form-error" : "text-sm text-muted-foreground"} role={locationStatus === "error" ? "alert" : "status"}>{locationMessage}</p>}
+          {mapReady ? <SatelliteBuildingMap apiKey={mapKey!} center={mapCenter ?? selected!.location} point={point!} deviceLocation={deviceLocation} roofCenter={preview?.roof.center} roofBounds={preview?.roof.bounds} onPointChange={selectHouseOnMap} /> : <div className="flex min-h-72 items-center justify-center rounded-xl border bg-muted p-6 text-center text-muted-foreground" role="status">{mapKey ? "Choose an address match to view satellite imagery." : "Satellite map is not configured. You can still select an address match and use coordinates."}</div>}
           {preview?.roof.center && <p className="text-sm text-muted-foreground">Google returned building center: {preview.roof.center.latitude.toFixed(6)}°, {preview.roof.center.longitude.toFixed(6)}°. Compare this with your selected point ({point?.latitude.toFixed(6)}°, {point?.longitude.toFixed(6)}°). {preview.roof.bounds ? "The green outline on the map is an approximate bounding box, not an exact roof shape." : "A roof outline was not provided."}</p>}
           {mapReady && preview?.roof.center && <p className="text-xs text-muted-foreground">Amber circle: your selected point. Green circle: Google building center.</p>}
-          <p className="text-sm text-muted-foreground">Select a point on the map or use the address result and coordinates. Google Solar supplies the roof measurements.</p>
+          <p className="text-sm text-muted-foreground">Tap your house on the satellite map to load a Google Solar roof preview and approximate building overlay. The overlay is a bounding box, not a surveyed roof outline. You can also use the address point or coordinates.</p>
         </div>
         <div className="space-y-5 rounded-xl border bg-background p-5"><fieldset className="space-y-3"><legend className="mb-3 font-semibold">Address matches</legend>{candidates.map(item => <label key={item.placeId} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border p-3"><input type="radio" name="geocode-candidate" checked={selected?.placeId === item.placeId} onChange={() => choose(item)} className="mt-1" /><span><strong className="block font-medium">{item.address}</strong><small className="text-muted-foreground">{item.partialMatch ? "Partial match — verify carefully" : "Google Geocoding result"}</small></span></label>)}</fieldset>
-          {selected && point && <><fieldset className="grid grid-cols-2 gap-3"><legend className="mb-2 font-semibold">Building point</legend><div><Label htmlFor="roof-latitude">Latitude</Label><Input id="roof-latitude" inputMode="decimal" value={latitude} onChange={event => setLatitude(event.target.value)} /></div><div><Label htmlFor="roof-longitude">Longitude</Label><Input id="roof-longitude" inputMode="decimal" value={longitude} onChange={event => setLongitude(event.target.value)} /></div></fieldset><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => { const lat = parseNumber(latitude, -90, 90); const lng = parseNumber(longitude, -180, 180); if (lat === undefined || lng === undefined) { setError("Enter valid latitude and longitude coordinates."); return; } changePoint({ latitude: lat, longitude: lng }); }}>Use coordinates</Button><Button variant="ghost" onClick={() => changePoint(selected.location)}>Use address point</Button></div><p className="text-xs text-muted-foreground">Map clicking is optional. The service checks that your point is near the selected address.</p><Button onClick={inspect} disabled={!!busy} className="w-full">{busy === "insights" ? "Checking this building…" : "Inspect roof at this point"}</Button></>}
+          {selected && point && <><fieldset className="grid grid-cols-2 gap-3"><legend className="mb-2 font-semibold">Building point</legend><div><Label htmlFor="roof-latitude">Latitude</Label><Input id="roof-latitude" inputMode="decimal" value={latitude} onChange={event => setLatitude(event.target.value)} /></div><div><Label htmlFor="roof-longitude">Longitude</Label><Input id="roof-longitude" inputMode="decimal" value={longitude} onChange={event => setLongitude(event.target.value)} /></div></fieldset><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => { const lat = parseNumber(latitude, -90, 90); const lng = parseNumber(longitude, -180, 180); if (lat === undefined || lng === undefined) { setError("Enter valid latitude and longitude coordinates."); return; } changePoint({ latitude: lat, longitude: lng }); }}>Use coordinates</Button><Button variant="ghost" onClick={() => changePoint(selected.location)}>Use address point</Button></div><p className="text-xs text-muted-foreground">Your selected house must be near the saved address. Device location only recenters the map; it does not choose a house.</p><Button onClick={() => inspectAt(point)} disabled={!!busy} className="w-full">{busy === "insights" ? "Checking this building…" : preview ? "Refresh roof preview" : "Inspect roof at this point"}</Button></>}
         </div>
       </div>}
       {preview && !manualMode && <section className="rounded-xl border bg-background p-6" aria-labelledby="building-confirm-title"><h2 id="building-confirm-title" className="text-xl">Is this the correct building?</h2><p className="mt-2 text-muted-foreground">Google modeled {preview.roof.roofAreaSquareMeters.toFixed(1)} m² of roof across {preview.roof.segmentCount} segment{preview.roof.segmentCount === 1 ? "" : "s"}. Some roof portions may not be characterized.</p><p className="mt-2 text-sm text-muted-foreground">{preview.roof.imageryDate ? "Imagery date: " + preview.roof.imageryDate + ". " : "Imagery date unavailable. "}{preview.roof.imageryQuality ? "Imagery quality: " + preview.roof.imageryQuality + "." : "Imagery quality unavailable."}</p><p className="mt-2 text-xs text-muted-foreground">Source: Includes solar data from Google.</p><div className="mt-5 flex flex-wrap gap-3"><Button onClick={confirmBuilding} disabled={!!busy || buildingConfirmed}>{buildingConfirmed ? "Building confirmed" : busy === "building" ? "Confirming building…" : "Yes, this is my building"}</Button><Button variant="outline" onClick={() => { setPreview(undefined); setBuildingConfirmed(false); }}>Choose another point</Button></div></section>}

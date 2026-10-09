@@ -233,6 +233,16 @@ clauses, effective dates, source authority and independent reviewer. Only its
 atomic activation makes a verified version available to homeowners. Do not
 equate evidence-review approval with active policy publication.
 
+For Phase 12, an optional `processSteps` array can be published with a benefit
+rule. Each step has a stable ID, consecutive order, required flag, title and
+description. The author supplies a distinct exact archived excerpt under
+`PROCESS_STEP_<index>`; publication creates a verified TEXT fact bound to that
+step's semantic claim key. The application tracker can snapshot these steps
+only when the benefit is selected and source checks are fresh and healthy.
+No process template is inferred from a generic national sequence or from an
+LLM response. Older active rules without process steps remain valid for benefit
+arithmetic but cannot start a policy-specific tracker.
+
 Material changes go:
 
 ```text

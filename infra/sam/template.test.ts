@@ -16,7 +16,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(template.Transform).toBe("AWS::Serverless-2016-10-31");
   });
   it("uses compiled handlers with explicit log destinations", () => {
-    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "PolicyFinancialsFunction", "BenefitsFunction", "PolicyFunction", "PolicyPublicationFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
+    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "PolicyFinancialsFunction", "BenefitsFunction", "ApplicationsFunction", "PolicyFunction", "PolicyPublicationFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
       expect(properties(name).CodeUri).toBe("../../apps/api/dist");
       expect(properties(name).Handler).toMatch(/^handlers\/[a-z-]+\.handler$/);
       expect(properties(name).LoggingConfig).toBeDefined();
@@ -327,5 +327,26 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(readPolicy).toContain("index/GSI5");
     expect(readPolicy).toContain("AnalysesTable.Arn");
     expect(readPolicy).not.toMatch(/PutItem|UpdateItem|DeleteItem|s3:|secretsmanager|bedrock/);
+  });
+
+  it("routes policy-bound application tracking with scoped core writes and a current policy guard", () => {
+    const tracker = properties("ApplicationsFunction");
+    expect(tracker.Handler).toBe("handlers/applications.handler");
+    expect(tracker.Environment).toEqual({ Variables: {
+      CORE_TABLE_NAME: "AnalysesTable", POLICY_TABLE_NAME: "PolicyTable",
+    } });
+    expect(Object.values(tracker.Events as Record<string, { Properties: { Path: string; Method: string } }>)
+      .map(event => `${event.Properties.Method} ${event.Properties.Path}`).sort()).toEqual([
+      "GET /applications", "POST /applications", "GET /applications/{applicationId}",
+      "GET /applications/{applicationId}/events", "POST /applications/{applicationId}/steps/{stepId}",
+      "POST /applications/{applicationId}/details", "POST /applications/{applicationId}/documents",
+      "POST /applications/{applicationId}/chat-update",
+    ].sort());
+    const access = JSON.stringify(tracker.Policies);
+    expect(access).toContain("WriteApplicationAndAudit");
+    expect(access).toContain("GuardActiveApplicationPolicy");
+    expect(access).toContain("PUBLISHED_POLICY#*");
+    expect(access).toContain("index/GSI5");
+    expect(access).not.toMatch(/s3:|secretsmanager|bedrock|DeleteItem|UpdateItem/);
   });
 });

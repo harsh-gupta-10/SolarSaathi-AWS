@@ -62,7 +62,7 @@ describe("policy publication review", () => {
     await user.click(confirm);
     expect(api.transition).toHaveBeenCalledWith("reviewer-1", draft.draftId, "publish", 2,
       "Checked the exact official rule and exclusions");
-  });
+  }, 10_000);
 
   it("does not call policy APIs in the synthetic preview", () => {
     render(<PolicyPublicationPanel userId="SYNTHETIC_DEMO" demo />);

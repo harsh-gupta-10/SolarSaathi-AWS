@@ -129,6 +129,20 @@ screens; accessibility checks reported no WCAG A/AA violations in the inspected
 states. These fixtures do not establish live India policy coverage or deployed
 AWS authorization.
 
+### Phase 12 application tracker and map flow
+
+Policy and API tests cover exact archived process-step excerpts, missing
+templates, active version binding, fresh healthy source checks, selected
+benefit enforcement, ownership, revision conflicts, required and optional
+step transitions, status correction notes, document metadata, audit history
+and nonmutating explicit/ambiguous chat suggestions. Web state tests cover
+account sign-out clearing, property switch races, manual/geolocation map
+selection, separate device and house markers, and approximate Solar bounds.
+The `/demo/application-tracker` fixture supports browser layout and
+accessibility inspection without suggesting a real published policy. No
+fixture proves deployed Cognito, live Google Solar, official portal status,
+notification delivery, or current India process coverage.
+
 ### Phase 11 policy-backed financial scenario
 
 The Phase 11 local `pnpm check` gate passed 692 tests across the workspace,

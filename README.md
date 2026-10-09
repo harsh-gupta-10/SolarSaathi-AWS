@@ -99,7 +99,15 @@ Phases 0–11 have locally implemented source code:
   owner-scoped evaluation API, and separate administrator rule publication.
 - a policy-backed financial scenario that recomputes the owned roof and base
   estimate, then presents current selected benefits, modeled net upfront cost,
-  adjusted cash flow and payback with cited policy provenance.
+  adjusted cash flow and payback with cited policy provenance;
+- an application tracker with policy-specific, exact-excerpt-backed process
+  steps, audited user reported progress, references and document notes. A
+  deterministic conversation update can suggest a status but requires an
+  explicit save. A fictional visual preview is at `/demo/application-tracker`;
+- an optional one-click device-location marker on the satellite map, separate
+  house selection, and an approximate Google Solar building bounds overlay
+  after a house is selected. The device location is never stored or used as
+  automatic building confirmation.
 
 Google-derived preview, analysis and cache records have a 21-day retention
 limit and an hourly bounded hard-delete worker with an error alarm. Google roof
@@ -118,6 +126,10 @@ Phase 11 retains the unsubsidized base estimate when policy is unavailable.
 Its adjusted scenario assumes selected central/state/DISCOM/local benefits are
 received upfront; actual payment timing is unverified. Selected other benefits
 remain disclosed but do not reduce the modeled net cost or payback.
+The application tracker requires a selected benefit with a current sourced
+process template; it does not submit to or read status from a government
+portal. User recorded completion is not official approval, and no notification
+service or official processing deadline is configured.
 
 These phases have **local** lint, typecheck, test and build coverage. No AWS
 resources or Google Cloud project have been configured or deployed for this app;

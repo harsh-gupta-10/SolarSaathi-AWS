@@ -77,6 +77,18 @@ loads only an owned analysis and active rules, and fails closed when there are
 no current rules or the bounded rule catalog cannot support evaluation. Local
 tests exercise these controls but do not establish live IAM or policy coverage.
 
+Phase 12 process steps use the same archived-excerpt and independent-review
+publication gate. Application creation reevaluates an owned roof and selected
+benefit, requires fresh healthy official-source checks, and condition-checks
+the active rule/version in the DynamoDB creation transaction. Application
+reads and mutations first verify property ownership or organization scope.
+Revision-checked writes append immutable audit events. Browser supplied step
+templates, policy facts or benefit amounts are ignored/rejected. The
+conversation style suggestion stores no message and never updates a step;
+the user must explicitly confirm through the audited step endpoint. Document
+records are metadata only. Application progress is user reported and must not
+be displayed as official government completion.
+
 ## Sensitive data
 Protect:
 - identity data

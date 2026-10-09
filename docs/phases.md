@@ -358,6 +358,33 @@ invariant checks and browser inspection of the synthetic policy financial demo.
 - user chat updates
 - reminders/notifications where supported
 
+Status: locally implemented. A homeowner starts a tracker only from a
+currently selected, positive, verified benefit for an owned confirmed roof.
+The active policy rule must include a process template: each ordered step is
+separately bound to an exact archived official excerpt and approved through
+the independent publication gate. No generic or AI-invented checklist is
+shown when process evidence is absent. Creation requires fresh healthy source
+checks and condition-checks the active policy version. The application freezes
+its cited process snapshot while progress remains clearly user reported.
+Property-scoped list/detail, revision-checked step transitions, timestamped
+notes, reference/vendor details, document metadata and immutable audit events
+are implemented. The conversation style update suggests a status only for
+explicit wording and always requires a separate confirmation; it stores no
+message. The UI shows the policy-defined next step and a source trail, with a
+clearly fictional disabled demo. The map can recenter from one explicit
+device-location request, then a separate house tap automatically requests
+Google Solar preview and an approximate bounds overlay; building and roof
+confirmations remain separate.
+
+The local gate passed 710 tests, lint, typechecking, production builds, SAM
+invariant checks and desktop/mobile browser inspection of the tracker demo.
+Automated WCAG A/AA inspection found zero violations on the two inspected
+sizes. No current India process template has been published or deployed; live
+Cognito, Google, DynamoDB, portal status and notification delivery are
+unverified. No official submission, portal synchronization, automated reminder
+or government deadline claim is implemented. AWS CloudFormation validation
+awaits renewed CLI credentials; Google Cloud has no selected project.
+
 ## Phase 13 — AI Solar + Policy Advisor
 Grounding:
 - property

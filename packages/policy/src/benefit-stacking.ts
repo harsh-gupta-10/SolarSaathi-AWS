@@ -139,12 +139,14 @@ function requireClauseBacking(rule: PolicyBenefitRuleV1, items: PolicyEvidenceV1
       claimKey: benefitClauseClaimKeyV1("ELIGIBILITY", value) }))),
     ...rule.compatibility.flatMap(edge => edge.evidenceFactIds.map(factId => ({ factId,
       claimKey: benefitClauseClaimKeyV1("COMPATIBILITY", edge) }))),
+    ...(rule.processSteps ?? []).flatMap(step => step.evidenceFactIds.map(factId => ({ factId,
+      claimKey: benefitClauseClaimKeyV1("PROCESS_STEP", step) }))),
   ];
   for (const { factId, claimKey } of references) {
     const fact = facts.get(factId);
     if (!fact || fact.value?.kind !== "TEXT" || fact.value.text !== fact.statement ||
       fact.statement.length < 10 || fact.claimKey !== claimKey) {
-      throw new RangeError("Eligibility, size, overlap or compatibility clause lacks verified quoted text evidence.");
+      throw new RangeError("A rule clause lacks verified quoted text evidence.");
     }
   }
 }

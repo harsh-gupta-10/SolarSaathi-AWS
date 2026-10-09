@@ -6,7 +6,7 @@ const identifier = z.string().regex(/^(?:BENEFIT|RULE|POLICY|FACT|SRC|DOC)#[A-Za
 const timestamp = z.iso.datetime({ offset: true });
 const code = z.string().regex(/^[A-Z0-9][A-Z0-9_-]{0,63}$/);
 const paise = z.number().int().safe().nonnegative().max(1_000_000_000_000);
-const citation = z.object({
+export const citationSchema = z.object({
   schemaVersion: z.literal(1), sourceId: identifier, sourceRegistryVersion: z.number().int().positive(),
   documentId: identifier, documentVersion: z.number().int().positive(),
   documentSha256: z.string().regex(/^[a-f0-9]{64}$/), publisherName: z.string().min(1),
@@ -25,7 +25,7 @@ const decision = z.object({
   status: z.enum(["SELECTED", "INELIGIBLE", "UNKNOWN", "EXCLUDED"]), reasonCodes: z.array(code).max(30),
   calculatedAmountPaise: paise.optional(), countedAmountPaise: paise.optional(), policyId: identifier,
   policyVersion: z.number().int().positive(), factIds: z.array(identifier).min(1).max(50),
-  citations: z.array(citation).min(1).max(50), sourceChecks: z.array(z.object({
+  citations: z.array(citationSchema).min(1).max(50), sourceChecks: z.array(z.object({
     sourceId: identifier, lastCheckedAt: timestamp.nullable(), fresh: z.boolean(),
     status: z.enum(["HEALTHY", "DEGRADED", "STALE", "FAILED", "UNKNOWN"]),
   })).min(1), verificationStatus: z.literal("VERIFIED"), lastVerifiedAt: timestamp,

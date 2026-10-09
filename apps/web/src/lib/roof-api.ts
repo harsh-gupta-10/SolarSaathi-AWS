@@ -43,7 +43,13 @@ function endpoint(path: string): string {
   if (!base) throw new RoofRequestError("API_NOT_CONFIGURED", "Roof analysis is not connected in this deployment.");
   const url = new URL(base);
   if (url.search || url.hash || url.username || url.password) throw new RoofRequestError("API_NOT_CONFIGURED", "The analysis API address is invalid.");
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}${path}`;
+  const queryStart = path.indexOf("?");
+  const pathname = queryStart < 0 ? path : path.slice(0, queryStart);
+  if (!pathname.startsWith("/") || pathname.startsWith("//") || path.includes("#")) {
+    throw new RoofRequestError("API_NOT_CONFIGURED", "The analysis API path is invalid.");
+  }
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}${pathname}`;
+  if (queryStart >= 0) url.search = path.slice(queryStart);
   return url.toString();
 }
 
@@ -57,8 +63,8 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
-export async function postAuthenticated<T>(path: string, body: unknown, schema: z.ZodType<T>, signal?: AbortSignal,
-  timeoutMs = 12_000): Promise<T> {
+async function authenticatedRequest<T>(method: "GET" | "POST", path: string, body: unknown,
+  schema: z.ZodType<T>, signal?: AbortSignal, timeoutMs = 12_000): Promise<T> {
   const url = endpoint(path);
   const controller = new AbortController();
   const cancel = () => controller.abort();
@@ -77,8 +83,10 @@ export async function postAuthenticated<T>(path: string, body: unknown, schema: 
     if (controller.signal.aborted) throw new RoofRequestError("CANCELLED", "The request was cancelled.");
     const token = session.tokens?.accessToken?.toString();
     if (!token) throw new RoofRequestError("SESSION_UNAVAILABLE", "Sign in to analyze this property.");
-    const response = await fetch(url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify(body), credentials: "omit", cache: "no-store", redirect: "error", signal: controller.signal });
+    const response = await fetch(url, { method, headers: { authorization: `Bearer ${token}`,
+      ...(method === "POST" ? { "content-type": "application/json" } : {}), accept: "application/json" },
+      ...(method === "POST" ? { body: JSON.stringify(body) } : {}),
+      credentials: "omit", cache: "no-store", redirect: "error", signal: controller.signal });
     let payload: unknown;
     try { payload = await abortable(response.json(), controller.signal); } catch { throw new RoofRequestError("INVALID_RESPONSE", "The analysis service returned an unreadable response. Try again."); }
     if (!response.ok) {
@@ -99,6 +107,16 @@ export async function postAuthenticated<T>(path: string, body: unknown, schema: 
     clearTimeout(timer);
     signal?.removeEventListener("abort", cancel);
   }
+}
+
+export function postAuthenticated<T>(path: string, body: unknown, schema: z.ZodType<T>, signal?: AbortSignal,
+  timeoutMs = 12_000): Promise<T> {
+  return authenticatedRequest("POST", path, body, schema, signal, timeoutMs);
+}
+
+export function getAuthenticated<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal,
+  timeoutMs = 12_000): Promise<T> {
+  return authenticatedRequest("GET", path, undefined, schema, signal, timeoutMs);
 }
 
 export const roofApi = {
