@@ -14,6 +14,7 @@ const routes = new Map([
   ["/v1/users/me", ["GET"]], ["/v1/users/bootstrap", ["POST"]], ["/v1/organizations/me", ["GET"]],
   ["/v1/customers", ["GET", "POST"]], ["/v1/properties", ["GET", "POST"]],
   ["/v1/properties/{propertyId}", ["GET"]], ["/v1/leads", ["GET", "POST"]],
+  ["/v1/properties/{propertyId}/analyses", ["GET"]],
 ]);
 
 function versionedPath(path: string): string {
@@ -24,7 +25,7 @@ function route(event: APIGatewayProxyEvent): { path: string; propertyId?: string
   // API Gateway's resource excludes the stage; older local fixtures include /v1.
   const resource = versionedPath(event.resource);
   if (routes.has(resource)) {
-    return { path: resource, ...(resource.endsWith("{propertyId}") ? { propertyId: event.pathParameters?.propertyId } : {}) };
+    return { path: resource, ...(resource.includes("{propertyId}") ? { propertyId: event.pathParameters?.propertyId } : {}) };
   }
   const stage = event.requestContext?.stage;
   const stageRelativePath = stage && event.path.startsWith(`/${stage}/`) ? event.path.slice(stage.length + 1) : event.path;
@@ -32,6 +33,8 @@ function route(event: APIGatewayProxyEvent): { path: string; propertyId?: string
   if (routes.has(path) && !path.endsWith("{propertyId}")) return { path };
   const match = /^\/v1\/properties\/([^/]+)$/.exec(path);
   if (match) return { path: "/v1/properties/{propertyId}", propertyId: match[1] };
+  const analyses = /^\/v1\/properties\/([^/]+)\/analyses$/.exec(path);
+  if (analyses) return { path: "/v1/properties/{propertyId}/analyses", propertyId: analyses[1] };
   throw new RequestError(404, "NOT_FOUND", "The requested endpoint was not found.");
 }
 
@@ -64,6 +67,10 @@ export function createCoreHandler(dependencies: CoreHandlerDependencies = {}) {
     if (path === "/v1/properties/{propertyId}") {
       if (!propertyId) throw new RequestError(400, "INVALID_REQUEST", "Provide a property ID.");
       return jsonResponse(200, { ...response, property: await service.getProperty(identity, propertyId) });
+    }
+    if (path === "/v1/properties/{propertyId}/analyses") {
+      if (!propertyId) throw new RequestError(400, "INVALID_REQUEST", "Provide a property ID.");
+      return jsonResponse(200, { ...response, ...await service.listAnalyses(identity, propertyId, pageOptions(event)) });
     }
     if (path === "/v1/customers") {
       return event.httpMethod === "GET" ? jsonResponse(200, { ...response, ...await service.listCustomers(identity, pageOptions(event)) }) :

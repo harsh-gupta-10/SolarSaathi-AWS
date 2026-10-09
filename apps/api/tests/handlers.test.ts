@@ -2,7 +2,6 @@ import type { APIGatewayProxyEvent, Context } from "aws-lambda";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handler as health } from "../src/handlers/health";
 import { handler as analyze } from "../src/handlers/analyze";
-import { handler as chat } from "../src/handlers/chat";
 import { withRequestLogging } from "../src/lib/http";
 
 const context = { awsRequestId: "test-request-id" } as Context;
@@ -46,8 +45,8 @@ describe("API foundation", () => {
     });
   });
 
-  it.each([analyze, chat])("keeps product handlers explicitly unavailable", async (handler) => {
-    const response = await handler(request(), context);
+  it("keeps the unimplemented solar analysis scaffold explicit", async () => {
+    const response = await analyze(request(), context);
     expect(response.statusCode).toBe(501);
     expect(JSON.parse(response.body)).toMatchObject({ error: { code: "NOT_IMPLEMENTED", requestId: "test-request-id" } });
   });

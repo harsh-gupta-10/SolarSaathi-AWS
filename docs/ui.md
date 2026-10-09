@@ -306,6 +306,15 @@ Questions:
 
 Responses show source cards.
 
+Phase 13's authenticated advisor lets the user choose an owned property and
+confirmed, unexpired analysis before asking a question. The result separates
+server-composed answer text from provenance-labelled fact cards, with source
+citations and verification metadata on policy cards. Missing financial or
+applicant inputs remain visible; a concise roof answer must not imply a
+subsidy calculation. Application progress is labelled user reported. Show a
+usable deterministic answer when the optional model is unavailable, and clear
+prior account/property context when the selection changes.
+
 ## Rooftop ideas
 
 ```text

@@ -396,6 +396,30 @@ Grounding:
 
 AI can explain, summarize and guide. It cannot change deterministic facts.
 
+Status: locally implemented. An authenticated, owner-scoped endpoint loads a
+confirmed unexpired roof, optionally recomputes the existing system, base
+financial and current policy-backed scenario, and optionally loads a tracker
+for the same analysis. It creates bounded provenance-labelled fact cards. A
+configured Bedrock model can select relevant card IDs; the server validates
+the selection and composes the final answer from its original cards. The raw
+address, reference, vendor, archive text and question are not sent to the
+model. Invalid output, timeout or absent model uses a deterministic fallback.
+No policy amount or official application status is model-generated. Missing
+scenario inputs or verified benefit records are explicit. A paginated
+owner-scoped analysis list supports the authenticated UI, which offers
+property/roof/application selection and optional user-entered financial and
+applicant inputs. The `/demo/advisor` screen is a conspicuously synthetic,
+read-only layout fixture.
+
+The local gate passed 724 tests, lint, typechecking, production builds, API
+bundle/PDF smoke tests and SAM invariant checks. Desktop/mobile browser checks
+found no horizontal overflow and automated WCAG A/AA checks reported zero
+violations for the inspected demo states. No Bedrock model, Cognito/API stack,
+current India policy corpus or Google service is configured/deployed, so live
+advisor grounding, model permission and latency remain unverified. Local SAM
+CLI validation and AWS CloudFormation validation await available tooling and
+renewed AWS credentials respectively.
+
 ## Phase 14 — Accessory advisor
 - accessory catalog
 - compatibility rules

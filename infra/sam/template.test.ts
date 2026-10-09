@@ -89,6 +89,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
       "GET /users/me", "POST /users/bootstrap", "GET /organizations/me",
       "GET /customers", "POST /customers", "GET /properties", "POST /properties",
       "GET /properties/{propertyId}", "GET /leads", "POST /leads",
+      "GET /properties/{propertyId}/analyses",
     ].sort());
     expect(Object.values(events).every(event => event.Properties.Auth === undefined)).toBe(true);
   });
@@ -105,7 +106,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
         "${AnalysesTable.Arn}/index/GSI1", "${AnalysesTable.Arn}/index/GSI2",
       ] }),
     ]);
-    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction"]) {
+    for (const name of ["HealthFunction", "AnalyzeFunction", "ProfileFunction"]) {
       expect(properties(name).Policies).toBeUndefined();
       expect(properties(name).Environment).toBeUndefined();
     }
@@ -348,5 +349,26 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(access).toContain("PUBLISHED_POLICY#*");
     expect(access).toContain("index/GSI5");
     expect(access).not.toMatch(/s3:|secretsmanager|bedrock|DeleteItem|UpdateItem/);
+  });
+
+  it("keeps the advisor read-only with optional exact-model Bedrock invocation", () => {
+    const advisor = properties("ChatFunction");
+    expect(advisor.Handler).toBe("handlers/chat.handler");
+    expect(advisor.Environment).toEqual({ Variables: {
+      CORE_TABLE_NAME: "AnalysesTable", POLICY_TABLE_NAME: "PolicyTable",
+      BEDROCK_MODEL_ID: "AdvisorBedrockModelId", BEDROCK_REGION: "AdvisorBedrockRegion",
+    } });
+    expect(advisor.Events).toMatchObject({ Chat: { Properties: { Path: "/advisor/solar", Method: "POST" } },
+      LegacyChat: { Properties: { Path: "/chat", Method: "POST" } } });
+    const policies = JSON.stringify(advisor.Policies);
+    expect(policies).toContain("ReadOwnedAdvisorContext");
+    expect(policies).toContain("ReadCurrentAdvisorPolicy");
+    expect(policies).toContain("index/GSI5");
+    expect(policies).toContain("AdvisorBedrockConfigured");
+    expect(policies).toContain("bedrock:InvokeModel");
+    expect(policies).toContain("AdvisorBedrockModelArn");
+    expect(policies).not.toMatch(/PutItem|UpdateItem|DeleteItem|s3:|secretsmanager/);
+    expect(template.Parameters.AdvisorBedrockModelId).toMatchObject({ Default: "" });
+    expect(template.Parameters.AdvisorBedrockModelArn).toMatchObject({ Default: "" });
   });
 });

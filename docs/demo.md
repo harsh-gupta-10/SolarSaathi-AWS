@@ -80,7 +80,13 @@ clearly fictional, disabled `/demo/application-tracker` fixture.
 Ask:
 > Why am I getting this subsidy?
 
-AI explains using retrieved policy facts.
+The live account flow requires an owned property and confirmed roof. With
+user-entered scenario inputs and a current verified selected benefit, it
+explains the deterministic amount using cited policy cards. With no verified
+benefit, it states that the amount cannot be confirmed. The optional Bedrock
+model can select relevant cards; server code composes the factual answer.
+For an offline presentation, `/demo/advisor` is a visibly fictional,
+read-only layout fixture with no live subsidy or model claim.
 
 ### 9. Accessories
 Show 2–4 useful recommendations based on the installation.

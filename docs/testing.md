@@ -143,6 +143,28 @@ accessibility inspection without suggesting a real published policy. No
 fixture proves deployed Cognito, live Google Solar, official portal status,
 notification delivery, or current India process coverage.
 
+### Phase 13 grounded advisor
+
+Exercise owner-scoped confirmed-analysis listing, expired Google record
+filtering, and cross-property access denial. Advisor tests should verify that
+trusted roof and application facts are loaded server-side, the optional
+scenario uses the existing deterministic calculation and policy paths, and
+missing scenario inputs never acquire invented financial or eligibility facts.
+Inject malformed, unknown, duplicate, and out-of-range Bedrock-selected card
+IDs; server-composed answers must contain only original fact-card statements.
+Test model timeout/unavailability, unverified or stale policy, and cross-owner
+application IDs for a deterministic, privacy-safe result or explicit error.
+The browser should clear the old answer on account, property, or analysis
+change and show citations, provenance, missing context, and fallback mode.
+Visual inspection of any synthetic advisor demo must confirm its fictional
+label survives mobile layouts and cannot be mistaken for live policy data.
+The Phase 13 local gate passed 724 tests, lint, typechecking and production
+builds. The new focused API and web suites passed 14 tests; SAM checks passed
+25. Desktop and 390-pixel mobile inspection of `/demo/advisor` found no
+horizontal overflow, and automated WCAG 2 A/AA and 2.1 A/AA checks reported
+zero violations and zero incomplete items in the inspected states. This does
+not verify deployed authorization, live model access or a real policy corpus.
+
 ### Phase 11 policy-backed financial scenario
 
 The Phase 11 local `pnpm check` gate passed 692 tests across the workspace,

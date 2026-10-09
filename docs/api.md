@@ -22,9 +22,10 @@ missing/invalid/revoked/mismatched credentials return `401 UNAUTHORIZED`;
 Cognito/JWKS outages return sanitized `503 AUTH_SERVICE_UNAVAILABLE`. Raw tokens,
 SDK errors and unrelated user attributes are never returned or logged.
 
-`POST /v1/solar/analyze` and `POST /v1/advisor/solar` return structured
-`501 NOT_IMPLEMENTED` responses. The original `/v1/analyze` and `/v1/chat`
-scaffold paths remain aliases. No product results are fabricated.
+`POST /v1/solar/analyze` remains a structured `501 NOT_IMPLEMENTED` scaffold;
+the implemented roof flow uses the Phase 4 routes below. `/v1/analyze`
+remains its scaffold alias. The Phase 13 `POST /v1/advisor/solar` contract is
+described below; legacy `POST /v1/chat` reaches the same grounded handler.
 
 Phase 3 core routes are locally implemented: `GET /v1/users/me`,
 `POST /v1/users/bootstrap`, `GET /v1/organizations/me`,
@@ -319,14 +320,43 @@ submission or status sync endpoint exists.
 
 ## Advisor
 
-`POST /v1/advisor/solar`
+`GET /v1/properties/{propertyId}/analyses?limit=20&cursor=...` returns a
+bounded, owner-scoped page of confirmed analysis summaries. The response has
+`schemaVersion: 1`, `source: "DYNAMODB"`, `requestId`, `analyses`, and an
+optional `nextCursor`. Each summary contains `analysisId`, `propertyId`,
+`source`, `measuredAt`, `roofAreaSquareMeters`, `segmentCount`, and optional
+`expiresAt`. Expired Google analyses are excluded.
 
-Grounding context:
-- property
-- solar analysis
-- benefit evaluation
-- policy records
-- application state
+`POST /v1/advisor/solar` accepts:
+
+```json
+{
+  "propertyId": "owned-property-id",
+  "analysisId": "confirmed-analysis-id",
+  "question": "What does my roof analysis tell me?",
+  "applicationId": "optional-owned-application-id"
+}
+```
+
+An optional `scenario` may contain the same `demand`,
+`generationKwhPerKwYear`, `nominalKw`, `financialInputs`, `applicantFacts`,
+and `eligibleQuotedCostPaise` inputs as the Phase 11 policy-backed financial
+request. It is recalculated against the stored roof and current policy state;
+the browser does not submit trusted results. Application context is also
+loaded from the owned property, never accepted as client-supplied status.
+
+The read-only response has `schemaVersion: 1`,
+`source: "GROUNDED_ADVISOR_V1"`, `requestId`, `status` (`ANSWERED` or
+`INSUFFICIENT_CONTEXT`), `mode` (`BEDROCK_FACT_SELECTION` or
+`DETERMINISTIC_FALLBACK`), a server-composed `answer`, `cards`,
+`selectedCardIds`, `caveats`, and `missingContext`. Cards identify their kind
+(`ROOF`, `SYSTEM`, `FINANCIAL`, `BENEFIT`, or `APPLICATION`), provenance,
+statement, and verified-policy citation, jurisdiction, effective period,
+version, verification status, and source-check fields where relevant. Bedrock
+can select IDs from bounded server-built cards but cannot
+author factual text or arithmetic. A missing or failing model produces a
+deterministic answer from the available cards; missing scenario inputs limit
+financial and eligibility claims. Details are in [advisor design](advisor.md).
 
 ## Accessories
 

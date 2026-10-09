@@ -132,7 +132,11 @@ Policy DB → eligibility engine → subsidy optimizer → financial engine
                                    Bedrock
 ```
 
-Bedrock does not sit between policy facts and arithmetic.
+Bedrock does not sit between policy facts and arithmetic. The Phase 13 advisor
+loads only owned context and builds deterministic fact cards. A configured
+Bedrock model may select card IDs for relevance; the server validates the IDs
+and composes the answer from original card statements and citations. A model
+failure keeps the deterministic cards available. See [advisor design](advisor.md).
 
 ## Caching
 

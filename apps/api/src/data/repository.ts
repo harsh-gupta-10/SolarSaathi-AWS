@@ -108,4 +108,40 @@ export class CoreRepository {
   listCustomers(scope: ListScope, limit: number, cursor?: string) { return this.list(scope, customerSchema, limit, cursor); }
   listLeads(scope: ListScope, limit: number, cursor?: string) { return this.list(scope, leadSchema, limit, cursor); }
   listProperties(scope: ListScope, limit: number, cursor?: string) { return this.list(scope, propertySchema, limit, cursor); }
+
+  async listAnalyses(propertyId: string, limit: number, cursor?: string) {
+    let key: EntityKey | undefined;
+    if (cursor !== undefined) {
+      if (cursor.length > 1_024 || !/^[A-Za-z0-9_-]+$/.test(cursor)) {
+        throw new RequestError(400, "INVALID_CURSOR", "Use a cursor from this property listing.");
+      }
+      try {
+        const decoded = Buffer.from(cursor, "base64url");
+        if (decoded.toString("base64url") !== cursor) throw new Error("Noncanonical cursor");
+        const envelope = JSON.parse(decoded.toString("utf8")) as Record<string, unknown>;
+        const value = envelope.key as Record<string, unknown> | undefined;
+        if (envelope.v !== 1 || envelope.propertyId !== propertyId || !value || Object.keys(value).length !== 2 ||
+          value.PK !== `PROPERTY#${propertyId}` || typeof value.SK !== "string" ||
+          !/^ANALYSIS#[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value.SK)) throw new Error("Wrong scope");
+        key = { PK: value.PK, SK: value.SK } as EntityKey;
+      } catch { throw new RequestError(400, "INVALID_CURSOR", "Use a cursor from this property listing."); }
+    }
+    const { Items, LastEvaluatedKey } = await this.send(new QueryCommand({ TableName: this.tableName,
+      KeyConditionExpression: "#pk = :pk AND begins_with(#sk, :prefix)",
+      ExpressionAttributeNames: { "#pk": "PK", "#sk": "SK" },
+      ExpressionAttributeValues: { ":pk": `PROPERTY#${propertyId}`, ":prefix": "ANALYSIS#" },
+      Limit: limit, ConsistentRead: true, ...(key ? { ExclusiveStartKey: key } : {}),
+    }));
+    if (Items !== undefined && !Array.isArray(Items)) throw databaseUnavailable();
+    const items = (Items ?? []).map(item => parseStored(analysisSchema, item));
+    if (items.some(item => item.propertyId !== propertyId)) throw databaseUnavailable();
+    let nextCursor: string | undefined;
+    if (LastEvaluatedKey !== undefined) {
+      const value = LastEvaluatedKey as Record<string, unknown>;
+      if (value.PK !== `PROPERTY#${propertyId}` || typeof value.SK !== "string" ||
+        !/^ANALYSIS#[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value.SK)) throw databaseUnavailable();
+      nextCursor = Buffer.from(JSON.stringify({ v: 1, propertyId, key: { PK: value.PK, SK: value.SK } })).toString("base64url");
+    }
+    return { items, ...(nextCursor ? { nextCursor } : {}) };
+  }
 }

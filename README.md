@@ -53,6 +53,7 @@ Current policy values are never treated as permanent constants. A crawler detect
 - `docs/policy-intelligence.md` — live policy crawler and policy engine
 - `docs/subsidy-stacking.md` — central/state/local subsidy combination logic
 - `docs/application-tracker.md` — user checklist and application state
+- `docs/advisor.md` — grounded advisor and fact boundary
 - `docs/accessories.md` — accessory recommendation engine
 - `docs/international.md` — non-India fallback
 - `docs/data-sources.md` — source registry and authority rules
@@ -69,7 +70,7 @@ Current policy values are never treated as permanent constants. A crawler detect
 
 ## Implementation status
 
-Phases 0–11 have locally implemented source code:
+Phases 0–13 have locally implemented source code:
 - pnpm workspace, Next.js marketing site, responsive application shell, typed
   packages, quality scripts, GitHub Actions, and compiled Lambda/SAM foundation;
 - Cognito hosted sign-in, code+PKCE callback, identity verification, profile and
@@ -107,7 +108,12 @@ Phases 0–11 have locally implemented source code:
 - an optional one-click device-location marker on the satellite map, separate
   house selection, and an approximate Google Solar building bounds overlay
   after a house is selected. The device location is never stored or used as
-  automatic building confirmation.
+  automatic building confirmation;
+- a read-only, owner-scoped advisor that explains confirmed roofs, optional
+  deterministic financial/policy scenarios and user reported application
+  progress through provenance-labelled fact cards. Optional Bedrock selection
+  can organize those cards; the server writes the final sourced answer and
+  falls back without a model. A fictional visual preview is at `/demo/advisor`.
 
 Google-derived preview, analysis and cache records have a 21-day retention
 limit and an hourly bounded hard-delete worker with an error alarm. Google roof
@@ -130,6 +136,10 @@ The application tracker requires a selected benefit with a current sourced
 process template; it does not submit to or read status from a government
 portal. User recorded completion is not official approval, and no notification
 service or official processing deadline is configured.
+The advisor cannot establish eligibility, official progress, savings or
+structural safety. Without a verified policy corpus or user-entered scenario,
+it gives a limited roof explanation and identifies missing context. No Bedrock
+model is configured or exercised live.
 
 These phases have **local** lint, typecheck, test and build coverage. No AWS
 resources or Google Cloud project have been configured or deployed for this app;

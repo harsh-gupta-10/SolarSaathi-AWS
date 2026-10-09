@@ -237,6 +237,26 @@ export class CoreService {
     return record;
   }
 
+  async listAnalyses(identity: CurrentIdentityResponse, propertyId: string, options: unknown = {}) {
+    const { property } = await this.ownedProperty(identity, propertyId);
+    const page = parseInput(pageInputSchema, options);
+    const result = await this.repository.listAnalyses(propertyId, page.limit, page.cursor);
+    if (result.items.some(record => record.orgId !== property.orgId || record.ownerUserId !== property.ownerUserId)) {
+      throw databaseUnavailable();
+    }
+    const nowEpoch = Math.floor(this.now().getTime() / 1_000);
+    const analyses = result.items.filter(record => !!record.roofModel &&
+      (record.expiresAtEpochSeconds === undefined || record.expiresAtEpochSeconds > nowEpoch)).map(record => ({
+      analysisId: record.analysisId, propertyId: record.propertyId, source: record.roof.source,
+      measuredAt: record.roof.measuredAt, roofAreaSquareMeters: record.roof.roofAreaSquareMeters,
+      segmentCount: record.roof.segmentCount,
+      ...(record.expiresAtEpochSeconds === undefined ? {} : {
+        expiresAt: new Date(record.expiresAtEpochSeconds * 1_000).toISOString(),
+      }),
+    }));
+    return { analyses, ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}) };
+  }
+
   async saveRoofPreview(identity: CurrentIdentityResponse, propertyId: string, geocodePlaceId: string,
     selectedLocation: { latitude: number; longitude: number }, roof: unknown): Promise<StoredRoofPreview> {
     const { account, property } = await this.ownedProperty(identity, propertyId);
