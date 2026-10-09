@@ -141,7 +141,10 @@ function RealisticPanelsBatch({ panels }: { panels: RoofLayout["panels"] }) {
       const ny = uDir.z * vDir.x - uDir.x * vDir.z;
       const nz = uDir.x * vDir.y - uDir.y * vDir.x;
       const lenN = Math.hypot(nx, ny, nz) || 1;
-      const norm = { x: nx / lenN, y: ny / lenN, z: nz / lenN };
+      let norm = { x: nx / lenN, y: ny / lenN, z: nz / lenN };
+      if (norm.y < 0) {
+        norm = { x: -norm.x, y: -norm.y, z: -norm.z };
+      }
 
       // Base elevated corners
       const elevated = c.map(pt => ({

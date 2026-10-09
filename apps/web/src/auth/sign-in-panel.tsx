@@ -7,7 +7,7 @@ import { Button } from "@solarsaathi/ui";
 import { useAuth } from "./auth-provider";
 
 export function SignInPanel({ createAccount = false }: { createAccount?: boolean }) {
-  const { status, configured, googleEnabled, error, beginSignIn, refresh } = useAuth();
+  const { status, configured, error, beginSignIn, refresh } = useAuth();
   const router = useRouter();
   const busy = status === "loading";
 
@@ -36,16 +36,11 @@ export function SignInPanel({ createAccount = false }: { createAccount?: boolean
         ) : (
           <div className="auth-actions">
             <Button disabled={!configured || busy} onClick={() => void beginSignIn()}>
-              Continue to secure sign-in
+              Sign in with Email &amp; Password
             </Button>
             <Button variant="outline" disabled={!configured || busy} onClick={() => void beginSignIn()}>
-              Create an account on the hosted page
+              Create an account
             </Button>
-            {googleEnabled && (
-              <Button variant="outline" disabled={!configured || busy} onClick={() => void beginSignIn("Google")}>
-                Continue with Google
-              </Button>
-            )}
             {configured && status === "error" && (
               <Button variant="ghost" onClick={() => void refresh()}>Check session again</Button>
             )}

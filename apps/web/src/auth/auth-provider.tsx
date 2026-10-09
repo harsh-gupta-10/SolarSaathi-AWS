@@ -201,8 +201,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+const defaultAuthContext: AuthContextValue = {
+  status: "unconfigured",
+  profile: null,
+  error: null,
+  configured: false,
+  googleEnabled: false,
+  oauthStatus: "idle",
+  beginSignIn: async () => {},
+  refresh: async () => {},
+  signOut: async () => {},
+};
+
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth requires AuthProvider");
-  return context;
+  return context ?? defaultAuthContext;
 }
