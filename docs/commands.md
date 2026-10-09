@@ -42,6 +42,17 @@ Do not deploy until infrastructure validation, authorization and environment
 configuration appropriate to the target deployment have been reviewed.
 See [SAM resource intent and limitations](../infra/sam/README.md).
 
+## Amplify Hosting
+
+The repository-root `amplify.yml` builds the `apps/web` Next.js app from the
+pnpm workspace root. Configure the Amplify app as `WEB_COMPUTE`, connect the
+repository, select the `main` branch, and set
+`AMPLIFY_MONOREPO_APP_ROOT=apps/web`. The root `.npmrc` enables pnpm's hoisted
+linker for Amplify's monorepo build image. Set the public variables listed below
+on the Amplify branch before triggering its build; Next.js embeds
+`NEXT_PUBLIC_*` values during that build. Use the exact Amplify branch origin
+for SAM's `ApplicationOrigin` and Cognito redirect URLs.
+
 ## Environment
 For Next.js, copy only the `NEXT_PUBLIC_*` Web section of `.env.example` into
 `apps/web/.env.local`. The root `.env.local` is not automatically loaded by Next

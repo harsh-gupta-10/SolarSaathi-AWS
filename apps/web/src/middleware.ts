@@ -10,4 +10,4 @@ export function middleware(request: NextRequest) {
   url.search = request.nextUrl.search;
   return route.type === "rewrite" ? NextResponse.rewrite(url) : NextResponse.redirect(url);
 }
-export const config = { matcher: ["/((?!_next|favicon.ico|robots.txt|sitemap.xml).*)"] };
+export const config = { runtime: "nodejs", matcher: ["/((?!_next|favicon.ico|robots.txt|sitemap.xml).*)"] };
