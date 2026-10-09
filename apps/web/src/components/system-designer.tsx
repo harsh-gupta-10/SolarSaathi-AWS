@@ -61,8 +61,35 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
       .finally(() => { if (request.current === controller) { request.current = null; setBusy(false); } });
   }
 
+  function fillSampleDemand() {
+    change(() => {
+      setBasis("CONSUMPTION");
+      setConsumption("350");
+      setYieldFactor("1500");
+      setSanctionedLoad("5");
+    });
+  }
+
   return <section className="system-designer" aria-labelledby="system-designer-title">
-    <div className="system-designer-heading"><div><span className="system-designer-kicker"><SlidersHorizontal size={16} aria-hidden="true" /> System designer</span><h2 id="system-designer-title">Compare solar system sizes</h2><p>Use your electricity demand to compare 1 to 10 kW planning candidates against the confirmed roof. The service calculates options from the saved analysis.</p></div><BarChart3 size={28} aria-hidden="true" /></div>
+    <div className="system-designer-heading">
+      <div>
+        <span className="system-designer-kicker"><SlidersHorizontal size={16} aria-hidden="true" /> System designer</span>
+        <h2 id="system-designer-title">Compare solar system sizes</h2>
+        <p>Use your electricity demand to compare 1 to 10 kW planning candidates against the confirmed roof. The service calculates options from the saved analysis.</p>
+      </div>
+      <div className="flex flex-col items-end gap-2">
+        <BarChart3 size={28} aria-hidden="true" />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="text-xs font-semibold text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+          onClick={fillSampleDemand}
+        >
+          ⚡ Fill Sample Bill (350 kWh)
+        </Button>
+      </div>
+    </div>
     <form onSubmit={submit} noValidate className="system-designer-form">
       <fieldset className="system-demand-choice"><legend>How do you know your electricity use?</legend><label><input type="radio" name="demand-basis" checked={basis === "CONSUMPTION"} onChange={() => change(() => setBasis("CONSUMPTION"))} /> Monthly kWh</label><label><input type="radio" name="demand-basis" checked={basis === "BILL"} onChange={() => change(() => setBasis("BILL"))} /> Bill and tariff</label></fieldset>
       <div className="system-input-grid">

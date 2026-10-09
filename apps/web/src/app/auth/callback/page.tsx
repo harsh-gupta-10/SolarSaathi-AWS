@@ -10,8 +10,8 @@ export default function AuthCallbackPage() {
   const { status, oauthStatus, error } = useAuth();
   const router = useRouter();
   useEffect(() => {
-    if (status === "signedIn" && oauthStatus === "complete") router.replace("/app");
-  }, [status, oauthStatus, router]);
+    if (status === "signedIn") router.replace("/app");
+  }, [status, router]);
   const failed = status === "error" || status === "unconfigured" || oauthStatus === "failed";
   return (
     <main className="auth-page">

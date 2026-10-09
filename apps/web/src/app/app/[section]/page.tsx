@@ -11,6 +11,7 @@ import { AccessoriesWorkspace } from "../../../components/accessories-workspace"
 import { RooftopIdeasWorkspace } from "../../../components/rooftop-ideas-workspace";
 import { BrokerWorkspace } from "../../../components/broker-workspace";
 import { InternationalWorkspace } from "../../../components/international-workspace";
+import { PropertiesWorkspace } from "../../../components/properties-workspace";
 
 export function generateStaticParams() { return sectionKeys().map(section => ({ section })); }
 export default async function WorkspaceSection({ params }: { params: Promise<{ section: string }> }) {
@@ -18,12 +19,13 @@ export default async function WorkspaceSection({ params }: { params: Promise<{ s
   const item = navigationItem(section);
   if (!item || section === "overview") notFound();
   if (section === "analyze") return <AnalyzeStart />;
+  if (section === "properties") return <PropertiesWorkspace />;
   if (section === "applications") return <ApplicationsPanel />;
   if (section === "advisor") return <AdvisorWorkspace />;
   if (section === "accessories") return <AccessoriesWorkspace />;
   if (section === "designs") return <RooftopIdeasWorkspace />;
   if (section === "international") return <InternationalWorkspace />;
-  if (section === "customers" || section === "properties" || section === "analyses" || section === "leads" || section === "proposals") return <BrokerWorkspace section={section} />;
+  if (section === "customers" || section === "analyses" || section === "leads" || section === "proposals") return <BrokerWorkspace section={section} />;
   if (section === "benefits") return <><div className="page-heading"><h1>Government Benefits</h1><p>See verified incentives for a saved roof and compatible system.</p></div>
     <section className="benefits-entry" aria-labelledby="benefits-entry-title"><div><span>Policy checked · India</span>
       <h2 id="benefits-entry-title">Start with your property assessment</h2>

@@ -253,10 +253,43 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
         "The benefit service could not complete this evaluation. Try again."); })
       .finally(() => { if (request.current === controller) { request.current = null; setBusy(false); } });
   }
+
+  function fillSamplePolicyProfile() {
+    setFields({
+      ...initialFields,
+      state: "MH",
+      customerType: "RESIDENTIAL",
+      discom: "MSEDCL",
+      propertyType: "INDIVIDUAL_HOUSE",
+      sanctionedLoadKw: demand.sanctionedLoadKw === undefined ? "5" : String(demand.sanctionedLoadKw),
+      ownership: "OWNED",
+      gridConnected: "YES",
+      priorSubsidyReceived: "NO",
+      vendorApproved: "YES",
+      equipmentApproved: "YES",
+      eligibleCostRupees: String(grossSystemCostRupees),
+    });
+  }
+
   return <section className="benefit-evaluator" aria-labelledby="benefit-evaluator-title">
-    <div className="benefit-heading"><span><Landmark size={17} aria-hidden="true" /> Policy checked benefits</span>
-      <h3 id="benefit-evaluator-title">Check eligibility and compatible incentives</h3>
-      <p>Use the {nominalKw} kW planning system and your {rupees.format(grossSystemCostRupees)} gross quote. The service checks active, verified rules against the saved roof and your self-reported details. Missing answers remain unknown.</p></div>
+    <div className="benefit-heading">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <span><Landmark size={17} aria-hidden="true" /> Policy checked benefits</span>
+          <h3 id="benefit-evaluator-title">Check eligibility and compatible incentives</h3>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit text-xs font-semibold text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+          onClick={fillSamplePolicyProfile}
+        >
+          ⚡ Fill Maharashtra Residential Profile
+        </Button>
+      </div>
+      <p>Use the {nominalKw} kW planning system and your {rupees.format(grossSystemCostRupees)} gross quote. The service checks active, verified rules against the saved roof and your self-reported details. Missing answers remain unknown.</p>
+    </div>
     <form onSubmit={submit} noValidate className="benefit-form">
       <div className="benefit-form-grid">
         <Choice id="benefit-state" label="State or union territory" value={fields.state} options={regions}

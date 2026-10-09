@@ -1,12 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { Button } from "@solarsaathi/ui";
 import { useAuth } from "./auth-provider";
 
 export function SignInPanel({ createAccount = false }: { createAccount?: boolean }) {
   const { status, configured, googleEnabled, error, beginSignIn, refresh } = useAuth();
+  const router = useRouter();
   const busy = status === "loading";
+
+  useEffect(() => {
+    if (status === "signedIn") {
+      router.replace("/app");
+    }
+  }, [status, router]);
   return (
     <main className="auth-page">
       <section className="auth-card space-y-6" aria-labelledby="auth-title">

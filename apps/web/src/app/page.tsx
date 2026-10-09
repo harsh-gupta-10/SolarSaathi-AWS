@@ -18,7 +18,14 @@ export default function Home() {
       <header className="site-header container">
         <Link className="brand" href="/" aria-label="SolarSaathi home"><Sun aria-hidden="true" /><span>SolarSaathi</span></Link>
         <nav aria-label="Site navigation"><a href="#how-it-works">How it works</a><a href="#consultants">For consultants</a><Link href="/demo">Guided demo</Link></nav>
-        <Button asChild variant="outline"><Link href="/app">Open workspace<ArrowUpRight aria-hidden="true" /></Link></Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/auth/sign-in">Sign in</Link>
+          </Button>
+          <Button asChild size="sm">
+            <Link href="/app">Dashboard<ArrowUpRight aria-hidden="true" className="ml-1 size-3.5" /></Link>
+          </Button>
+        </div>
       </header>
       <main id="main-content">
         <section className="hero container" aria-labelledby="hero-title">
