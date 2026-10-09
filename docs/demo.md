@@ -6,10 +6,17 @@ A Mumbai/Maharashtra residential homeowner asks:
 
 > Is my roof worth putting solar on?
 
+Choose the presentation mode before starting: an authenticated, deployed live
+flow only after every service used has passed the [submission evidence gate](submission.md#live-evidence-gate),
+or the visibly fictional local `/demo/*` routes. The numbered sequence below
+describes the intended live flow. The fixture routes demonstrate separate UI
+states and must not be narrated as one completed live property transaction.
+
 ## Demo sequence
 
 ### 1. Address
-Enter a demo residential address.
+Enter an address for a property the presenter is authorized to use. Avoid
+showing a resident's precise address or coordinates in a recording.
 
 ### 2. Building selection
 Show satellite map.
@@ -38,25 +45,12 @@ Recommend a system based on:
 - policy/system constraints
 
 ### 5. Government benefits
-Show:
-
-```text
-Central benefit
-₹...
-
-State benefit
-₹...
-
-DISCOM/local
-₹...
-
-Total eligible
-₹...
-```
-
-Explain why each is included/excluded.
-
-Show source and verification date.
+Show each central, state, DISCOM/local or other decision only if a current,
+approved rule applies. Explain why it is selected, excluded or unknown, and
+show source, jurisdiction, effective date, version and last check. Show a
+numeric total only for currently verified, counted rules; if coverage is
+incomplete, call it a partial estimate. With no current verified rules, show
+“unavailable” or “undetermined,” not ₹0 or a fixture subsidy.
 
 ### 6. Financial result
 Show:
@@ -66,6 +60,9 @@ Show:
 - annual savings
 - payback
 - 25-year savings
+
+Label the quote, energy tariff, export assumption and benefit timing as inputs
+or planning assumptions. Do not describe payback as guaranteed.
 
 ### 7. Application tracker
 Click:
@@ -139,11 +136,11 @@ actual active government policy change.
 
 ## Demo reliability
 
-Live services should be used when available.
-If any external service fails:
-- use a clearly labelled demo fixture
-- do not fake "live" status
-- show the fallback gracefully
+Use live services only after their deployed behavior and source provenance have
+been checked. If an external service fails, state the failure and navigate to
+a clearly labelled fixture route; keep the fixture's fictional data separate
+from the account flow. See [submission.md](submission.md) for the verification
+and evidence checklist.
 
 ## Strongest differentiator
 

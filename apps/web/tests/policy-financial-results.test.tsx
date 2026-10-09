@@ -25,6 +25,13 @@ describe("policy-backed financial result", () => {
     expect(screen.getByRole("region", { name: "Base and adjusted annual cash flow" }).querySelectorAll("tbody tr")).toHaveLength(26);
   });
 
+  it("keeps fictional policy citations and check times in the demo without an external link", () => {
+    render(<PolicyFinancialResults response={demoPolicyFinancialResponse} demo />);
+    expect(screen.getByText(/Fictional citation · Fictional rule fixture/)).toBeTruthy();
+    expect(screen.getByText(/Fictional source check/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Synthetic demo source/ })).toBeNull();
+  });
+
   it("hides net cost and adjusted payback when no current benefit is confirmed", () => {
     render(<PolicyFinancialResults response={{ ...demoPolicyFinancialResponse,
       status: "UNAVAILABLE", projection: undefined, benefits: { ...demoPolicyFinancialResponse.benefits,

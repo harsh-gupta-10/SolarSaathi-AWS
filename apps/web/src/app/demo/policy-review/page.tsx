@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PolicyReviewPanel, type PolicyReviewDemoFixture } from "../../../components/policy-review-panel";
 
-export const metadata: Metadata = { title: "Policy review demo | SolarSaathi" };
+export const metadata: Metadata = { title: "Policy review demo | SolarSaathi", robots: { index: false, follow: false } };
 
 const checkedAt = "2026-10-08T10:30:00.000Z";
 const sourceUrl = "https://example.invalid/illustrative-procedure";
@@ -70,7 +70,7 @@ const demo: PolicyReviewDemoFixture = {
 
 export default function PolicyReviewDemoPage() {
   return <main id="main-content" className="container py-10 md:py-16">
-    <p className="mb-6 text-sm"><Link href="/app" className="text-primary underline underline-offset-4">← Back to workspace</Link></p>
+    <p className="mb-6 text-sm"><Link href="/demo" className="text-primary underline underline-offset-4">← Back to guided demo</Link></p>
     <PolicyReviewPanel demo={demo} />
   </main>;
 }

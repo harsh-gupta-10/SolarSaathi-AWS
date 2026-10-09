@@ -289,6 +289,30 @@ and partial policy totals that must remain undetermined.
 The Phase 19 `pnpm check` gate passed lint, typecheck, **834 tests**, the
 bundled API/PDF smoke and production builds.
 
+### Phase 20 demo and submission verification
+
+For the exact submission commit, rerun the full local gate and confirm the
+matching GitHub Actions workflow, including SAM validation and build. Walk
+every fixture route named in [submission.md](submission.md) at desktop and
+narrow mobile width; verify a visible fictional-data label, no uncited live
+benefit claim, keyboard access and no horizontal overflow. A local fixture
+does not satisfy an authenticated integration test.
+
+The Phase 20 `pnpm check` gate passed lint, typecheck, **839 tests**, bundled
+API/PDF smoke and 36-route production builds. Desktop and 375px browser checks
+covered guided stage navigation, sample-house selection and bounds overlay,
+the partial fictional benefit, source chronology and no horizontal overflow.
+
+For a live presentation, retain sanitized evidence of the deployed commit,
+account and region, working Cognito login, API authorization and ownership,
+Google building and roof confirmation, current approved policy publication,
+crawler/source health, benefit stacking, financial assumptions, user-reported
+application state and advisor citations. Test the same flow when the policy
+source is failed or stale: it must not produce a live amount. Verify CloudWatch
+alarms have a monitored destination, retention is enforced, private S3 data
+stays private, and Google keys are restricted. Record any missing live check as
+unverified; do not substitute a local mock or a passing build for it.
+
 ### Phase 11 policy-backed financial scenario
 
 The Phase 11 local `pnpm check` gate passed 692 tests across the workspace,

@@ -4,7 +4,12 @@ import { demoFinancialResponse } from "./system-financial-fixture";
 
 /** Fictional policy values and evidence for the offline demo and tests only. */
 const evaluatedAt = "2026-10-09T08:00:00.000Z";
-const sourceId = "SRC#SYNTHETIC_FIXTURE";
+export const demoSourceId = "SRC#SYNTHETIC_FIXTURE";
+export const demoCitation = { schemaVersion: 1 as const, sourceId: demoSourceId, sourceRegistryVersion: 1,
+  documentId: "DOC#SYNTHETIC_FIXTURE", documentVersion: 1, documentSha256: "a".repeat(64),
+  publisherName: "Synthetic demo source", documentTitle: "Fictional rule fixture",
+  sourceUrl: "https://example.invalid/fixture", retrievedAt: "2026-10-08T08:00:00.000Z",
+  effectiveFrom: "2026-01-01", locator: { section: "Demo excerpt", charStart: 0, charEnd: 20 } };
 const benefitStack: Parameters<typeof calculatePolicyFinancialsV1>[0]["benefits"] = {
   schemaVersion: 1, source: "DETERMINISTIC_BENEFIT_STACK_V1", evaluatedAt,
   totalEligibleBenefitPaise: 5_000_000, coverageComplete: false, optimalWithinVerifiedRules: true,
@@ -13,12 +18,8 @@ const benefitStack: Parameters<typeof calculatePolicyFinancialsV1>[0]["benefits"
     jurisdiction: "IN", effectiveFrom: "2026-01-01", status: "SELECTED", reasonCodes: [],
     calculatedAmountPaise: 5_000_000, countedAmountPaise: 5_000_000,
     policyId: "POLICY#SYNTHETIC_DEMO", policyVersion: 1, factIds: ["FACT#SYNTHETIC_DEMO"],
-    citations: [{ schemaVersion: 1, sourceId, sourceRegistryVersion: 1,
-      documentId: "DOC#SYNTHETIC_FIXTURE", documentVersion: 1, documentSha256: "a".repeat(64),
-      publisherName: "Synthetic demo source", documentTitle: "Fictional rule fixture",
-      sourceUrl: "https://example.com/fixture", retrievedAt: "2026-10-08T08:00:00.000Z",
-      effectiveFrom: "2026-01-01", locator: { section: "Demo excerpt", charStart: 0, charEnd: 20 } }],
-    sourceChecks: [{ sourceId, lastCheckedAt: "2026-10-09T07:00:00.000Z", fresh: true, status: "HEALTHY" }],
+    citations: [demoCitation],
+    sourceChecks: [{ sourceId: demoSourceId, lastCheckedAt: "2026-10-09T07:00:00.000Z", fresh: true, status: "HEALTHY" }],
     verificationStatus: "VERIFIED", lastVerifiedAt: "2026-10-08T08:00:00.000Z",
   }], warnings: [],
 };

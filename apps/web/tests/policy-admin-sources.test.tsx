@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PolicyReviewPanel } from "../src/components/policy-review-panel";
+import PolicyReviewDemoPage from "../src/app/demo/policy-review/page";
 
 const auth = vi.hoisted(() => ({ status: "signedIn", profile: { userId: "admin-1", policyAdmin: true } }));
 const api = vi.hoisted(() => ({ queue: vi.fn(), sources: vi.fn(), registerSource: vi.fn(),
@@ -58,5 +59,15 @@ describe("policy source registry console", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Load more sources" }));
     expect(api.sources.mock.calls[1][2]).toBe("next-source");
     expect(await screen.findByText("Example energy office")).toBeTruthy();
+  });
+
+  it("keeps fictional policy-review source addresses non-clickable", async () => {
+    const user = userEvent.setup();
+    render(<PolicyReviewDemoPage />);
+    expect(await screen.findByText(/Fictional source URL: https:\/\/example\.invalid/)).toBeTruthy();
+    expect(document.querySelector('a[href*="example.invalid"]')).toBeNull();
+    await user.click(screen.getByRole("button", { name: /Official sources/ }));
+    expect(screen.getByText(/Fictional source URL: https:\/\/example\.invalid/)).toBeTruthy();
+    expect(document.querySelector('a[href*="example.invalid"]')).toBeNull();
   });
 });

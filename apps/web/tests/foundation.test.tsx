@@ -10,8 +10,9 @@ describe("truthful development site", () => {
   it("labels unavailable features without displaying fabricated results", () => {
     const html = renderToStaticMarkup(<Home />);
     expect(html).toContain('id="main-content"');
-    expect(html).toContain("live services are not connected");
-    expect(html).toContain("No live government amounts are shown");
+    expect(html).toContain("live integrations need cloud configuration");
+    expect(html).toContain("no verified live policy corpus");
+    expect(html).toContain('href="/demo"');
     expect(html).toContain("Illustrative concept");
     expect(html).not.toContain("₹");
   });

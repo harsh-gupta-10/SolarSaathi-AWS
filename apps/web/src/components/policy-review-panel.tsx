@@ -298,7 +298,8 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
             <div><dt>Change</dt><dd>{label(selected.changeStatus)}</dd></div>
             <div><dt>Document hash</dt><dd className="policy-review-hash">{selected.candidate.citation.documentSha256}</dd></div>
           </dl>
-          <a className="policy-review-source-link" href={selected.candidate.citation.sourceUrl} target="_blank" rel="noopener noreferrer">Open official source<ArrowUpRight size={16} aria-hidden="true" /></a>
+          {demo ? <span className="policy-review-fixture-url">Fictional source URL: {selected.candidate.citation.sourceUrl}</span>
+            : <a className="policy-review-source-link" href={selected.candidate.citation.sourceUrl} target="_blank" rel="noopener noreferrer">Open official source<ArrowUpRight size={16} aria-hidden="true" /></a>}
           {selected.conflictFlags.length > 0 && <div className="policy-review-warning"><h3>Comparison status</h3><ul>{selected.conflictFlags.map(flag => <li key={flag}>{label(flag)}</li>)}</ul></div>}
           {selected.sourceCuratorId === userId && <p className="policy-review-caution"><AlertTriangle size={17} aria-hidden="true" />A different policy administrator must review this source’s evidence.</p>}
           <div className="policy-review-actions"><Button disabled={busy || !!demo || selected.sourceCuratorId === userId} onClick={() => { setAction({ kind: "approve", item: selected }); setReason(""); }}><Check size={16} aria-hidden="true" />Approve evidence</Button>
@@ -332,7 +333,8 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
             <div><dt>Current document hash</dt><dd className="policy-review-hash">{selectedChange.assessment.currentRawSha256}</dd></div>
             <div><dt>Previous document hash</dt><dd className="policy-review-hash">{selectedChange.assessment.previousRawSha256 ?? "First observed version"}</dd></div>
           </dl>
-          <a className="policy-review-source-link" href={currentChangeDetail.document.canonicalUrl} target="_blank" rel="noopener noreferrer">Open official document<ArrowUpRight size={16} aria-hidden="true" /></a>
+          {demo ? <span className="policy-review-fixture-url">Fictional document URL: {currentChangeDetail.document.canonicalUrl}</span>
+            : <a className="policy-review-source-link" href={currentChangeDetail.document.canonicalUrl} target="_blank" rel="noopener noreferrer">Open official document<ArrowUpRight size={16} aria-hidden="true" /></a>}
           {selectedChange.assessment.materialChanges.length > 0 && <div className="policy-review-warning"><h3>Detected text changes</h3>
             <ul>{selectedChange.assessment.materialChanges.map((change, index) =>
               <li key={`${change.claimKey}-${change.kind}-${index}`}>{label(change.kind)} · {change.claimKey}</li>)}</ul></div>}
@@ -350,7 +352,8 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
       {sources.map(source => { const state = sourceStates.find(item => item.sourceId === source.sourceId);
         return <article key={source.sourceId} className="policy-review-source-card"><div>
         <span>{label(source.sourceType)} · {source.jurisdiction}</span><h2>{source.name}</h2><p>{source.publisherName}</p>
-        <a href={source.canonicalUrl} target="_blank" rel="noopener noreferrer">View official source<ArrowUpRight size={14} aria-hidden="true" /></a></div>
+        {demo ? <span className="policy-review-fixture-url">Fictional source URL: {source.canonicalUrl}</span>
+          : <a href={source.canonicalUrl} target="_blank" rel="noopener noreferrer">View official source<ArrowUpRight size={14} aria-hidden="true" /></a>}</div>
         <div className="policy-review-source-side"><strong>{label(state?.healthStatus ?? source.registryStatus)}</strong>
           <small>Last checked: {time(state?.crawlState?.lastCheckedAt)}</small>
           {state?.warnings.map(code => <small key={code} className="policy-source-warning"><AlertTriangle size={13} aria-hidden="true" />{label(code)}</small>)}

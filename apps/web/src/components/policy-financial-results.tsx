@@ -9,19 +9,21 @@ const formatPayback = (value: number | null) => value === null ? "Not within 25 
 const names = { CENTRAL: "Central", STATE: "State", DISCOM: "DISCOM", LOCAL: "Local body", OTHER: "Other" } as const;
 const scopes = ["CENTRAL", "STATE", "DISCOM", "LOCAL", "OTHER"] as const;
 
-function PolicySources({ response, asOfSnapshot = false }: { response: PolicyFinancialEstimateResponse; asOfSnapshot?: boolean }) {
+function PolicySources({ response, asOfSnapshot = false, demo = false }: { response: PolicyFinancialEstimateResponse; asOfSnapshot?: boolean; demo?: boolean }) {
   const selected = response.benefits.result?.decisions.filter(decision => decision.status === "SELECTED") ?? [];
   if (!selected.length) return null;
   return <div className="policy-financial-sources"><h5>Rules included in this scenario</h5><ul>{selected.map(decision =>
     <li key={decision.ruleId}><strong>{names[decision.scope]} · {decision.benefitId.replace(/^BENEFIT#/, "").replaceAll("_", " ")}</strong>
-      <span>Policy {decision.policyId.replace(/^POLICY#/, "")} v{decision.policyVersion} · {decision.jurisdiction} · effective {decision.effectiveFrom}{decision.effectiveTo ? ` to ${decision.effectiveTo}` : " onward"} · verified {date.format(new Date(decision.lastVerifiedAt))}</span>
-      {decision.citations.map((citation, index) => <a key={`${citation.documentId}-${index}`} href={citation.sourceUrl} target="_blank" rel="noopener noreferrer">
-        {citation.publisherName} · {citation.documentTitle} · document v{citation.documentVersion}<ArrowUpRight size={14} aria-hidden="true" /></a>)}
-      {decision.sourceChecks.map(check => <small key={check.sourceId}>{check.lastCheckedAt ? `Source last checked ${date.format(new Date(check.lastCheckedAt))}` : "Source check unavailable"} · {check.fresh ? asOfSnapshot ? "fresh when evaluated" : "current at evaluation" : "needs review"} · {check.status.toLowerCase()}</small>)}
+      <span>Policy {decision.policyId.replace(/^POLICY#/, "")} v{decision.policyVersion} · {decision.jurisdiction} · effective {decision.effectiveFrom}{decision.effectiveTo ? ` to ${decision.effectiveTo}` : " onward"} · {demo ? "fictional verification" : "verified"} {date.format(new Date(decision.lastVerifiedAt))}</span>
+      {decision.citations.map((citation, index) => demo ?
+        <span key={`${citation.documentId}-${index}`}>Fictional citation · {citation.documentTitle} · document v{citation.documentVersion} · no external source</span> :
+        <a key={`${citation.documentId}-${index}`} href={citation.sourceUrl} target="_blank" rel="noopener noreferrer">
+          {citation.publisherName} · {citation.documentTitle} · document v{citation.documentVersion}<ArrowUpRight size={14} aria-hidden="true" /></a>)}
+      {decision.sourceChecks.map(check => <small key={check.sourceId}>{check.lastCheckedAt ? `${demo ? "Fictional source check" : "Source last checked"} ${date.format(new Date(check.lastCheckedAt))}` : "Source check unavailable"} · {demo ? "fixture status only" : check.fresh ? asOfSnapshot ? "fresh when evaluated" : "current at evaluation" : "needs review"} · {check.status.toLowerCase()}</small>)}
     </li>)}</ul></div>;
 }
 
-export function PolicyFinancialResults({ response, asOfSnapshot = false }: { response: PolicyFinancialEstimateResponse; asOfSnapshot?: boolean }) {
+export function PolicyFinancialResults({ response, asOfSnapshot = false, demo = false }: { response: PolicyFinancialEstimateResponse; asOfSnapshot?: boolean; demo?: boolean }) {
   const projection = response.projection;
   if (!projection) return <section className="policy-financial-unavailable" role="status" aria-labelledby="policy-financial-unavailable-title">
     <ShieldAlert size={25} aria-hidden="true" /><div><h4 id="policy-financial-unavailable-title">Policy-adjusted estimate unavailable</h4>
@@ -34,11 +36,11 @@ export function PolicyFinancialResults({ response, asOfSnapshot = false }: { res
   const missingFacts = projection.warnings.includes("BENEFIT_AMOUNT_UNKNOWN");
   const partial = projection.status === "PARTIAL";
   return <section className="policy-financial-results" aria-labelledby="policy-financial-title">
-    <p className="sr-only" role="status">Policy-adjusted scenario ready. {missingCoverage ? "Policy coverage is incomplete." : missingFacts ? "Some eligibility facts are unknown." : asOfSnapshot ? "Verified rule coverage was complete when saved." : "Current verified rule coverage is complete."} Net upfront scenario: {formatMoney(projection.netUpfrontCostPaise)}.</p>
-    <div className="policy-financial-heading"><div><span>Policy-backed financial scenario</span><h4 id="policy-financial-title">From your quote to a modeled net cost</h4></div>
-      <span className="policy-financial-coverage">{missingCoverage ? "Partial verified coverage" : partial ? "Eligibility details incomplete" : asOfSnapshot ? "Verified when saved" : "Current verified coverage"}</span></div>
+    <p className="sr-only" role="status">{demo ? "Synthetic policy scenario ready. No live policy was checked." : "Policy-adjusted scenario ready."} {missingCoverage ? "Policy coverage is incomplete." : missingFacts ? "Some eligibility facts are unknown." : asOfSnapshot ? "Verified rule coverage was complete when saved." : "Current verified rule coverage is complete."} Net upfront scenario: {formatMoney(projection.netUpfrontCostPaise)}.</p>
+    <div className="policy-financial-heading"><div><span>{demo ? "Fictional policy scenario" : "Policy-backed financial scenario"}</span><h4 id="policy-financial-title">From {demo ? "a fictional quote" : "your quote"} to a modeled net cost</h4></div>
+      <span className="policy-financial-coverage">{demo ? "Synthetic fixture · incomplete coverage" : missingCoverage ? "Partial verified coverage" : partial ? "Eligibility details incomplete" : asOfSnapshot ? "Verified when saved" : "Current verified coverage"}</span></div>
     <div className="policy-financial-ledger">
-      <div className="policy-financial-gross"><span>Gross installed quote</span><strong>{formatMoney(projection.grossCostPaise)}</strong><small>Your quote, before any benefit</small></div>
+      <div className="policy-financial-gross"><span>Gross installed quote</span><strong>{formatMoney(projection.grossCostPaise)}</strong><small>{demo ? "Fictional fixture quote, before any benefit" : "Your quote, before any benefit"}</small></div>
       <div className="policy-financial-breakdown" role="group" aria-label="Selected benefits by scope">
         {scopes.map(scope => {
           const amount = projection.selectedByScopePaise[scope];
@@ -54,7 +56,7 @@ export function PolicyFinancialResults({ response, asOfSnapshot = false }: { res
     </div>
     <div className="policy-financial-outcomes"><div><span>Adjusted payback scenario</span><strong>{formatPayback(projection.totals.paybackYears)}</strong><small>Base estimate: {formatPayback(response.base.totals.paybackYears)}. Benefit modeled upfront; actual payment timing is unverified.</small></div>
       <div><span>Modeled cash flow after 25 years</span><strong>{money.format(projection.totals.netSavingsOver25YearsRupees)}</strong><small>After the modeled upfront benefit, quote, and operating cash flow.</small></div></div>
-    <div className="policy-financial-caveat"><CircleHelp size={18} aria-hidden="true" /><div><p>{missingCoverage ? asOfSnapshot ? "This saved estimate was partial within the verified rules available at that time. Unchecked central, state, DISCOM, local or other programs could change the outcome; recheck policy before sharing it." : "This is a partial estimate from the verified rules available for this assessment. Unchecked central, state, DISCOM, local or other programs could change the outcome." : missingFacts ? "Some applicant details remain unknown. Their eligibility decisions are excluded from this estimate until those details are provided." : asOfSnapshot ? "This saved scenario used the verified rule set available when it was calculated. Recheck policy before sharing it." : "This scenario uses the current verified rule set for the details provided."}</p>
+    <div className="policy-financial-caveat"><CircleHelp size={18} aria-hidden="true" /><div><p>{demo ? "This fictional scenario counts one made-up central rule. Other policy scopes are unverified in the fixture, and no real government source was checked." : missingCoverage ? asOfSnapshot ? "This saved estimate was partial within the verified rules available at that time. Unchecked central, state, DISCOM, local or other programs could change the outcome; recheck policy before sharing it." : "This is a partial estimate from the verified rules available for this assessment. Unchecked central, state, DISCOM, local or other programs could change the outcome." : missingFacts ? "Some applicant details remain unknown. Their eligibility decisions are excluded from this estimate until those details are provided." : asOfSnapshot ? "This saved scenario used the verified rule set available when it was calculated. Recheck policy before sharing it." : "This scenario uses the current verified rule set for the details provided."}</p>
       <p>The model assumes only eligible upfront incentives reduce the quote immediately. Scheme payment timing, application approval and receipt are not verified. The base estimate above remains the unsubsidized comparison.</p>
       {projection.nonUpfrontBenefitPaise > 0 && <p>{formatMoney(projection.nonUpfrontBenefitPaise)} in selected other benefits is listed above but excluded from the upfront reduction and adjusted payback. Its cash timing or form requires separate review.</p>}
       {projection.excessBenefitPaise > 0 && <p>Included benefits above the gross quote are disclosed in the total, but the model caps the upfront reduction at the quote. The net cost never becomes negative.</p>}</div></div>
@@ -63,6 +65,6 @@ export function PolicyFinancialResults({ response, asOfSnapshot = false }: { res
         <tbody><tr><th scope="row">0</th><td>Upfront cost</td><td>{money.format(response.base.initialCashFlowRupees)}</td><td>{money.format(projection.initialCashFlowRupees)}</td></tr>
         {projection.annualRows.map(row => <tr key={row.year}><th scope="row">{row.year}</th><td>{money.format(row.netCashFlowRupees)}</td><td>{money.format(row.baseCumulativeCashFlowRupees)}</td><td>{money.format(row.cumulativeCashFlowRupees)}</td></tr>)}</tbody></table>
     </div></details>
-    <PolicySources response={response} asOfSnapshot={asOfSnapshot} />
+    <PolicySources response={response} asOfSnapshot={asOfSnapshot} demo={demo} />
   </section>;
 }

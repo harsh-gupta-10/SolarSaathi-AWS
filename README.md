@@ -71,7 +71,7 @@ Current policy values are never treated as permanent constants. A crawler detect
 
 ## Implementation status
 
-Phases 0–14 have locally implemented source code:
+Phases 0–20 have locally implemented source code:
 - pnpm workspace, Next.js marketing site, responsive application shell, typed
   packages, quality scripts, GitHub Actions, and compiled Lambda/SAM foundation;
 - Cognito hosted sign-in, code+PKCE callback, identity verification, profile and
@@ -119,7 +119,25 @@ Phases 0–14 have locally implemented source code:
   declared backup, EV, monitoring and maintenance goals. It shows category,
   relevance, compatibility and safety review, with no invented market price,
   policy mandate or paid ranking. A fictional preview is at
-  `/demo/accessories`.
+  `/demo/accessories`;
+- a remaining-roof advisor with bounded deterministic geometry, fitted light-use
+  concepts, private property-scoped design assets, optional image generation,
+  interactive schematic 3D and a fictional preview at `/demo/rooftop-ideas`;
+- a broker workspace for organization-scoped customers, properties, leads,
+  analyses, trackers and as-of policy-backed proposal snapshots, with a
+  fictional preview at `/demo/broker`;
+- a bounded non-India official-source research fallback with incomplete-coverage
+  labels and short-lived citation metadata, plus a fictional preview at
+  `/demo/international`;
+- a policy administrator console for source health, crawler runs, conflicts,
+  immutable published versions and independently approved rollback, with a
+  fictional preview at `/demo/policy-review`;
+- Phase 19 failure-mode tests and safeguards for policy freshness, source
+  errors, partial benefit totals, request parsing, route authorization and
+  account-safe UI state;
+- a guided, responsive fictional `/demo` walkthrough from house selection to
+  source trail, with one coherent fixture and no claim of live policy or cloud
+  transactions. The full local Phase 20 gate passed 839 tests.
 
 Google-derived preview, analysis and cache records have a 21-day retention
 limit and an hourly bounded hard-delete worker with an error alarm. Google roof
@@ -150,8 +168,8 @@ Accessory policy relevance and cost ranges remain unavailable until verified
 rule evidence and sourced regional prices exist. The accessory list is a
 planning discussion for a qualified installer, not equipment specification.
 
-These phases have **local** lint, typecheck, test and build coverage. No AWS
-resources or Google Cloud project have been configured or deployed for this app;
+These phases have **local** lint, typecheck, test and build coverage. This
+workspace has no verified AWS deployment or selected Google Cloud project;
 live Cognito, DynamoDB, Google API and hosting behavior remains unverified.
 Production release also needs alarm notifications, a review of DynamoDB PITR
 backup retention for Google data, credentials in the intended AWS account, and
@@ -164,8 +182,9 @@ Local application validation uses `pnpm check`. AWS CloudFormation accepted a
 read-only template validation, and GitHub Actions is configured to run SAM
 validation and build. SAM CLI, cfn-lint and cfn-guard are not installed in this
 local environment; template tests and CloudFormation syntax validation do not
-prove deployability. See [implementation phases](docs/phases.md) for detailed
-status and remaining work.
+prove deployability. The [demo and submission runbook](docs/submission.md)
+separates fictional fixtures from live claims. See [implementation phases](docs/phases.md)
+for detailed status and remaining work.
 
 ## Development
 

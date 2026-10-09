@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RooftopIdeasResult } from "../../../components/rooftop-ideas-workspace";
 import type { DesignsResponse } from "../../../lib/designs-api";
+import { demoRoof } from "../fixtures";
+import { demoFinancialResponse } from "../system-financial-fixture";
 
 export const metadata: Metadata = { title: "Rooftop ideas demo | SolarSaathi", robots: { index: false, follow: false } };
 
@@ -12,14 +14,16 @@ const rectangle = (minX: number, maxX: number, minZ: number, maxZ: number): Desi
 const fingerprint = "a".repeat(64);
 const demo: DesignsResponse = { schemaVersion: 1, source: "DETERMINISTIC_REMAINING_SPACE_V1",
   requestId: "synthetic-rooftop-demo", propertyId: "synthetic-property", analysisId: "synthetic-analysis",
-  system: { nominalKw: 3, actualDcKw: 3.2, panelCount: 8 },
-  planning: { fitStatus: "SPACE_FEASIBLE", roofAreaSquareMeters: 80,
+  system: { nominalKw: demoFinancialResponse.system.nominalKw,
+    actualDcKw: demoFinancialResponse.system.actualDcKw,
+    panelCount: demoFinancialResponse.system.panelCount },
+  planning: { fitStatus: "SPACE_FEASIBLE", roofAreaSquareMeters: demoRoof.roofAreaSquareMeters,
     modeledUsableProjectedAreaSquareMeters: 30, reservedSolarProjectedAreaSquareMeters: 24,
     remainingProjectedAreaSquareMeters: 6, assumptions: { edgeSetbackMeters: 0.5,
       servicePathWidthMeters: 0.8, solarBufferMeters: 0.75 } },
   geometry: { coordinateSystem: "LOCAL_EAST_UP_NORTH_METERS",
-    segments: [{ segmentId: "synthetic-segment", corners: rectangle(0, 10, 0, 8) }],
-    panels: Array.from({ length: 8 }, (_, index) => ({ panelId: `synthetic-panel-${index + 1}`,
+    segments: [{ segmentId: "synthetic-segment", corners: rectangle(0, 10, 0, 10) }],
+    panels: Array.from({ length: demoFinancialResponse.system.panelCount }, (_, index) => ({ panelId: `synthetic-panel-${index + 1}`,
       segmentId: "synthetic-segment", corners: rectangle(index % 2 ? 2.6 : 1, index % 2 ? 4.1 : 2.5,
         1 + Math.floor(index / 2) * 1.2, 2.1 + Math.floor(index / 2) * 1.2) })),
     freeZones: [{ zoneId: "synthetic-zone", segmentId: "synthetic-segment",
@@ -46,8 +50,8 @@ const demo: DesignsResponse = { schemaVersion: 1, source: "DETERMINISTIC_REMAINI
 };
 
 export default function RooftopIdeasDemoPage() {
-  return <main className="container py-10 md:py-16"><p className="mb-4 text-sm"><Link href="/app/designs"
-    className="font-medium text-primary underline underline-offset-4">← Back to rooftop ideas</Link></p>
+  return <main className="container py-10 md:py-16"><p className="mb-4 text-sm"><Link href="/demo"
+    className="font-medium text-primary underline underline-offset-4">← Back to guided demo</Link></p>
     <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="note">
       <strong>Synthetic rooftop ideas demo.</strong> All roof geometry, solar panels, free space, measurements and concepts below are fictional.
       No live property, Google Solar data, installer, structural review, template store or AI image service was checked.</div>

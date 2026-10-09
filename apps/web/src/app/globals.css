@@ -101,6 +101,7 @@
 .policy-review-facts dt { color: var(--muted-foreground); font-size: 0.73rem; }
 .policy-review-facts dd { margin: 0.2rem 0 0; font-size: 0.84rem; font-weight: 600; overflow-wrap: anywhere; }
 .policy-review-source-link { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 44px; color: var(--primary); font-size: 0.85rem; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+.policy-review-fixture-url { display: inline-block; max-width: 100%; color: var(--muted-foreground); font-size: 0.78rem; overflow-wrap: anywhere; }
 .policy-review-warning { margin-top: 1rem; padding: 0.85rem 1rem; border-radius: 0.5rem; background: #fff4f0; color: #963f28; }
 .policy-review-warning h3 { font-size: 0.86rem; }
 .policy-review-warning ul { margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.78rem; }
@@ -186,6 +187,8 @@
 .form-hint { color: var(--muted-foreground); font-size: 0.75rem; margin-top: 0.7rem; }
 .form-error { color: var(--destructive); font-size: 0.875rem; margin-top: 0.5rem; }
 .hero-assurance { display: flex; align-items: center; gap: 0.5rem; color: var(--muted-foreground); font-size: 0.8rem; margin-top: 1.2rem; }
+.hero-demo-link { margin-top: 0.9rem; }
+.hero-demo-link a { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 44px; color: var(--primary); font-size: 0.9rem; font-weight: 650; text-decoration: underline; text-underline-offset: 4px; }
 .journey-section { padding-block: 4rem; border-top: 1px solid var(--border); }
 .section-heading { display: flex; justify-content: space-between; gap: 2rem; align-items: flex-start; margin-bottom: 2.5rem; }
 .section-heading p { color: var(--muted-foreground); max-width: 38ch; margin-top: 0.3rem; }

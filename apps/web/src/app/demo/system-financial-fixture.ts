@@ -5,7 +5,7 @@ import { demoRoof } from "./fixtures";
 
 /** Synthetic values for demo pages and tests only; never submitted to the live API. */
 export const demoDesign = designSolarSystem(demoRoof,
-  { kind: "CONSUMPTION", monthlyConsumptionKwh: 300, sanctionedLoadKw: 1.5 },
+  { kind: "CONSUMPTION", monthlyConsumptionKwh: 400, sanctionedLoadKw: 1.5 },
   getSystemDesignAssumptionsV1(demoRoof));
 const demoSystem = demoDesign.recommendation!;
 const demoFinancial = calculateBaseFinancialsV1({

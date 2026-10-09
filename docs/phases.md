@@ -614,3 +614,19 @@ Demo should show:
 address → building → roof → solar → live subsidy stacking → net cost → application checklist → AI → remaining roof concept → accessories → source trail.
 
 No fake "live" policy data in demo. If live services are unavailable, clearly use a labelled demo fixture.
+
+Status: **implemented locally (2026-10-09)**. The `/demo` walkthrough follows
+all eleven stages with an accessible, responsive isometric house, explicit
+sample-house selection and automatic approximate bounds overlay. Its figures
+come from one coherent synthetic roof, system, fictional policy and financial
+fixture; incomplete policy scopes stay undetermined. The final source-trail
+view shows the example input, calculation, citation structure, dates and
+fixture-only health without opening a fictional external URL. The real
+`/app/analyze` map retains a separate one-click current-location action and
+explicit building confirmation. The demo pages and submission runbook label
+fictional versus deployed behavior, and desktop/375px browser checks found no
+horizontal overflow. Live government policy, Google APIs and AWS transactions
+remain unverified without configured cloud access and a deployed environment.
+The full local gate passed lint, typechecking, **839 tests**, API bundle/PDF
+smoke and 36-route production builds. GitHub Actions must be checked for the
+exact pushed commit before a submission claim.

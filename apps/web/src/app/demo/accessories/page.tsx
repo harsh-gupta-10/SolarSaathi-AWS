@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AccessoriesResult } from "../../../components/accessories-workspace";
 import type { AccessoriesResponse } from "../../../lib/accessories-api";
+import { demoFinancialResponse } from "../system-financial-fixture";
 
 export const metadata: Metadata = { title: "Accessories demo | SolarSaathi", robots: { index: false, follow: false } };
 
 const demo: AccessoriesResponse = { schemaVersion: 1, source: "DETERMINISTIC_ACCESSORY_ADVISOR_V1",
   requestId: "synthetic-accessories-demo", propertyId: "synthetic-property", analysisId: "synthetic-analysis",
-  system: { nominalKw: 3, actualDcKw: 3.2, minimumInverterAcKw: 2.5, roofSource: "MANUAL",
+  system: { nominalKw: demoFinancialResponse.system.nominalKw,
+    actualDcKw: demoFinancialResponse.system.actualDcKw,
+    minimumInverterAcKw: demoFinancialResponse.system.minimumInverterAcKw, roofSource: "MANUAL",
     generationBasis: "ASSUMED_YIELD" },
   recommendations: [
     { id: "demo-monitoring", title: "Production monitoring", category: "MONITORING", classification: "RECOMMENDED",
@@ -30,8 +33,8 @@ const demo: AccessoriesResponse = { schemaVersion: 1, source: "DETERMINISTIC_ACC
   financialIntegration: { includedInBaseEstimate: false, benefitEligibilityEvaluated: false } };
 
 export default function AccessoriesDemoPage() {
-  return <main className="container py-10 md:py-16"><p className="mb-4 text-sm"><Link href="/app/accessories"
-    className="font-medium text-primary underline underline-offset-4">← Back to accessories</Link></p>
+  return <main className="container py-10 md:py-16"><p className="mb-4 text-sm"><Link href="/demo"
+    className="font-medium text-primary underline underline-offset-4">← Back to guided demo</Link></p>
     <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="note">
       <strong>Synthetic accessories demo.</strong> Every property, roof, system, classification, relevance score and recommendation below is fictional.
       No live account, API, supplier, policy source or price was checked.</div>
