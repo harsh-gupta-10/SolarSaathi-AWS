@@ -29,7 +29,7 @@ const projectedSchema = z.object({
     "BENEFIT_AMOUNT_UNKNOWN", "BENEFITS_EXCEED_GROSS_QUOTE", "NO_PAYBACK_WITHIN_25_YEARS",
     "OTHER_BENEFITS_NOT_MODELED_UPFRONT"])),
 });
-const responseSchema = z.object({
+export const policyFinancialEstimateResponseSchema = z.object({
   schemaVersion: z.literal(1), source: z.literal("DETERMINISTIC_POLICY_FINANCIAL_V1"),
   status: z.enum(["AVAILABLE", "UNAVAILABLE"]), requestId: z.string().min(1),
   propertyId: z.string().min(1), analysisId: z.string().min(1), roofSource: z.enum(["GOOGLE_SOLAR", "MANUAL"]),
@@ -46,7 +46,7 @@ const responseSchema = z.object({
     message: "An adjusted projection requires an available benefit evaluation." });
 });
 
-export type PolicyFinancialEstimateResponse = z.infer<typeof responseSchema>;
+export type PolicyFinancialEstimateResponse = z.infer<typeof policyFinancialEstimateResponseSchema>;
 
 export const policyFinancialApi = {
   estimate: async (propertyId: string, analysisId: string, demand: SystemDemand, generationKwhPerKwYear: number,
@@ -55,7 +55,7 @@ export const policyFinancialApi = {
     const response = await postAuthenticated("/financials/policy-backed/estimate", {
       propertyId, analysisId, demand, generationKwhPerKwYear, nominalKw, financialInputs,
       ...(eligibleQuotedCostPaise === undefined ? {} : { eligibleQuotedCostPaise }), applicantFacts,
-    }, responseSchema, signal, 30_000);
+    }, policyFinancialEstimateResponseSchema, signal, 30_000);
     if (response.propertyId !== propertyId || response.analysisId !== analysisId ||
       response.system.nominalKw !== nominalKw || response.base.input.system.nominalKw !== nominalKw ||
       response.benefits.propertyId !== propertyId || response.benefits.analysisId !== analysisId ||

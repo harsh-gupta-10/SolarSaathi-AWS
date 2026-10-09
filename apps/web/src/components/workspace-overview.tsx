@@ -5,10 +5,12 @@ import { ArrowRight, Building2, Check, FileCheck2, Search, Sun, Users } from "lu
 import { Button } from "@solarsaathi/ui";
 import { AddressForm } from "./address-form";
 import { useWorkspaceRole } from "./workspace-role";
+import { BrokerWorkspace } from "./broker-workspace";
 
 export function WorkspaceOverview() {
   const { role } = useWorkspaceRole();
   const broker = role === "BROKER";
+  if (broker) return <BrokerWorkspace section="overview" />;
   return <>
     <div className="page-heading"><p className="muted">{broker ? "Consultant workspace" : "Homeowner workspace"}</p><h1>{broker ? "Clarity for every customer." : "Start with the roof you have."}</h1><p>{broker ? "Keep customer decisions and their source trails in one place." : "A good solar decision starts with confirmed measurements, not guesses."}</p></div>
     <section className="workspace-start" aria-labelledby="start-title">

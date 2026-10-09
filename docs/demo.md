@@ -107,6 +107,15 @@ Generate/select:
 ### 11. Close
 > SolarSaathi turns a confusing rooftop-solar decision into one guided workflow.
 
+### Broker continuation
+
+For a broker account, open a customer, attach a property, and use **Assess this
+roof** to analyze that exact property. Return to its saved analyses and
+application checklist, then preview a proposal using the broker's entered
+quote and assumptions. Save and reopen the as-of snapshot to show source
+version, last check and coverage status. The `/demo/broker` screen is a
+fictional layout preview; its records and policy states are not live data.
+
 ## Demo reliability
 
 Live services should be used when available.

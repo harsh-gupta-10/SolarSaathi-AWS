@@ -35,7 +35,7 @@ describe("Google roof hard-delete sweep", () => {
     const deletes = commands.filter(command => command instanceof DeleteCommand);
     expect(deletes).toHaveLength(3);
     for (const deletion of deletes) {
-      expect(deletion.input.ConditionExpression).toContain("#kind IN (:preview,:analysis,:cache,:design,:claim)");
+      expect(deletion.input.ConditionExpression).toContain("#kind IN (:preview,:analysis,:cache,:design,:claim,:proposal)");
       expect(deletion.input.ExpressionAttributeValues?.[":expected"]).toBe(cutoff - 1);
       expect(deletion.input).not.toHaveProperty("ReturnValuesOnConditionCheckFailure");
     }
@@ -54,8 +54,8 @@ describe("Google roof hard-delete sweep", () => {
     const result = await purgeExpiredGoogleRoofs("core-table", execute, cutoff);
     expect(result.deleted).toBe(2);
     expect(commands.map(command => command.input.ExpressionAttributeValues)).toEqual([
-      expect.objectContaining({ ":design": "USER_DESIGN", ":claim": "DESIGN_GENERATION_CLAIM" }),
-      expect.objectContaining({ ":design": "USER_DESIGN", ":claim": "DESIGN_GENERATION_CLAIM" }),
+      expect.objectContaining({ ":design": "USER_DESIGN", ":claim": "DESIGN_GENERATION_CLAIM", ":proposal": "BROKER_PROPOSAL" }),
+      expect.objectContaining({ ":design": "USER_DESIGN", ":claim": "DESIGN_GENERATION_CLAIM", ":proposal": "BROKER_PROPOSAL" }),
     ]);
   });
 

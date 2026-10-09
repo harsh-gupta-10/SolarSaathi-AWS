@@ -9,6 +9,7 @@ import { ApplicationsPanel } from "../../../components/application-tracker";
 import { AdvisorWorkspace } from "../../../components/advisor-workspace";
 import { AccessoriesWorkspace } from "../../../components/accessories-workspace";
 import { RooftopIdeasWorkspace } from "../../../components/rooftop-ideas-workspace";
+import { BrokerWorkspace } from "../../../components/broker-workspace";
 
 export function generateStaticParams() { return sectionKeys().map(section => ({ section })); }
 export default async function WorkspaceSection({ params }: { params: Promise<{ section: string }> }) {
@@ -20,6 +21,7 @@ export default async function WorkspaceSection({ params }: { params: Promise<{ s
   if (section === "advisor") return <AdvisorWorkspace />;
   if (section === "accessories") return <AccessoriesWorkspace />;
   if (section === "designs") return <RooftopIdeasWorkspace />;
+  if (section === "customers" || section === "properties" || section === "analyses" || section === "leads" || section === "proposals") return <BrokerWorkspace section={section} />;
   if (section === "benefits") return <><div className="page-heading"><h1>Government Benefits</h1><p>See verified incentives for a saved roof and compatible system.</p></div>
     <section className="benefits-entry" aria-labelledby="benefits-entry-title"><div><span>Policy checked · India</span>
       <h2 id="benefits-entry-title">Start with your property assessment</h2>

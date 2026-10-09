@@ -15,8 +15,10 @@ const api = vi.hoisted(() => ({
   bootstrap: vi.fn(), createCustomer: vi.fn(), createProperty: vi.fn(), geocode: vi.fn(),
   insights: vi.fn(), confirmBuilding: vi.fn(), confirmRoof: vi.fn(), confirmManualRoof: vi.fn(),
 }));
+const broker = vi.hoisted(() => ({ property: vi.fn() }));
 vi.mock("../src/auth/auth-provider", () => ({ useAuth: () => identity }));
 vi.mock("../src/lib/roof-api", () => ({ roofApi: api, RoofRequestError: class extends Error {} }));
+vi.mock("../src/lib/broker-api", () => ({ brokerApi: broker }));
 vi.mock("../src/lib/env", () => ({ getPublicEnvironment: () => ({ NEXT_PUBLIC_GOOGLE_MAPS_KEY: mapEnvironment.key }) }));
 vi.mock("../src/components/satellite-building-map", () => ({ SatelliteBuildingMap: ({ center, deviceLocation, roofBounds, onPointChange }: {
   center: { latitude: number; longitude: number };
@@ -33,6 +35,7 @@ const candidate = { placeId: "place-1", address: "Example Road, Mumbai 400001",
   location: { latitude: 19.076, longitude: 72.8777 }, locationType: "ROOFTOP", partialMatch: false };
 
 beforeEach(() => {
+  window.history.replaceState({}, "", "/app/analyze");
   mapEnvironment.key = undefined;
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => null);
   sessionStorage.clear();
@@ -40,6 +43,7 @@ beforeEach(() => {
   identity.status = "signedIn";
   identity.profile = { userId: "owner-1", cognitoSub: "owner-1", email: "owner@example.com", name: "Owner", role: "HOMEOWNER" };
   for (const mock of Object.values(api)) mock.mockReset();
+  broker.property.mockReset();
   api.bootstrap.mockResolvedValue({ schemaVersion: 1, source: "DYNAMODB", requestId: "request-1" });
   api.createProperty.mockResolvedValue("property-1");
   api.geocode.mockResolvedValue({ schemaVersion: 1, source: "GOOGLE_GEOCODING", requestId: "request-2", candidates: [candidate] });
@@ -53,6 +57,18 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("roof analysis flow", () => {
+  it("uses an owned saved property link without creating a duplicate customer or property", async () => {
+    window.history.replaceState({}, "", "/app/analyze?propertyId=property-1");
+    identity.profile = { userId: "broker-1", cognitoSub: "broker-1", email: "broker@example.com", name: "Broker", role: "BROKER" };
+    broker.property.mockResolvedValue({ propertyId: "property-1", customerId: "customer-1",
+      label: "Saved home", address: "Saved Street, Pune 411001" });
+    render(<AnalyzeStart />);
+    expect(await screen.findByText("Saved Street, Pune 411001")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Find my building" }));
+    await waitFor(() => expect(api.geocode).toHaveBeenCalledWith("property-1", expect.any(AbortSignal)));
+    expect(api.createCustomer).not.toHaveBeenCalled();
+    expect(api.createProperty).not.toHaveBeenCalled();
+  });
   it("keeps signed-out addresses as drafts without calling the backend", async () => {
     identity.status = "signedOut"; identity.profile = null;
     render(<AnalyzeStart />);

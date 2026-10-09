@@ -426,6 +426,41 @@ returns generic reusable template metadata only. The image read route
 private image URL only after owner and analysis-expiry checks. See
 [remaining-space design](rooftop-designs.md).
 
+## Broker workspace (Phase 16)
+
+The existing `GET|POST /v1/customers`, `GET|POST /v1/properties`, and
+`GET|POST /v1/leads` provide broker-only customer and lead intake plus
+organization-scoped property records. `GET /v1/properties/{propertyId}`,
+`GET /v1/properties/{propertyId}/analyses`, and the property-scoped application
+routes let a broker follow saved roof work. Brokers can open an existing
+customer property in the roof flow; the browser does not create a second
+property or submit a trusted roof model on its behalf.
+
+The following routes require a verified broker identity, stored organization
+membership, and a matching customer → property → unexpired analysis chain:
+
+| Route | Purpose |
+| --- | --- |
+| `POST /v1/broker/proposals/preview` | Recompute a policy-backed financial scenario for `{ customerId, propertyId, analysisId, demand, generationKwhPerKwYear, nominalKw, financialInputs, applicantFacts }` without storing it |
+| `POST /v1/broker/customers/{customerId}/proposals` | Recompute and save an immutable proposal snapshot from the same scenario fields except `customerId` |
+| `GET /v1/broker/customers/{customerId}/proposals` | Paginate proposal summaries for that customer |
+| `GET /v1/broker/customers/{customerId}/proposals/{proposalId}` | Read a saved proposal and its as-of financial/policy snapshot |
+| `GET /v1/broker/properties/{propertyId}/designs` | Paginate saved property-specific concept metadata |
+| `PATCH /v1/broker/leads/{leadId}` | Move a lead forward using `{ expectedRevision, status }` with an audit event |
+
+The server derives proposal status, benefit amounts, policy versions, source
+check time and expiry. `AVAILABLE`, `PARTIAL`, and `UNAVAILABLE` distinguish
+coverage; a saved result is an as-of snapshot and may require rechecking.
+`documentStatus: NOT_GENERATED` makes clear that no customer-ready document or
+official application was produced. Pagination cursors are scoped to the
+resource and rejected when malformed. Saved designs remain conceptual; the
+design image endpoint performs its own ownership and expiry checks.
+Lead stages are `NEW`, `CONTACTED`, `SITE_VISIT`, `PROPOSAL`,
+`INSTALLATION`, `COMPLETED`, and `LOST`. A broker may move forward or mark
+the lead lost; completed and lost records are terminal. A stale revision
+returns 409. Changing a lead stage does not create a customer or claim that
+an installation or official application is complete.
+
 ## Admin
 
 `POST /v1/admin/policy/:id/rollback`

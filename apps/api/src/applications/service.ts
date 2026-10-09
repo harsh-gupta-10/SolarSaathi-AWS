@@ -134,7 +134,8 @@ export class ApplicationService {
       ...progress(steps), steps, documents: [], revision: 1, createdAt: at, updatedAt: at });
     const event: ApplicationEventV1 = { schemaVersion: 1, eventId: this.createId(), applicationId,
       propertyId: input.propertyId, actorId: identity.profile.userId, occurredAt: at, action: "CREATED" };
-    await this.repository.create(record, event, active.version.version);
+    const scope = await this.core.getPropertyWriteScope(identity, input.propertyId);
+    await this.repository.create(record, event, active.version.version, scope);
     return record;
   }
 
@@ -188,7 +189,8 @@ export class ApplicationService {
       propertyId: input.propertyId, actorId: identity.profile.userId, occurredAt: at,
       action: "STEP_TRANSITION", stepId, fromStatus: step.status, toStatus: input.status,
       ...(input.note ? { note: input.note } : {}) };
-    await this.repository.replace(current, next, event);
+    const scope = await this.core.getPropertyWriteScope(identity, input.propertyId);
+    await this.repository.replace(current, next, event, scope);
     return next;
   }
 
@@ -208,9 +210,10 @@ export class ApplicationService {
     if (!changes.length) throw new RequestError(409, "NO_STATE_CHANGE", "The application details did not change.");
     const at = this.now().toISOString();
     const next = storedApplicationSchema.parse({ ...nextValues, revision: current.revision + 1, updatedAt: at });
+    const scope = await this.core.getPropertyWriteScope(identity, input.propertyId);
     await this.repository.replace(current, next, { schemaVersion: 1, eventId: this.createId(), applicationId,
       propertyId: input.propertyId, actorId: identity.profile.userId, occurredAt: at,
-      action: "DETAILS_UPDATED", changedFields: changes });
+      action: "DETAILS_UPDATED", changedFields: changes }, scope);
     return next;
   }
 
@@ -226,9 +229,10 @@ export class ApplicationService {
       verificationStatus: "USER_REPORTED" as const };
     const next = storedApplicationSchema.parse({ ...current, documents: [...current.documents, document],
       revision: current.revision + 1, updatedAt: at });
+    const scope = await this.core.getPropertyWriteScope(identity, input.propertyId);
     await this.repository.replace(current, next, { schemaVersion: 1, eventId: this.createId(), applicationId,
       propertyId: input.propertyId, actorId: identity.profile.userId, occurredAt: at,
-      action: "DOCUMENT_RECORDED", documentId });
+      action: "DOCUMENT_RECORDED", documentId }, scope);
     return next;
   }
 

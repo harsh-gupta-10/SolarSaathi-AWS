@@ -157,7 +157,22 @@ describe("stored canonical tenant and owner authorization", () => {
     expect(memory.records.size).toBe(size);
   });
 
-  it("projects DTOs without storage, ACL, revisions or index keys", async () => {
+  it("captures current user, organization, property and locator revisions for later transactional writes", async () => {
+    const { service, memory } = setupData();
+    const broker = identity(actorId, "BROKER");
+    const account = await service.bootstrap(broker, {});
+    const customer = await service.createCustomer(broker, { name: "Customer" });
+    const property = await service.createProperty(broker, { ...propertyBody, customerId: customer.customerId });
+    const scope = await service.getPropertyWriteScope(broker, property.propertyId);
+    expect(scope).toMatchObject({ actorUserId: actorId, actorRole: "BROKER",
+      orgId: account.organization.organizationId, organizationKind: "BROKER",
+      propertyId: property.propertyId, customerId: customer.customerId, propertyOwnerUserId: actorId,
+      organizationRevision: 1, userRevision: 1, propertyRevision: 1, locatorRevision: 1 });
+    memory.seed({ ...orgRecord(account.organization.organizationId, otherId, [otherId]), revision: 2 });
+    await expect(service.getPropertyWriteScope(broker, property.propertyId)).rejects.toMatchObject(forbidden);
+  });
+
+  it("projects DTOs without storage or ACL keys, exposing only the lead's optimistic revision", async () => {
     const { service } = setupData();
     const broker = identity(actorId, "BROKER");
     const bootstrap = await service.bootstrap(broker, {});
@@ -165,8 +180,11 @@ describe("stored canonical tenant and owner authorization", () => {
     const property = await service.createProperty(broker, { ...propertyBody, customerId: customer.customerId });
     const lead = await service.createLead(broker, { name: "Lead" });
     expect(lead.status).toBe("NEW");
-    const dto = JSON.stringify([bootstrap, customer, property, lead, await service.listCustomers(broker), await service.listProperties(broker), await service.listLeads(broker)]);
-    expect(dto).not.toMatch(/"PK"|"SK"|GSI|ownerUserId|memberUserIds|revision|entityType|expiresAtEpochSeconds|selfCustomerId/);
+    const generalDto = JSON.stringify([bootstrap, customer, property, await service.listCustomers(broker), await service.listProperties(broker)]);
+    expect(generalDto).not.toMatch(/"PK"|"SK"|GSI|ownerUserId|memberUserIds|revision|entityType|expiresAtEpochSeconds|selfCustomerId/);
+    const leadDto = JSON.stringify([lead, await service.listLeads(broker)]);
+    expect(lead).toHaveProperty("revision", 1);
+    expect(leadDto).not.toMatch(/"PK"|"SK"|GSI|ownerUserId|memberUserIds|entityType|expiresAtEpochSeconds|selfCustomerId/);
     expect(property).not.toHaveProperty("latitude");
     expect(property).not.toHaveProperty("grossCost");
   });

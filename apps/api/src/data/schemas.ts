@@ -92,7 +92,8 @@ export const buildingConfirmationSchema = z.object({
   value.expiresAtEpochSeconds > Math.floor(Date.parse(value.createdAt) / 1_000));
 
 export const leadSchema = z.object({
-  ...base, ...acl, entityType: z.literal("LEAD"), leadId: identifier, status: z.literal("NEW"),
+  ...base, ...acl, entityType: z.literal("LEAD"), leadId: identifier,
+  status: z.enum(["NEW", "CONTACTED", "SITE_VISIT", "PROPOSAL", "INSTALLATION", "COMPLETED", "LOST"]),
   name: cleanText(1, 120), email: email.optional(), phone: phone.optional(),
 }).strict().refine(value => keyMatches(value, keys.lead(value.orgId, value.leadId)) && datesMatch(value));
 

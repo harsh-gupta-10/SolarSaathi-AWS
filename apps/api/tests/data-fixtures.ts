@@ -47,11 +47,29 @@ export class MemoryExecutor {
         if (seen.has(recordKey(key))) throw new Error("Duplicate transaction key");
         seen.add(recordKey(key));
         if (item.Put) {
-          if (item.Put.ConditionExpression !== "attribute_not_exists(PK) AND attribute_not_exists(SK)") throw new Error("Unsafe unconditional transaction put");
-          return { Code: this.records.has(recordKey(key)) ? "ConditionalCheckFailed" : "None" };
+          if (item.Put.ConditionExpression === "attribute_not_exists(PK) AND attribute_not_exists(SK)") {
+            return { Code: this.records.has(recordKey(key)) ? "ConditionalCheckFailed" : "None" };
+          }
+          if (item.Put.ConditionExpression === "#revision = :revision AND #status = :status AND #org = :org") {
+            const previous = this.read(key);
+            const values = item.Put.ExpressionAttributeValues!;
+            return { Code: previous && previous.revision === values[":revision"] && previous.status === values[":status"] &&
+              previous.orgId === values[":org"] ? "None" : "ConditionalCheckFailed" };
+          }
+          throw new Error("Unsafe unconditional transaction put");
         }
-        if (!item.ConditionCheck || item.ConditionCheck.ConditionExpression !== "#revision = :revision") throw new Error("Unsupported transaction condition");
-        return { Code: this.read(key)?.revision === item.ConditionCheck.ExpressionAttributeValues?.[":revision"] ? "None" : "ConditionalCheckFailed" };
+        if (!item.ConditionCheck || !item.ConditionCheck.ConditionExpression?.startsWith("#revision = :revision")) throw new Error("Unsupported transaction condition");
+        const check = item.ConditionCheck;
+        const expression = check.ConditionExpression!;
+        const stored = this.read(key);
+        const names = check.ExpressionAttributeNames ?? {};
+        const values = check.ExpressionAttributeValues ?? {};
+        const equals = [...expression.matchAll(/(#[A-Za-z]+) = (:[A-Za-z]+)/g)].every(([, name, token]) =>
+          stored?.[names[name!]!] === values[token!]);
+        const membership = !expression.includes("contains(#members, :actor)") ||
+          (Array.isArray(stored?.[names["#members"]!]) &&
+            (stored[names["#members"]!] as unknown[]).includes(values[":actor"]));
+        return { Code: equals && membership ? "None" : "ConditionalCheckFailed" };
       });
       if (reasons.some(reason => reason.Code !== "None")) {
         throw Object.assign(new Error("private transaction marker"), { name: "TransactionCanceledException", CancellationReasons: reasons });

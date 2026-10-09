@@ -22,6 +22,13 @@ Single-table design is preferred unless a clear access-pattern reason requires s
 ### LEAD
 `PK=ORG#orgId`, `SK=LEAD#leadId`
 
+Phase 16 advances the stored lead through explicit broker-reported stages with
+an expected-revision condition. Each change atomically appends a
+`BROKER_LEAD_EVENT` at `PK=ORG#orgId`,
+`SK=LEAD_EVENT#leadId#revision`; organization membership and user role are
+rechecked in the same transaction. Lead stages are business notes, not
+verified solar installation or government application statuses.
+
 ### SOLAR_CACHE
 `PK=CACHE#key`, `SK=VERSION#version`
 
@@ -234,6 +241,26 @@ Bedrock. Google-derived claims use GSI3 for hourly hard deletion at source
 expiry. Atomic UTC-day counters under `PK=DESIGN_BUDGET#date` cap attempts
 per owner and across the application. A failed model call still consumes its
 claim and budget; the deterministic 3D concept remains available.
+
+## Broker proposal entities (Phase 16)
+
+### BROKER_PROPOSAL
+`PK=CUSTOMER#customerId`, `SK=PROPOSAL#proposalId`
+
+An immutable customer, property and analysis-scoped snapshot of a newly
+recomputed policy-backed financial scenario. It stores creator/organization
+provenance, derived coverage status, policy version IDs, oldest relevant
+source-check time, creation time, a JSON snapshot and its SHA-256 digest.
+Reads verify current broker membership and the customer/property chain;
+the detail response labels an old or unverifiable snapshot for recheck.
+No PDF, application submission or official status is stored. Proposal writes
+condition-check current ownership and record revisions in one transaction.
+
+The proposal's TTL is bounded by the saved analysis expiry when Google roof
+data contributes. Such proposals enter the sparse GSI3 hard-delete sweep as
+well as DynamoDB TTL. Listing uses the customer's partition and a bounded
+cursor; expired entries are omitted from responses. This design does not
+archive Google-derived roof details beyond their allowed retention period.
 
 ## Accessory entities
 

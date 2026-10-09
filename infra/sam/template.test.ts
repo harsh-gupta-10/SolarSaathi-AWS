@@ -17,7 +17,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(template.Transform).toBe("AWS::Serverless-2016-10-31");
   });
   it("uses compiled handlers with explicit log destinations", () => {
-    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "DesignsFunction", "FinancialsFunction", "PolicyFinancialsFunction", "BenefitsFunction", "ApplicationsFunction", "PolicyFunction", "PolicyPublicationFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
+    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "DesignsFunction", "FinancialsFunction", "PolicyFinancialsFunction", "BrokerFunction", "BenefitsFunction", "ApplicationsFunction", "PolicyFunction", "PolicyPublicationFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
       expect(properties(name).CodeUri).toBe("../../apps/api/dist");
       expect(properties(name).Handler).toMatch(/^handlers\/[a-z-]+\.handler$/);
       expect(properties(name).LoggingConfig).toBeDefined();
@@ -243,6 +243,27 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(policy).toContain("SOURCE#*");
     expect(policy).toContain("index/GSI5");
     expect(policy).not.toMatch(/PutItem|UpdateItem|DeleteItem|s3:|secretsmanager|bedrock/);
+  });
+
+  it("routes broker proposal, saved-design and lead-stage operations with scoped table permissions", () => {
+    const broker = properties("BrokerFunction");
+    expect(broker.Handler).toBe("handlers/broker.handler");
+    expect(broker.Environment).toEqual({ Variables: {
+      CORE_TABLE_NAME: "AnalysesTable", POLICY_TABLE_NAME: "PolicyTable",
+    } });
+    expect(Object.values(broker.Events as Record<string, { Properties: { Path: string; Method: string } }>)
+      .map(event => `${event.Properties.Method} ${event.Properties.Path}`).sort()).toEqual([
+      "POST /broker/proposals/preview", "POST /broker/customers/{customerId}/proposals",
+      "GET /broker/customers/{customerId}/proposals", "GET /broker/customers/{customerId}/proposals/{proposalId}",
+      "GET /broker/properties/{propertyId}/designs", "PATCH /broker/leads/{leadId}",
+    ].sort());
+    const access = JSON.stringify(broker.Policies);
+    expect(access).toContain("GuardBrokerProposalScope");
+    expect(access).toContain("SaveImmutableBrokerProposal");
+    expect(access).toContain("UpdateBrokerLeadAndAudit");
+    expect(access).toContain("PUBLISHED_POLICY#*");
+    expect(access).toContain("index/GSI5");
+    expect(access).not.toMatch(/s3:|bedrock|secretsmanager|DeleteItem|UpdateItem/);
   });
 
   it("isolates the private policy archive and versioned encrypted object bucket", () => {

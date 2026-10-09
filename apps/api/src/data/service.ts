@@ -11,13 +11,26 @@ import {
   identifier, pageInputSchema, parseInput,
   propertyInputSchema, roofMetadataSchema,
   type StoredAnalysis, type StoredBuildingConfirmation, type StoredCache, type StoredCustomer, type StoredOrganization,
-  type StoredProperty, type StoredRoofPreview, type StoredUser,
+  type StoredLocator, type StoredProperty, type StoredRoofPreview, type StoredUser,
 } from "./schemas";
 
 const denied = () => new RequestError(403, "FORBIDDEN", "This operation is not permitted for this account.");
 const missing = () => new RequestError(404, "NOT_FOUND", "The requested record was not found.");
 interface Account { user: StoredUser; organization: StoredOrganization }
 export interface ServiceDependencies { now?: () => Date; createId?: () => string }
+export interface PropertyWriteScope {
+  actorUserId: string;
+  actorRole: StoredUser["role"];
+  userRevision: number;
+  orgId: string;
+  organizationKind: StoredOrganization["kind"];
+  organizationRevision: number;
+  propertyId: string;
+  customerId: string;
+  propertyOwnerUserId: string;
+  propertyRevision: number;
+  locatorRevision: number;
+}
 
 export class CoreService {
   private readonly now: () => Date;
@@ -156,7 +169,9 @@ export class CoreService {
     return { leads: result.items.map(leadDto), ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}) };
   }
 
-  private async ownedProperty(identity: CurrentIdentityResponse, propertyId: string): Promise<{ account: Account; property: StoredProperty }> {
+  private async ownedProperty(identity: CurrentIdentityResponse, propertyId: string): Promise<{
+    account: Account; property: StoredProperty; locator: StoredLocator;
+  }> {
     parseInput(identifier, propertyId);
     const account = await this.account(identity);
     const locator = await this.repository.getLocator(propertyId);
@@ -165,11 +180,23 @@ export class CoreService {
     const property = await this.repository.getProperty(locator.customerId, propertyId);
     if (!property || property.orgId !== locator.orgId || property.ownerUserId !== locator.ownerUserId ||
       (account.user.role === "HOMEOWNER" && property.customerId !== account.user.selfCustomerId)) throw databaseUnavailable();
-    return { account, property };
+    return { account, property, locator };
   }
 
   async getProperty(identity: CurrentIdentityResponse, propertyId: string) {
     return propertyDto((await this.ownedProperty(identity, propertyId)).property);
+  }
+
+  // Capture the exact records whose revisions must still hold when a later write commits.
+  async getPropertyWriteScope(identity: CurrentIdentityResponse, propertyId: string): Promise<PropertyWriteScope> {
+    const { account, property, locator } = await this.ownedProperty(identity, propertyId);
+    return {
+      actorUserId: account.user.userId, actorRole: account.user.role, userRevision: account.user.revision,
+      orgId: account.organization.orgId, organizationKind: account.organization.kind,
+      organizationRevision: account.organization.revision, propertyId: property.propertyId,
+      customerId: property.customerId, propertyOwnerUserId: property.ownerUserId,
+      propertyRevision: property.revision, locatorRevision: locator.revision,
+    };
   }
 
   async createProperty(identity: CurrentIdentityResponse, body: unknown) {

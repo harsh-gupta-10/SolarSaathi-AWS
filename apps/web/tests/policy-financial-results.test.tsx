@@ -60,4 +60,21 @@ describe("policy-backed financial result", () => {
     expect(screen.getByText(/in selected other benefits is listed above but excluded/)).toBeTruthy();
     expect(screen.getByText("Modeled upfront reduction")).toBeTruthy();
   });
+
+  it("labels an archived proposal as an as-of calculation without claiming policy is current now", () => {
+    render(<PolicyFinancialResults asOfSnapshot response={{ ...demoPolicyFinancialResponse,
+      projection: { ...demoPolicyFinancialResponse.projection!, coverageComplete: true, status: "COMPLETE" } }} />);
+    expect(screen.getByText("Verified when saved")).toBeTruthy();
+    expect(screen.getByText(/saved scenario used the verified rule set available when it was calculated/i)).toBeTruthy();
+    expect(screen.getByText(/fresh when evaluated/i)).toBeTruthy();
+    expect(screen.queryByText("Current verified coverage")).toBeNull();
+  });
+
+  it("uses past-tense unavailable copy for an archived proposal", () => {
+    render(<PolicyFinancialResults asOfSnapshot response={{ ...demoPolicyFinancialResponse,
+      status: "UNAVAILABLE", projection: undefined, benefits: { ...demoPolicyFinancialResponse.benefits,
+        status: "UNAVAILABLE", result: undefined } }} />);
+    expect(screen.getByText(/No benefit in this saved evaluation could be modeled/)).toBeTruthy();
+    expect(screen.queryByText(/No current, confirmed benefit/)).toBeNull();
+  });
 });

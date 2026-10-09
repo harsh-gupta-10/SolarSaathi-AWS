@@ -1,6 +1,8 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand,
+  type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import { databaseError } from "../data/client";
+import type { PropertyWriteScope } from "../data/service";
 import { storedApplicationSchema, type ApplicationEventV1, type SolarApplicationV1 } from "./schema";
 
 const applicationKey = (propertyId: string, applicationId: string) => ({ PK: `PROPERTY#${propertyId}`, SK: `APPLICATION#${applicationId}` });
@@ -10,8 +12,8 @@ const parseRecord = (item: Record<string, unknown>) => storedApplicationSchema.p
 export interface ApplicationRepository {
   get(propertyId: string, applicationId: string): Promise<SolarApplicationV1 | undefined>;
   list(propertyId: string, limit: number, cursor?: Record<string, string>): Promise<{ items: SolarApplicationV1[]; cursor?: Record<string, string> }>;
-  create(record: SolarApplicationV1, event: ApplicationEventV1, expectedPolicyVersion: number): Promise<void>;
-  replace(previous: SolarApplicationV1, next: SolarApplicationV1, event: ApplicationEventV1): Promise<void>;
+  create(record: SolarApplicationV1, event: ApplicationEventV1, expectedPolicyVersion: number, scope: PropertyWriteScope): Promise<void>;
+  replace(previous: SolarApplicationV1, next: SolarApplicationV1, event: ApplicationEventV1, scope: PropertyWriteScope): Promise<void>;
   listEvents(applicationId: string, limit: number, cursor?: Record<string, string>): Promise<{ items: ApplicationEventV1[]; cursor?: Record<string, string> }>;
 }
 
@@ -43,9 +45,37 @@ export class DynamoApplicationRepository implements ApplicationRepository {
     } catch (error) { throw databaseError(error); }
   }
 
-  async create(record: SolarApplicationV1, event: ApplicationEventV1, expectedPolicyVersion: number): Promise<void> {
+  private writeGuards(scope: PropertyWriteScope): NonNullable<TransactWriteCommandInput["TransactItems"]> {
+    return [
+      { ConditionCheck: { TableName: this.coreTableName, Key: { PK: `ORG#${scope.orgId}`, SK: "PROFILE" },
+        ConditionExpression: "#revision = :revision AND #kind = :kind AND (#owner = :actor OR contains(#members, :actor))",
+        ExpressionAttributeNames: { "#revision": "revision", "#kind": "kind", "#owner": "ownerUserId", "#members": "memberUserIds" },
+        ExpressionAttributeValues: { ":revision": scope.organizationRevision, ":kind": scope.organizationKind,
+          ":actor": scope.actorUserId } } },
+      { ConditionCheck: { TableName: this.coreTableName, Key: { PK: `USER#${scope.actorUserId}`, SK: "PROFILE" },
+        ConditionExpression: "#revision = :revision AND #org = :org AND #role = :role",
+        ExpressionAttributeNames: { "#revision": "revision", "#org": "orgId", "#role": "role" },
+        ExpressionAttributeValues: { ":revision": scope.userRevision, ":org": scope.orgId, ":role": scope.actorRole } } },
+      { ConditionCheck: { TableName: this.coreTableName,
+        Key: { PK: `CUSTOMER#${scope.customerId}`, SK: `PROPERTY#${scope.propertyId}` },
+        ConditionExpression: "#revision = :revision AND #org = :org AND #owner = :owner AND #customer = :customer",
+        ExpressionAttributeNames: { "#revision": "revision", "#org": "orgId", "#owner": "ownerUserId", "#customer": "customerId" },
+        ExpressionAttributeValues: { ":revision": scope.propertyRevision, ":org": scope.orgId,
+          ":owner": scope.propertyOwnerUserId, ":customer": scope.customerId } } },
+      { ConditionCheck: { TableName: this.coreTableName,
+        Key: { PK: `PROPERTY#${scope.propertyId}`, SK: "LOCATOR" },
+        ConditionExpression: "#revision = :revision AND #org = :org AND #owner = :owner AND #customer = :customer",
+        ExpressionAttributeNames: { "#revision": "revision", "#org": "orgId", "#owner": "ownerUserId", "#customer": "customerId" },
+        ExpressionAttributeValues: { ":revision": scope.locatorRevision, ":org": scope.orgId,
+          ":owner": scope.propertyOwnerUserId, ":customer": scope.customerId } } },
+    ];
+  }
+
+  async create(record: SolarApplicationV1, event: ApplicationEventV1, expectedPolicyVersion: number,
+    scope: PropertyWriteScope): Promise<void> {
     try {
       await this.client.send(new TransactWriteCommand({ TransactItems: [
+        ...this.writeGuards(scope),
         { ConditionCheck: { TableName: this.policyTableName,
           Key: { PK: `PUBLISHED_POLICY#${record.policyId}`, SK: "ACTIVE" },
           ConditionExpression: "activeVersion = :version AND #value.#rule.#ruleId = :ruleId",
@@ -60,9 +90,11 @@ export class DynamoApplicationRepository implements ApplicationRepository {
     } catch (error) { throw databaseError(error); }
   }
 
-  async replace(previous: SolarApplicationV1, next: SolarApplicationV1, event: ApplicationEventV1): Promise<void> {
+  async replace(previous: SolarApplicationV1, next: SolarApplicationV1, event: ApplicationEventV1,
+    scope: PropertyWriteScope): Promise<void> {
     try {
       await this.client.send(new TransactWriteCommand({ TransactItems: [
+        ...this.writeGuards(scope),
         { Put: { TableName: this.coreTableName, Item: { ...applicationKey(next.propertyId, next.applicationId),
           entityType: "SOLAR_APPLICATION", revision: next.revision, value: next },
           ConditionExpression: "revision = :revision AND entityType = :type",

@@ -1,4 +1,4 @@
-import type { AnalysisSource, UserRole } from "./index";
+import type { AnalysisSource, LeadStatus, UserRole } from "./index";
 
 export type CoreOrganizationKind = "PERSONAL" | "BROKER";
 export type CoreCustomerKind = "SELF" | "CUSTOMER";
@@ -44,7 +44,8 @@ export interface CoreLeadDto extends CoreEntityDto {
   name: string;
   email?: string;
   phone?: string;
-  status: "NEW";
+  status: LeadStatus;
+  revision: number;
 }
 
 export interface CoreBootstrapRequest { organizationName?: string }

@@ -210,6 +210,24 @@ area-only guidance and state clearing. The synthetic demo was inspected at
 selection and text fallback. Those browser checks are visual/interactive, not
 a deployed-service or automated accessibility certification.
 
+### Phase 16 broker workspace
+
+Verify customer → property → analysis chaining before proposal preview and
+save. Reject cross-organization IDs, non-broker actors, expired analyses,
+malformed cursors and client-supplied trusted financial or policy fields.
+Condition-check organization membership, stored user role, property locator,
+customer/property/analysis revisions and policy snapshot provenance at write
+time. Read tests should reject an expired or corrupt saved snapshot and show
+incomplete policy coverage without an invented benefit. Cover paginated
+customers, properties, analyses, leads, applications, proposals and designs,
+including an empty filtered page with a continuation cursor. UI tests should
+clear previous customer/property results on selection or account change and
+keep the fictional broker demo visibly separate from live account data.
+The Phase 16 local gate passed 772 tests, lint, typechecking, API bundle/PDF
+smoke and production builds. Browser inspection covered the fictional broker
+demo at desktop and 390-pixel mobile widths and the signed-out broker guard;
+authenticated broker behavior remains unverified against deployed services.
+
 ### Phase 11 policy-backed financial scenario
 
 The Phase 11 local `pnpm check` gate passed 692 tests across the workspace,

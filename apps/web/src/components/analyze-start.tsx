@@ -9,6 +9,7 @@ import { useAuth } from "../auth/auth-provider";
 import { ADDRESS_DRAFT_KEY, readAddressDraft } from "../lib/address-draft";
 import { getPublicEnvironment } from "../lib/env";
 import { roofApi, RoofRequestError } from "../lib/roof-api";
+import { brokerApi } from "../lib/broker-api";
 import { AddressForm } from "./address-form";
 import { SatelliteBuildingMap } from "./satellite-building-map";
 import { RoofLayoutViewer } from "./roof-layout-viewer";
@@ -43,7 +44,10 @@ export function AnalyzeStart() {
   const [manual, setManual] = useState({ area: "", length: "", width: "", pitch: "", azimuth: "" });
   const [busy, setBusy] = useState<Busy>();
   const [error, setError] = useState<string>();
+  const [existingLookup, setExistingLookup] = useState(false);
+  const [existingLookupError, setExistingLookupError] = useState<string>();
   const request = useRef<AbortController | null>(null);
+  const propertyLookup = useRef<AbortController | null>(null);
   const locationAttempt = useRef(0);
   const account = status === "signedIn" ? profile?.userId : undefined;
   const accountRef = useRef(account);
@@ -51,11 +55,30 @@ export function AnalyzeStart() {
   useEffect(() => { try { setAddress(readAddressDraft(sessionStorage)); } catch { setAddress(""); } }, []);
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => {
+    if (status !== "signedIn" || !profile) return;
+    const linkedPropertyId = new URLSearchParams(window.location.search).get("propertyId");
+    if (!linkedPropertyId) return;
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(linkedPropertyId)) {
+      setExistingLookupError("This property link is invalid. Open the property from your workspace again."); return;
+    }
+    const controller = new AbortController(); propertyLookup.current = controller;
+    setExistingLookup(true); setExistingLookupError(undefined);
+    void brokerApi.property(linkedPropertyId, controller.signal).then(property => {
+      if (controller.signal.aborted) return;
+      setAddress(property.address); setPropertyId(property.propertyId); setEditing(false); setCustomerName("");
+    }).catch(failure => {
+      if (!controller.signal.aborted) setExistingLookupError(errorText(failure));
+    }).finally(() => { if (!controller.signal.aborted) setExistingLookup(false); });
+    return () => controller.abort();
+  }, [account, status, profile]);
+  useEffect(() => {
     if (status === "loading" || accountRef.current === account) return;
     accountRef.current = account;
     request.current?.abort(); request.current = null;
+    propertyLookup.current?.abort(); propertyLookup.current = null;
     locationAttempt.current += 1;
     setBusy(undefined); setError(undefined); setPropertyId(undefined); setCandidates([]);
+    setExistingLookup(false); setExistingLookupError(undefined);
     setSelected(undefined); setPoint(undefined); setMapCenter(undefined); setDeviceLocation(undefined);
     setLocationStatus("idle"); setLocationMessage(undefined); setPreview(undefined);
     setBuildingConfirmed(false); setResult(undefined); setManualMode(false);
@@ -63,8 +86,9 @@ export function AnalyzeStart() {
 
   function reset() {
     request.current?.abort(); request.current = null;
+    propertyLookup.current?.abort(); propertyLookup.current = null;
     locationAttempt.current += 1;
-    setBusy(undefined); setError(undefined); setPropertyId(undefined); setCandidates([]);
+    setBusy(undefined); setError(undefined); setExistingLookup(false); setExistingLookupError(undefined); setPropertyId(undefined); setCandidates([]);
     setSelected(undefined); setPoint(undefined); setMapCenter(undefined); setDeviceLocation(undefined);
     setLocationStatus("idle"); setLocationMessage(undefined); setPreview(undefined);
     setBuildingConfirmed(false); setResult(undefined); setManualMode(false);
@@ -216,7 +240,7 @@ export function AnalyzeStart() {
       if (!signal.aborted) setResult(data);
     });
   }
-  const enabled = status === "signedIn" && !!profile && accountRef.current === account && !!address && !editing;
+  const enabled = status === "signedIn" && !!profile && accountRef.current === account && !!address && !editing && !existingLookup && !existingLookupError;
   const visibleResult = enabled ? result : undefined;
   const activeStep = visibleResult || (enabled && (manualMode || buildingConfirmed)) ? 3 : enabled && (candidates.length || preview) ? 2 : 1;
   const mapReady = Boolean(mapKey && selected && point);
@@ -228,9 +252,10 @@ export function AnalyzeStart() {
       <li aria-current={activeStep === 3 ? "step" : undefined}>3. Roof</li>
     </ol>
     <section className="workspace-start" aria-labelledby="address-draft-title"><MapPin className="start-icon" aria-hidden="true" /><h2 id="address-draft-title">Your property address</h2>
-      {address === null ? <p role="status">Loading your tab’s draft…</p> : address && !editing ? <><p className="draft-address">{address}</p><p className="muted">This is a browser tab draft until you start an assessment.</p><div className="draft-actions"><Button variant="outline" onClick={() => { reset(); setEditing(true); }}>Edit address</Button><Button variant="ghost" onClick={clear}>Clear draft</Button></div></> : <AddressForm key={address ?? ""} initialAddress={address ?? ""} compact onSaved={value => { reset(); setAddress(value); setEditing(false); }} />}
+      {existingLookup ? <p role="status">Loading the saved property…</p> : address === null ? <p role="status">Loading your tab’s draft…</p> : address && !editing ? <><p className="draft-address">{address}</p><p className="muted">{propertyId ? "Saved property in your organization. The address was loaded from the backend." : "This is a browser tab draft until you start an assessment."}</p><div className="draft-actions"><Button variant="outline" onClick={() => { reset(); setEditing(true); }}>Edit address</Button><Button variant="ghost" onClick={clear}>Clear draft</Button></div></> : <AddressForm key={address ?? ""} initialAddress={address ?? ""} compact onSaved={value => { reset(); setAddress(value); setEditing(false); }} />}
       {profile?.role === "BROKER" && enabled && !propertyId && <div className="mt-5 max-w-md"><Label htmlFor="roof-customer-name">Customer name</Label><Input id="roof-customer-name" value={customerName} maxLength={120} onChange={event => setCustomerName(event.target.value)} /><p className="form-hint">A broker assessment must belong to a customer in your organization.</p></div>}
     </section>
+    {existingLookupError && <div className="mt-4"><p role="alert" className="form-error">{existingLookupError}</p><Button type="button" variant="outline" className="mt-3" onClick={() => { reset(); setEditing(true); }}>Enter another address</Button></div>}
     {status !== "signedIn" && <div className="availability-note"><ShieldCheck aria-hidden="true" /><div><h2>Sign in to save a roof assessment</h2><p>{status === "unconfigured" ? "Account sign-in is not configured for this deployment. Your address remains a tab draft; no analysis has run." : "Your address remains a tab draft until your account is connected."}</p><div className="mt-4 flex flex-wrap gap-2">{status === "signedOut" && <Button asChild><Link href="/auth/sign-in">Sign in</Link></Button>}{(status === "signedOut" || status === "unconfigured") && <><Button asChild variant="outline"><Link href="/demo/roof-3d">Explore 3D demo</Link></Button><Button asChild variant="outline"><Link href="/demo/system-designer">Try system designer demo</Link></Button></>}</div></div></div>}
     {status !== "signedIn" && <p className="mt-4 text-sm text-muted-foreground"><Link href="/demo/roof-3d" className="font-medium text-primary underline underline-offset-4">Explore a sample 3D roof</Link> while live analysis is being configured.</p>}
     {enabled && !visibleResult && <section className="space-y-5" aria-label="Building and roof analysis">

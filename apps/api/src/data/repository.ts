@@ -39,6 +39,7 @@ export class CoreRepository {
   getUser(userId: string) { return this.get(keys.user(userId), userSchema); }
   getOrganization(orgId: string) { return this.get(keys.organization(orgId), organizationSchema); }
   getCustomer(orgId: string, customerId: string) { return this.get(keys.customer(orgId, customerId), customerSchema); }
+  getLead(orgId: string, leadId: string) { return this.get(keys.lead(orgId, leadId), leadSchema); }
   getLocator(propertyId: string) { return this.get(keys.locator(propertyId), locatorSchema); }
   getProperty(customerId: string, propertyId: string) { return this.get(keys.property(customerId, propertyId), propertySchema); }
   getAnalysis(propertyId: string, analysisId: string) { return this.get(keys.analysis(propertyId, analysisId), analysisSchema); }

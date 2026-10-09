@@ -63,7 +63,7 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
-async function authenticatedRequest<T>(method: "GET" | "POST", path: string, body: unknown,
+async function authenticatedRequest<T>(method: "GET" | "POST" | "PATCH", path: string, body: unknown,
   schema: z.ZodType<T>, signal?: AbortSignal, timeoutMs = 12_000): Promise<T> {
   const url = endpoint(path);
   const controller = new AbortController();
@@ -84,8 +84,8 @@ async function authenticatedRequest<T>(method: "GET" | "POST", path: string, bod
     const token = session.tokens?.accessToken?.toString();
     if (!token) throw new RoofRequestError("SESSION_UNAVAILABLE", "Sign in to analyze this property.");
     const response = await fetch(url, { method, headers: { authorization: `Bearer ${token}`,
-      ...(method === "POST" ? { "content-type": "application/json" } : {}), accept: "application/json" },
-      ...(method === "POST" ? { body: JSON.stringify(body) } : {}),
+      ...(method !== "GET" ? { "content-type": "application/json" } : {}), accept: "application/json" },
+      ...(method !== "GET" ? { body: JSON.stringify(body) } : {}),
       credentials: "omit", cache: "no-store", redirect: "error", signal: controller.signal });
     let payload: unknown;
     try { payload = await abortable(response.json(), controller.signal); } catch { throw new RoofRequestError("INVALID_RESPONSE", "The analysis service returned an unreadable response. Try again."); }
@@ -117,6 +117,11 @@ export function postAuthenticated<T>(path: string, body: unknown, schema: z.ZodT
 export function getAuthenticated<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal,
   timeoutMs = 12_000): Promise<T> {
   return authenticatedRequest("GET", path, undefined, schema, signal, timeoutMs);
+}
+
+export function patchAuthenticated<T>(path: string, body: unknown, schema: z.ZodType<T>, signal?: AbortSignal,
+  timeoutMs = 12_000): Promise<T> {
+  return authenticatedRequest("PATCH", path, body, schema, signal, timeoutMs);
 }
 
 export const roofApi = {

@@ -504,6 +504,29 @@ eventual, so deployed retention must be verified before production use.
 - application tracking
 - reusable designs
 
+Status: **implemented locally (2026-10-09)**. Broker-only pages now page
+organization customers, properties and leads; a customer property opens its
+owned roof flow without duplication and lists its confirmed analyses, user
+reported application trackers and saved property-specific design attempts.
+The broker proposal API recomputes policy-backed financials from the owned,
+unexpired analysis and real scenario inputs before preview or immutable save.
+Snapshots record policy versions, source-check time, coverage, digest and
+as-of/recheck status. Proposal saves condition-check current user membership,
+customer, property, locator and analysis records; application writes gained
+equivalent account/property transaction guards. Broker lead stages move
+forward with revision and membership guards plus immutable audit events.
+Google-derived proposals share source-bounded TTL and hourly hard deletion.
+The browser drops late responses on account/customer/property changes. A
+visibly fictional broker demo includes a layered isometric solar roof.
+
+The full local gate passed lint, typechecking, **772 tests**, API bundle/PDF
+smoke, infrastructure tests and production builds. The demo was inspected at
+desktop and 390-pixel mobile widths without horizontal overflow; the signed
+out broker route correctly required a verified broker account. No live
+Cognito, DynamoDB, Google, AWS deployment or real broker transaction was
+verified. Proposal PDF/send, lead-to-customer conversion and a full generic
+template inventory are outside this phase's implemented scope.
+
 ## Phase 17 — International fallback
 - country detection
 - jurisdiction discovery

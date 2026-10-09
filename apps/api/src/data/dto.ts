@@ -21,6 +21,6 @@ export const propertyDto = (record: StoredProperty): CorePropertyDto => ({
   ...metadata(record), propertyId: record.propertyId, customerId: record.customerId, label: record.label, address: record.address,
 });
 export const leadDto = (record: StoredLead): CoreLeadDto => ({
-  ...metadata(record), leadId: record.leadId, name: record.name, status: record.status,
+  ...metadata(record), leadId: record.leadId, name: record.name, status: record.status, revision: record.revision,
   ...(record.email ? { email: record.email } : {}), ...(record.phone ? { phone: record.phone } : {}),
 });

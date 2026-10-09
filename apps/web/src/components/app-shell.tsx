@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { ArrowUpRight, Building2, ClipboardList, FileCheck2, HelpCircle, Home, Layers, Leaf, Menu, MessageCircle, Search, Settings, ShieldCheck, Sun, Users, Wallet, Wrench } from "lucide-react";
+import { ArrowUpRight, Building2, ClipboardList, FileCheck2, FileText, HelpCircle, Home, Layers, Leaf, Menu, MessageCircle, Search, Settings, ShieldCheck, Sun, Users, Wallet, Wrench } from "lucide-react";
 import { Button, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@solarsaathi/ui";
 import type { UserRole } from "@solarsaathi/types";
 import { isSectionActive, navigationForRole, sectionPath } from "../lib/navigation";
 import { WorkspaceRoleProvider, useWorkspaceRole } from "./workspace-role";
 import { useAuth } from "../auth/auth-provider";
 
-const icons = { overview: Home, analyze: Search, properties: Building2, savings: Wallet, benefits: FileCheck2, applications: ClipboardList, advisor: MessageCircle, designs: Leaf, accessories: Wrench, help: HelpCircle, settings: Settings, customers: Users, analyses: Layers, leads: Users };
+const icons = { overview: Home, analyze: Search, properties: Building2, savings: Wallet, benefits: FileCheck2, applications: ClipboardList, advisor: MessageCircle, designs: Leaf, accessories: Wrench, help: HelpCircle, settings: Settings, customers: Users, analyses: Layers, leads: Users, proposals: FileText };
 function WorkspaceNavigation({ onNavigate }: { onNavigate?: () => void }) {
   const { role } = useWorkspaceRole();
   const { status, profile } = useAuth();

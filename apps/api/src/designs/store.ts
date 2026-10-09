@@ -20,7 +20,7 @@ const templateSchema = z.object({
     safetyNotes: z.array(z.string().min(1).max(300)).min(1).max(5) }).strict(),
   createdAt: iso,
 }).strict();
-const userDesignSchema = z.object({
+export const userDesignSchema = z.object({
   PK: z.string(), SK: z.string(), entityType: z.literal("USER_DESIGN"), schemaVersion: z.literal(1),
   designId: identifier, propertyId: identifier, analysisId: identifier, ownerUserId: identifier,
   orgId: identifier, candidateId: designCandidateIdSchema, fingerprint: fingerprintSchema,

@@ -89,6 +89,23 @@ the user must explicitly confirm through the audited step endpoint. Document
 records are metadata only. Application progress is user reported and must not
 be displayed as official government completion.
 
+Application writes also condition-check the current organization membership,
+stored user role, property and property locator revisions in the same DynamoDB
+transaction as the mutation. A broker whose access or property association
+changes after the initial read cannot commit a stale update.
+
+Phase 16 broker proposals recompute policy and financial results against an
+owned, unexpired analysis before saving. Customer, property and analysis IDs
+must form one current organization-scoped chain. The browser cannot supply
+benefit amounts or policy provenance as trusted values. A saved proposal is
+an as-of snapshot with coverage and source freshness displayed, not a promise
+of subsidy receipt or a generated official document. Retention of any
+Google-derived proposal snapshot is bounded by its analysis expiry and
+hard-delete indexing; proposal detail reads reject expired records.
+Lead stage changes use a broker-only expected-revision transaction with
+current organization membership and stored role checks plus an immutable
+event. Stage labels are user reported workflow notes.
+
 ## Sensitive data
 Protect:
 - identity data

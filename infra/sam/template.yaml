@@ -230,6 +230,12 @@ Resources:
       LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/policy-financials"
       RetentionInDays: !Ref LogRetentionDays
 
+  BrokerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/broker"
+      RetentionInDays: !Ref LogRetentionDays
+
   PolicyLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -505,6 +511,96 @@ Resources:
             Path: /financials/policy-backed/estimate
             Method: POST
 
+  BrokerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Serves broker-only, org-scoped immutable proposal snapshots and property design records.
+        must:
+          - Recheck current broker membership and customer, property and analysis binding server-side.
+          - Recompute policy financial results and condition-check all source record revisions before a proposal write.
+          - Never store applicant fact input, raw address, document PDF or presigned design image URL.
+    Properties:
+      Handler: handlers/broker.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 28
+      LoggingConfig:
+        LogGroup: !Ref BrokerLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+          POLICY_TABLE_NAME: !Ref PolicyTable
+      Policies:
+        - Statement:
+            - Sid: ReadBrokerRecords
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query]
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["USER#*", "ORG#*", "CUSTOMER#*", "PROPERTY#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: GuardBrokerProposalScope
+              Effect: Allow
+              Action: dynamodb:ConditionCheckItem
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["USER#*", "ORG#*", "CUSTOMER#*", "PROPERTY#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: SaveImmutableBrokerProposal
+              Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["CUSTOMER#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: UpdateBrokerLeadAndAudit
+              Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["ORG#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: ReadBrokerVerifiedPolicy
+              Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt PolicyTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["PUBLISHED_POLICY#*", "SOURCE#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: ListBrokerVerifiedPolicy
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${PolicyTable.Arn}/index/GSI5"
+      Events:
+        PreviewBrokerProposal:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /broker/proposals/preview, Method: POST }
+        SaveBrokerProposal:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/broker/customers/{customerId}/proposals", Method: POST }
+        ListBrokerProposals:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/broker/customers/{customerId}/proposals", Method: GET }
+        GetBrokerProposal:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/broker/customers/{customerId}/proposals/{proposalId}", Method: GET }
+        ListBrokerPropertyDesigns:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/broker/properties/{propertyId}/designs", Method: GET }
+        UpdateBrokerLead:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/broker/leads/{leadId}", Method: PATCH }
+
   PolicyPublicationFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -633,11 +729,20 @@ Resources:
                   "dynamodb:LeadingKeys": "false"
             - Sid: WriteApplicationAndAudit
               Effect: Allow
-              Action: [dynamodb:PutItem, dynamodb:ConditionCheckItem]
+              Action: dynamodb:PutItem
               Resource: !GetAtt AnalysesTable.Arn
               Condition:
                 ForAllValues:StringLike:
                   "dynamodb:LeadingKeys": ["PROPERTY#*", "APPLICATION#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: GuardApplicationWriteScope
+              Effect: Allow
+              Action: dynamodb:ConditionCheckItem
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["USER#*", "ORG#*", "CUSTOMER#*", "PROPERTY#*", "APPLICATION#*"]
                 "Null":
                   "dynamodb:LeadingKeys": "false"
             - Sid: ReadCurrentVerifiedPolicy

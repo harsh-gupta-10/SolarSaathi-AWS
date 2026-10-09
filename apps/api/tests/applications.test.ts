@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { BenefitsService } from "../src/benefits/service";
-import type { CoreService } from "../src/data/service";
+import type { CoreService, PropertyWriteScope } from "../src/data/service";
 import { ApplicationService } from "../src/applications/service";
 import { DynamoApplicationRepository, type ApplicationRepository } from "../src/applications/storage";
 import type { ApplicationEventV1, SolarApplicationV1 } from "../src/applications/schema";
@@ -19,6 +19,9 @@ const request = { propertyId: "property-1", analysisId: "analysis-1", policyId,
   demand: { kind: "CONSUMPTION", monthlyConsumptionKwh: 600 },
   generationKwhPerKwYear: 1_500, nominalKw: 3,
   applicantFacts: { country: "IN", customerType: "RESIDENTIAL" } };
+const writeScope: PropertyWriteScope = { actorUserId: "actor", actorRole: "BROKER", userRevision: 3,
+  orgId: "org-1", organizationKind: "BROKER", organizationRevision: 7, propertyId: "property-1",
+  customerId: "customer-1", propertyOwnerUserId: "actor", propertyRevision: 2, locatorRevision: 4 };
 
 function setup() {
   const records = new Map<string, SolarApplicationV1>();
@@ -26,6 +29,9 @@ function setup() {
   const core = { getProperty: vi.fn(async (_identity, propertyId: string) => {
     if (propertyId !== "property-1") throw new Error("foreign property");
     return { propertyId };
+  }), getPropertyWriteScope: vi.fn(async (_identity, propertyId: string) => {
+    if (propertyId !== "property-1") throw new Error("foreign property");
+    return writeScope;
   }) } as unknown as CoreService;
   let processSteps: Array<{ stepId: string; order: number; title: string; description: string;
     required: boolean; evidenceFactIds: string[] }> | undefined = [
@@ -158,19 +164,33 @@ describe("Phase 12 application tracker", () => {
     expect(fixture.events).toHaveLength(1);
   });
 
-  it("guards current published rule and revision in DynamoDB transactions", async () => {
+  it("guards current policy, membership, role, ownership and revision in DynamoDB transactions", async () => {
     const send = vi.fn(async (command: unknown) => { expect(command).toBeDefined(); return {}; });
     const repository = new DynamoApplicationRepository("core-table", "policy-table", "ap-south-1", { send } as never);
     const app = await setup().service.create(identity(), request);
     const event: ApplicationEventV1 = { schemaVersion: 1, eventId: "event-id", applicationId: app.applicationId,
       propertyId: app.propertyId, actorId: "actor", occurredAt: fixedNow.toISOString(), action: "CREATED" };
-    await repository.create(app, event, 1);
+    await repository.create(app, event, 1, writeScope);
     const command = send.mock.calls[0]![0] as TransactWriteCommand;
-    expect(command.input.TransactItems?.[0]?.ConditionCheck).toMatchObject({ TableName: "policy-table",
+    expect(command.input.TransactItems?.[0]?.ConditionCheck).toMatchObject({ TableName: "core-table",
+      Key: { PK: "ORG#org-1", SK: "PROFILE" },
+      ConditionExpression: expect.stringContaining("contains(#members, :actor)"),
+      ExpressionAttributeValues: expect.objectContaining({ ":revision": 7, ":actor": "actor" }) });
+    expect(command.input.TransactItems?.[1]?.ConditionCheck).toMatchObject({ TableName: "core-table",
+      Key: { PK: "USER#actor", SK: "PROFILE" },
+      ExpressionAttributeValues: expect.objectContaining({ ":revision": 3, ":role": "BROKER" }) });
+    expect(command.input.TransactItems?.[2]?.ConditionCheck).toMatchObject({ TableName: "core-table",
+      Key: { PK: "CUSTOMER#customer-1", SK: "PROPERTY#property-1" },
+      ExpressionAttributeValues: expect.objectContaining({ ":revision": 2, ":owner": "actor" }) });
+    expect(command.input.TransactItems?.[3]?.ConditionCheck).toMatchObject({ TableName: "core-table",
+      Key: { PK: "PROPERTY#property-1", SK: "LOCATOR" },
+      ExpressionAttributeValues: expect.objectContaining({ ":revision": 4, ":customer": "customer-1" }) });
+    expect(command.input.TransactItems?.[4]?.ConditionCheck).toMatchObject({ TableName: "policy-table",
       ConditionExpression: expect.stringContaining("activeVersion = :version") });
-    await repository.replace(app, { ...app, revision: 2 }, { ...event, eventId: "event-id-2", action: "STEP_TRANSITION" });
+    await repository.replace(app, { ...app, revision: 2 }, { ...event, eventId: "event-id-2", action: "STEP_TRANSITION" }, writeScope);
     const update = send.mock.calls[1]![0] as TransactWriteCommand;
-    expect(update.input.TransactItems?.[0]?.Put?.ConditionExpression).toContain("revision = :revision");
-    expect(update.input.TransactItems?.[1]?.Put?.Item).toMatchObject({ entityType: "APPLICATION_EVENT" });
+    expect(update.input.TransactItems?.slice(0, 4).every(item => item.ConditionCheck?.TableName === "core-table")).toBe(true);
+    expect(update.input.TransactItems?.[4]?.Put?.ConditionExpression).toContain("revision = :revision");
+    expect(update.input.TransactItems?.[5]?.Put?.Item).toMatchObject({ entityType: "APPLICATION_EVENT" });
   });
 });

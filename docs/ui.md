@@ -105,6 +105,26 @@ live selection remains unverified.
 - Designs
 - Settings
 
+## Phase 16 broker workspace
+
+The broker overview shows loaded customer, property and lead counts with a
+clear indicator when more pages exist. Customer records lead to property
+creation; each property opens its saved analysis, application checklist and
+design concepts. A broker can start roof selection for that same customer
+property, including the device-location and returned-building overlay flow,
+without creating an unrelated duplicate property.
+
+Proposal preview requires a real quote and scenario inputs. It presents the
+backend's base and policy-adjusted figures with source/coverage context and
+allows saving an as-of snapshot only after a real backend response. A saved
+proposal shows its creation time, policy versions, source check time and
+recheck state. Missing policy coverage remains explicit. Lead intake stays
+separate from customer and property records until the user deliberately
+creates and associates those records. A broker can move a lead stage forward
+with a revision-checked action; labels are business progress only. A visibly
+fictional `/demo/broker`
+route illustrates the workspace without live customer or subsidy claims.
+
 ## Roof flow
 
 1. address input
