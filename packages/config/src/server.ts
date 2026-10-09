@@ -17,6 +17,7 @@ export {
 
 const googleKeySchema = z.string().regex(/^[A-Za-z0-9_-]+$/);
 const tableNameSchema = z.string().min(3).max(255).regex(/^[A-Za-z0-9_.-]+$/);
+const bucketNameSchema = z.string().min(3).max(63).regex(/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/);
 
 const serverEnvironmentSchema = z.object({
   ENVIRONMENT: z.preprocess(
@@ -45,6 +46,9 @@ const serverEnvironmentSchema = z.object({
   GOOGLE_SOLAR_API_KEY: optionalValue(googleKeySchema),
   BEDROCK_MODEL_ID: optionalValue(z.string().min(1).max(2048).regex(/^\S+$/)),
   BEDROCK_REGION: optionalValue(awsRegionSchema),
+  DESIGN_ASSET_BUCKET: optionalValue(bucketNameSchema),
+  DESIGN_IMAGE_MODEL_ID: optionalValue(z.string().regex(/^amazon\.nova-canvas-v\d+:\d+$/)),
+  DESIGN_IMAGE_REGION: optionalValue(awsRegionSchema),
   CORE_TABLE_NAME: optionalValue(tableNameSchema),
   USERS_TABLE_NAME: optionalValue(tableNameSchema),
   ORGS_TABLE_NAME: optionalValue(tableNameSchema),

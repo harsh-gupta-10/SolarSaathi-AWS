@@ -73,11 +73,12 @@ export async function purgeExpiredGoogleRoofs(tableName: string, execute: Retent
         try {
           await execute(new DeleteCommand({
             TableName: tableName, Key: { PK: key.PK, SK: key.SK },
-            ConditionExpression: "attribute_exists(#pk) AND #retention = :retention AND #expiry = :expected AND #ttl = :expected AND #kind IN (:preview,:analysis,:cache)",
+            ConditionExpression: "attribute_exists(#pk) AND #retention = :retention AND #expiry = :expected AND #ttl = :expected AND #kind IN (:preview,:analysis,:cache,:design,:claim)",
             ExpressionAttributeNames: { "#pk": "PK", "#retention": "GSI3PK", "#expiry": "GSI3SK",
               "#ttl": "expiresAtEpochSeconds", "#kind": "entityType" },
             ExpressionAttributeValues: { ":retention": RETENTION_PARTITION, ":expected": key.expiresAtEpochSeconds,
-              ":preview": "ROOF_PREVIEW", ":analysis": "SOLAR_ANALYSIS", ":cache": "SOLAR_CACHE" },
+              ":preview": "ROOF_PREVIEW", ":analysis": "SOLAR_ANALYSIS", ":cache": "SOLAR_CACHE",
+              ":design": "USER_DESIGN", ":claim": "DESIGN_GENERATION_CLAIM" },
           }));
           return "deleted" as const;
         } catch (error) {

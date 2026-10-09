@@ -28,7 +28,7 @@ Single-table design is preferred unless a clear access-pattern reason requires s
 The Phase 3 implementation scopes the key to a property:
 `PK=CACHE#propertyId#key`. Cache records include `expiresAtEpochSeconds`,
 which is checked on every read and used by DynamoDB TTL. Google-derived cache
-metadata must expire within 30 days.
+metadata must expire within 21 days.
 
 ### ROOF_PREVIEW
 `PK=PROPERTY#propertyId`, `SK=ROOF_PREVIEW#previewId`
@@ -46,9 +46,10 @@ expiry. Confirming roof measurements creates a SOLAR_ANALYSIS only after this
 marker exists. Manual measurements are separately marked `MANUAL`.
 
 Google-derived SOLAR_ANALYSIS records include the normalized roof and expire no
-later than 30 days from retrieval. Reads reject expired records immediately;
-DynamoDB TTL physical deletion is asynchronous and requires a production
-retention review before live Google data is stored.
+later than 21 days from retrieval. Reads reject expired records immediately;
+the hourly GSI3 worker conditionally hard-deletes expired Google roof records.
+DynamoDB TTL is a secondary cleanup mechanism, and live retention still needs
+deployment verification.
 
 ## Policy entities
 
@@ -201,18 +202,38 @@ returned by a bounded paginated API after ownership checks.
 
 Fields:
 - category
-- roofType
+- candidateId and roofSource
 - roofAreaBucket
 - solarKw
 - freeAreaBucket
 - designSpec
-- imageS3Key
-- thumbnailS3Key
-- generationModel
-- usageCount
+- template version; normalized shape and clearance assumptions are encoded
+  in the fingerprint used for lookup
+
+The fingerprint excludes address, coordinates, account identifiers and raw
+Google Solar imagery. It can reuse a parametric arrangement only after a
+fresh deterministic fit check for the requesting roof. A property-specific
+rendering is never stored on the generic template or served to another owner.
 
 ### USER_DESIGN
 `PK=PROPERTY#propertyId`, `SK=DESIGN#designId`
+
+Stores analysis ID, selected candidate and fingerprint, owner/organization
+provenance, optional property-specific private S3 image key, and
+creation/expiry timestamps. Placement is recomputed from the confirmed roof
+for a fresh recommendation; the image remains illustrative. Every read verifies
+property ownership and the analysis association. Google-derived geometry
+must respect its retention limit. Google-derived design records use the sparse
+GSI3 hard-delete index; direct reads also reject expired records. The private
+asset bucket expires generated objects after one day.
+
+### DESIGN_GENERATION_CLAIM and DESIGN_BUDGET
+`PK=PROPERTY#propertyId`, `SK=DESIGN_CLAIM#designId` conditionally reserves one
+model attempt for an analysis, candidate and fingerprint before invoking
+Bedrock. Google-derived claims use GSI3 for hourly hard deletion at source
+expiry. Atomic UTC-day counters under `PK=DESIGN_BUDGET#date` cap attempts
+per owner and across the application. A failed model call still consumes its
+claim and budget; the deterministic 3D concept remains available.
 
 ## Accessory entities
 

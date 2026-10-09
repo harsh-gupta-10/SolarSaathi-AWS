@@ -35,10 +35,28 @@ describe("Google roof hard-delete sweep", () => {
     const deletes = commands.filter(command => command instanceof DeleteCommand);
     expect(deletes).toHaveLength(3);
     for (const deletion of deletes) {
-      expect(deletion.input.ConditionExpression).toContain("#kind IN (:preview,:analysis,:cache)");
+      expect(deletion.input.ConditionExpression).toContain("#kind IN (:preview,:analysis,:cache,:design,:claim)");
       expect(deletion.input.ExpressionAttributeValues?.[":expected"]).toBe(cutoff - 1);
       expect(deletion.input).not.toHaveProperty("ReturnValuesOnConditionCheckFailure");
     }
+  });
+
+  it("conditionally hard-deletes expired Google-derived design metadata and generation claims", async () => {
+    const commands: DeleteCommand[] = [];
+    const execute: RetentionExecutor = async command => {
+      if (command instanceof QueryCommand) return { Items: [
+        { ...entry("design"), SK: "DESIGN#abc" },
+        { ...entry("claim"), SK: "DESIGN_CLAIM#abc" },
+      ] };
+      commands.push(command);
+      return {};
+    };
+    const result = await purgeExpiredGoogleRoofs("core-table", execute, cutoff);
+    expect(result.deleted).toBe(2);
+    expect(commands.map(command => command.input.ExpressionAttributeValues)).toEqual([
+      expect.objectContaining({ ":design": "USER_DESIGN", ":claim": "DESIGN_GENERATION_CLAIM" }),
+      expect.objectContaining({ ":design": "USER_DESIGN", ":claim": "DESIGN_GENERATION_CLAIM" }),
+    ]);
   });
 
   it("stops after the fixed page budget and reports backlog for alarming", async () => {

@@ -168,6 +168,16 @@ Do not guarantee:
 AI rooftop images are conceptual only.
 No structural approval is implied.
 
+For remaining-roof concepts, all fit decisions and clearance geometry must
+come from owned, server-loaded roof and deterministic layout data. Generic
+template lookup uses a normalized non-address fingerprint and repeats the
+fit check for the current roof. Generated images are private property/analysis
+assets with bounded bytes, content type and expiry; never serve another
+property's asset or expose a raw S3 key to an unauthorized caller. Bedrock
+prompts omit raw address, coordinates, Google imagery and user documents.
+An unavailable model/storage service must preserve the deterministic 3D/plan
+concept and state uncertainty explicitly.
+
 Accessory advice must use an owned, confirmed roof and backend-recomputed
 system candidate. Self-reported inverter, EV, electrical and site details are
 planning context. Do not claim circuit, voltage/current, battery, charger,

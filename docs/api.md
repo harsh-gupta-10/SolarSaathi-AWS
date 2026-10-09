@@ -383,11 +383,48 @@ catalog. See [accessory design](accessories.md).
 
 ## Rooftop designs
 
-`POST /v1/designs/recommend`
+Authenticated `POST /v1/designs/recommend` accepts owned `propertyId` and
+`analysisId`, Phase 6 `nominalKw`, `demand`, and
+`generationKwhPerKwYear`, plus optional
+`preferences.categories` drawn from `DRYING`, `SEATING`, `GARDEN`, and
+`STRETCH`. The browser cannot supply trusted roof/panel/free-space geometry.
+The server reloads the confirmed unexpired roof, recomputes the selected
+solar candidate and panel layout, and returns
+`DETERMINISTIC_REMAINING_SPACE_V1` with:
 
-`POST /v1/designs/generate`
+- `system` summary (`nominalKw`, actual DC kW and panel count);
+- `planning` status (`SPACE_FEASIBLE`, `MODELED_APPROXIMATE`, or
+  `UNDETERMINED`), roof/projected usable/reserved/remaining area, and explicit
+  edge setback, service path and solar buffer assumptions;
+- bounded local east/up/north roof segment, panel and free-zone corners,
+  plus `geometry.totalFreeZoneCount` so a truncated visualization is explicit;
+- four candidate records with a deterministic status (`SPACE_FEASIBLE`,
+  `NOT_SPACE_FEASIBLE`, `UNDETERMINED`), required footprint, optional fitted
+  placement, reason, safety notes, structural-review flag, normalized
+  fingerprint and template/image state.
 
-`GET /v1/designs/templates`
+An area-only manual roof returns `422 ROOF_GEOMETRY_UNDETERMINED` because
+Phase 6 cannot validate a fitting system or locate panels from area alone.
+An overly complex or overlapping modeled roof can return `UNDETERMINED` with
+null projected areas and no placement. A Google model remains approximate, never a surveyed
+outline. Candidate placement cannot cross the modeled solar allocation,
+setback or service path. The first response leaves image state
+`NOT_REQUESTED` and provides a deterministic geometry/3D path.
+
+`POST /v1/designs/generate` accepts the same context plus `candidateId` and
+`render: "TEMPLATE" | "IMAGE"`. It rejects a candidate without a fitted
+placement. The response is `ROOFTOP_DESIGN_CONCEPT_V1` with the chosen
+candidate, template fingerprint/status (`STORED` or
+`DETERMINISTIC_FALLBACK`), optional `designId`, and image status
+`NOT_REQUESTED`, `READY`, or `UNAVAILABLE`. A ready image is marked
+`INSPIRATIONAL_ONLY` and property scoped. A missing model/storage path leaves
+the deterministic concept usable. A conditional property/analysis/candidate
+claim and atomic per-owner/global UTC-day budgets bound model attempts.
+`GET /v1/designs/templates?fingerprint=...`
+returns generic reusable template metadata only. The image read route
+`GET /v1/designs/{designId}/image?propertyId=...` returns a short-lived
+private image URL only after owner and analysis-expiry checks. See
+[remaining-space design](rooftop-designs.md).
 
 ## Admin
 

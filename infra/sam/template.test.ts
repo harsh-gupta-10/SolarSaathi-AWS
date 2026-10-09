@@ -10,20 +10,21 @@ const template = document.toJS() as Template;
 function properties(name: string) { return template.Resources[name].Properties; }
 
 describe("SAM foundation and Cognito invariants (not schema validation)", () => {
-  it("parses valid YAML below the inline template size limit", () => {
+  it("parses valid YAML within the packaged TemplateURL size limit", () => {
     expect(document.errors).toHaveLength(0);
-    expect(Buffer.byteLength(text)).toBeLessThan(51_200);
+    // This template is deployed by SAM through a packaged S3 TemplateURL, not inline TemplateBody.
+    expect(Buffer.byteLength(text)).toBeLessThan(1_048_576);
     expect(template.Transform).toBe("AWS::Serverless-2016-10-31");
   });
   it("uses compiled handlers with explicit log destinations", () => {
-    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "FinancialsFunction", "PolicyFinancialsFunction", "BenefitsFunction", "ApplicationsFunction", "PolicyFunction", "PolicyPublicationFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
+    for (const name of ["HealthFunction", "AnalyzeFunction", "ChatFunction", "ProfileFunction", "CoreFunction", "RoofFunction", "SystemsFunction", "DesignsFunction", "FinancialsFunction", "PolicyFinancialsFunction", "BenefitsFunction", "ApplicationsFunction", "PolicyFunction", "PolicyPublicationFunction", "PolicyCrawlerFunction", "RoofRetentionFunction"]) {
       expect(properties(name).CodeUri).toBe("../../apps/api/dist");
       expect(properties(name).Handler).toMatch(/^handlers\/[a-z-]+\.handler$/);
       expect(properties(name).LoggingConfig).toBeDefined();
     }
   });
   it("preserves stateful resources on deletion and replacement", () => {
-    for (const name of ["AnalysesTable", "PolicyTable", "PolicyDocumentBucket", "UserPool"]) {
+    for (const name of ["AnalysesTable", "PolicyTable", "PolicyDocumentBucket", "DesignAssetBucket", "UserPool"]) {
       expect(template.Resources[name].DeletionPolicy).toBe("Retain");
       expect(template.Resources[name].UpdateReplacePolicy).toBe("Retain");
     }
@@ -179,6 +180,38 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
       } },
     });
     expect(JSON.stringify(systems)).not.toMatch(/GOOGLE_.*API_KEY|secretsmanager|BEDROCK/);
+  });
+
+  it("serves bounded property-scoped rooftop designs with one-day private image retention", () => {
+    const designs = properties("DesignsFunction");
+    expect(designs.Handler).toBe("handlers/designs.handler");
+    expect(designs.Timeout).toBe(29);
+    expect(designs.Environment).toEqual({ Variables: {
+      CORE_TABLE_NAME: "AnalysesTable", DESIGN_ASSET_BUCKET: "DesignAssetBucket",
+      DESIGN_IMAGE_MODEL_ID: "DesignImageModelId", DESIGN_IMAGE_REGION: "DesignImageRegion",
+    } });
+    expect(designs.Events).toEqual({
+      RecommendDesigns: { Type: "Api", Properties: { RestApiId: "Api", Path: "/designs/recommend", Method: "POST" } },
+      GenerateDesign: { Type: "Api", Properties: { RestApiId: "Api", Path: "/designs/generate", Method: "POST" } },
+      GetDesignTemplates: { Type: "Api", Properties: { RestApiId: "Api", Path: "/designs/templates", Method: "GET" } },
+      GetDesignImage: { Type: "Api", Properties: { RestApiId: "Api", Path: "/designs/{designId}/image", Method: "GET" } },
+    });
+    const policy = JSON.stringify(designs.Policies);
+    expect(policy).toContain("dynamodb:GetItem");
+    expect(policy).toContain("dynamodb:PutItem");
+    expect(policy).toContain("dynamodb:UpdateItem");
+    expect(policy).toContain("DesignAssetBucket.Arn}/generated/*");
+    expect(policy).toContain("DesignImageConfigured");
+    expect(policy).toContain("bedrock:InvokeModel");
+    expect(policy).not.toContain("PolicyTable");
+    const bucket = properties("DesignAssetBucket");
+    expect(bucket.PublicAccessBlockConfiguration).toMatchObject({ BlockPublicAcls: true, BlockPublicPolicy: true,
+      IgnorePublicAcls: true, RestrictPublicBuckets: true });
+    expect(bucket.LifecycleConfiguration).toEqual({ Rules: [{ Id: "ExpireInspirationalImages", Status: "Enabled",
+      Prefix: "generated/", ExpirationInDays: 1 }] });
+    expect(bucket.CorsConfiguration).toMatchObject({ CorsRules: [{ AllowedMethods: ["GET"],
+      AllowedOrigins: ["ApplicationOrigin"] }] });
+    expect(template.Parameters.DesignImageModelId).toMatchObject({ Default: "" });
   });
 
   it("estimates unsubsidized financial cash flow with owned analysis reads only", () => {
@@ -375,5 +408,8 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(policies).not.toMatch(/PutItem|UpdateItem|DeleteItem|s3:|secretsmanager/);
     expect(template.Parameters.AdvisorBedrockModelId).toMatchObject({ Default: "" });
     expect(template.Parameters.AdvisorBedrockModelArn).toMatchObject({ Default: "" });
+    expect(template.Parameters.AdvisorBedrockFoundationModelArn).toMatchObject({ Default: "" });
+    expect(policies).toContain("AdvisorFoundationModelConfigured");
+    expect(policies).toContain("AdvisorBedrockFoundationModelArn");
   });
 });

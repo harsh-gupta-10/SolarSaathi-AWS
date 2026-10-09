@@ -184,6 +184,32 @@ checks passed 25. The demo route returned HTTP 200 with synthetic labels in
 server-rendered HTML. Interactive layout and accessibility checks were not
 available because this host lacked a browser surface or executable.
 
+### Phase 15 remaining-roof-space concepts
+
+Pure geometry tests must compare projected roof bounds, panel blockers,
+setbacks and service-path bands, then verify a candidate footprint stays in
+one actually usable region. Cover disconnected regions, pitched/approximate Google bounds,
+manual rectangles, area-only roofs, no spare area, clearance boundary contact,
+intersecting Google segment boxes even when their summed area looks plausible,
+bounded output truncation with a fitting later zone, version changes and stable
+normalized fingerprints. Repeat the fit check after
+generic template lookup. Owner-scoped API tests must reject cross-property
+design reads, stale/expired analysis, property-specific image reuse, invalid
+generation inputs and unsafe cache keys. A model outage or missing S3/Bedrock
+configuration must leave the deterministic 3D/plan result usable. Verify
+private asset access, bounded image bytes and content type, and Google-derived
+asset expiry. UI state tests should keep old property imagery from appearing
+after account, property or analysis changes and label all generated art as
+conceptual rather than structural approval.
+The Phase 15 local gate passed 756 tests, lint, typechecking, API bundle/PDF
+smoke checks and production builds. The new design API and web suites include
+template reuse, overlapping segment rejection, all-zone candidate search,
+owner access, per-owner/global model budgets, model failure, image cleanup,
+area-only guidance and state clearing. The synthetic demo was inspected at
+390-pixel and desktop widths, including isometric/top camera, candidate
+selection and text fallback. Those browser checks are visual/interactive, not
+a deployed-service or automated accessibility certification.
+
 ### Phase 11 policy-backed financial scenario
 
 The Phase 11 local `pnpm check` gate passed 692 tests across the workspace,

@@ -66,17 +66,34 @@ Parameters:
     Default: ""
     AllowedPattern: '^$|^arn:(aws|aws-cn|aws-us-gov):bedrock:[a-z0-9-]+:([0-9]{12})?:(foundation-model|inference-profile|application-inference-profile)/.+$'
     Description: Exact IAM resource ARN for the configured advisor model or inference profile.
+  AdvisorBedrockFoundationModelArn:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^arn:(aws|aws-cn|aws-us-gov):bedrock:[a-z0-9*_-]+::foundation-model/[A-Za-z0-9._:-]+$'
+    Description: For an advisor inference profile, also grant its routed foundation model ARN, using wildcard region when required.
   AdvisorBedrockRegion:
     Type: String
     Default: ap-south-1
     AllowedPattern: '^[a-z]{2}(-gov)?-[a-z0-9-]+-[0-9]+$'
     Description: Region used for optional Bedrock fact-card selection.
+  DesignImageModelId:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^amazon\.nova-canvas-v[0-9]+:[0-9]+$'
+    Description: Optional Nova Canvas image model; blank keeps deterministic template and 3D concepts.
+  DesignImageRegion:
+    Type: String
+    Default: ap-south-1
+    AllowedPattern: '^[a-z]{2}(-gov)?-[a-z0-9-]+-[0-9]+$'
+    Description: Region for optional Nova Canvas image generation.
 
 Conditions:
   GoogleFederationEnabled: !Equals [!Ref EnableGoogleFederation, "true"]
   GeocodingConfigured: !Not [!Equals [!Ref GoogleGeocodingKeySecretArn, ""]]
   SolarConfigured: !Not [!Equals [!Ref GoogleSolarKeySecretArn, ""]]
   AdvisorBedrockConfigured: !Not [!Equals [!Ref AdvisorBedrockModelArn, ""]]
+  AdvisorFoundationModelConfigured: !Not [!Equals [!Ref AdvisorBedrockFoundationModelArn, ""]]
+  DesignImageConfigured: !Not [!Equals [!Ref DesignImageModelId, ""]]
 
 Rules:
   GoogleConfigurationRequired:
@@ -193,6 +210,12 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/systems"
+      RetentionInDays: !Ref LogRetentionDays
+
+  DesignsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/designs"
       RetentionInDays: !Ref LogRetentionDays
 
   FinancialsLogGroup:
@@ -338,6 +361,72 @@ Resources:
             RestApiId: !Ref Api
             Path: /accessories/recommend
             Method: POST
+
+  DesignsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Serves owned deterministic remaining-roof concepts and optional property-scoped inspirational imagery.
+        must:
+          - Compute placement from server-owned geometry and reserve solar and service access.
+          - Claim each property/analysis/candidate image before a bounded model call.
+          - Keep generic reusable templates separate from property-scoped image assets.
+    Properties:
+      Handler: handlers/designs.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 29
+      MemorySize: 512
+      LoggingConfig:
+        LogGroup: !Ref DesignsLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+          DESIGN_ASSET_BUCKET: !Ref DesignAssetBucket
+          DESIGN_IMAGE_MODEL_ID: !Ref DesignImageModelId
+          DESIGN_IMAGE_REGION: !Ref DesignImageRegion
+      Policies:
+        - Statement:
+            - Sid: ReadOwnedAndStoreDesignMetadata
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem]
+              Resource: !GetAtt AnalysesTable.Arn
+            - Sid: StorePrivateDesignAssets
+              Effect: Allow
+              Action: [s3:PutObject, s3:GetObject, s3:DeleteObject]
+              Resource: !Sub "${DesignAssetBucket.Arn}/generated/*"
+        - !If
+          - DesignImageConfigured
+          - Statement:
+              - Sid: GenerateInspirationalDesignImage
+                Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub "arn:${AWS::Partition}:bedrock:${DesignImageRegion}::foundation-model/${DesignImageModelId}"
+          - !Ref AWS::NoValue
+      Events:
+        RecommendDesigns:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /designs/recommend
+            Method: POST
+        GenerateDesign:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /designs/generate
+            Method: POST
+        GetDesignTemplates:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /designs/templates
+            Method: GET
+        GetDesignImage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /designs/{designId}/image
+            Method: GET
 
   FinancialsFunction:
     Type: AWS::Serverless::Function
@@ -1051,7 +1140,10 @@ Resources:
               - Sid: SelectAdvisorFactCards
                 Effect: Allow
                 Action: bedrock:InvokeModel
-                Resource: !Ref AdvisorBedrockModelArn
+                Resource: !If
+                  - AdvisorFoundationModelConfigured
+                  - [!Ref AdvisorBedrockModelArn, !Ref AdvisorBedrockFoundationModelArn]
+                  - !Ref AdvisorBedrockModelArn
           - !Ref AWS::NoValue
       Events:
         Chat:
@@ -1326,6 +1418,59 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  DesignAssetBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireInspirationalImages
+            Status: Enabled
+            Prefix: generated/
+            ExpirationInDays: 1
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: [!Ref ApplicationOrigin]
+            AllowedMethods: [GET]
+            AllowedHeaders: ["*"]
+            MaxAge: 300
+      Tags:
+        - Key: Project
+          Value: SolarSaathi
+        - Key: Environment
+          Value: !Ref Environment
+
+  DesignAssetBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DesignAssetBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt DesignAssetBucket.Arn
+              - !Sub "${DesignAssetBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
   PolicyDocumentBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -1442,6 +1587,9 @@ Outputs:
   PolicyDocumentBucketName:
     Description: Private versioned raw and extracted policy-document archive.
     Value: !Ref PolicyDocumentBucket
+  DesignAssetBucketName:
+    Description: Private short-lived inspirational design image bucket.
+    Value: !Ref DesignAssetBucket
   CognitoUserPoolId:
     Description: Public user pool identifier for frontend configuration.
     Value: !Ref UserPool

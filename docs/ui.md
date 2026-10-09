@@ -335,6 +335,16 @@ Then:
 - solar clearance preserved
 - structural-review warning if applicable
 
+Phase 15 should make the saved roof and panel geometry inspectable in a
+keyboard-accessible 3D view with a top-down and text fallback. Show each
+candidate's deterministic placement, projected free-zone area, modeled solar
+buffer and service path, and `SPACE_FEASIBLE`/undetermined status. A space fit
+must never be styled or described as structural approval. Keep the template
+concept available when image generation is unconfigured or fails. An optional
+Bedrock image is inspirational only, never an aerial image or property-accurate
+rendering. Property-specific assets must not appear after an account, property
+or analysis change. A demo uses visibly synthetic roof geometry.
+
 ## Accessories
 
 Show:

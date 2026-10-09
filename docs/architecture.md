@@ -121,6 +121,10 @@ Do not use Google Solar API as a government policy source.
 Keep AWS regions configurable.
 
 Some Bedrock image models may not be available in the application's primary AWS region. The image-generation adapter must support a configured Bedrock region/model and fail gracefully to a deterministic 3D/template concept.
+Remaining-space concepts are constrained by the deterministic roof/panel
+layout. Generic template metadata lives in DynamoDB/S3 and uses normalized,
+non-address fingerprints; property-specific generated assets remain private
+and analysis-bound. See [remaining-space design](rooftop-designs.md).
 
 ## Policy engine boundaries
 

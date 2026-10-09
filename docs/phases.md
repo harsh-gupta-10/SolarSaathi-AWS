@@ -469,6 +469,32 @@ electrical certification.
 - DynamoDB metadata
 - 3D fallback
 
+Status: local implementation verified. The authenticated API reloads an owned,
+confirmed, unexpired roof and a fitting Phase 6 solar candidate. It subtracts
+modeled edge setbacks, a service path and buffered panel footprints from
+bounded projected roof rectangles, rejects overlapping Google segment bounds,
+and labels Google geometry approximate. Area-only roofs return an explicit
+geometry error. Four alternative light-use candidate families receive a
+specific fitted zone or an unfit/undetermined reason; every concept requires a
+structural and site review. A normalized non-address fingerprint finds generic
+parametric templates in DynamoDB; reuse reapplies the stored footprint and
+placement strategy only after a fresh fit check. Optional Nova Canvas imagery
+uses a fixed category prompt, a property/analysis-scoped private S3 key, a
+conditional one-attempt claim and atomic per-owner/global UTC-day budgets.
+Google-derived design metadata joins the hourly hard-delete index, while S3
+images have a one-day lifecycle. The browser offers interactive schematic 3D
+with roof/panel depth, plan/text fallbacks, bounded-zone disclosure and a
+visibly fictional demo.
+
+Local lint, typechecking, 756 tests, SAM invariant tests and production builds
+pass. The synthetic demo was inspected at narrow mobile and desktop widths;
+concept selection, top-view camera and text fallback worked without visible
+horizontal overflow. No Google, Cognito, DynamoDB, S3 or Bedrock integration
+has been deployed or tested live. SAM/CloudFormation cloud validation and
+live image-model permissions remain open until AWS credentials/configuration
+are available; the model is disabled by default. S3 lifecycle expiry is
+eventual, so deployed retention must be verified before production use.
+
 ## Phase 16 — Broker workspace
 - customers
 - properties

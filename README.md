@@ -54,6 +54,7 @@ Current policy values are never treated as permanent constants. A crawler detect
 - `docs/subsidy-stacking.md` — central/state/local subsidy combination logic
 - `docs/application-tracker.md` — user checklist and application state
 - `docs/advisor.md` — grounded advisor and fact boundary
+- `docs/rooftop-designs.md` — deterministic remaining-space concepts and reuse
 - `docs/accessories.md` — accessory recommendation engine
 - `docs/international.md` — non-India fallback
 - `docs/data-sources.md` — source registry and authority rules
