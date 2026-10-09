@@ -1,8 +1,15 @@
-import { createHash } from "node:crypto";
+import { Sha256 } from "@aws-crypto/sha256-js";
 import { benefitCompatibilityEdgeSchema, benefitConditionSchema, policyProcessStepSchema,
   type PolicyBenefitRuleV1 } from "./benefit-rules";
 
 export type BenefitClauseKindV1 = "ELIGIBILITY" | "COMPATIBILITY" | "SIZE" | "OVERLAP" | "PROCESS_STEP";
+
+function sha256Hex(data: string): string {
+  const hash = new Sha256();
+  hash.update(data);
+  const bytes = hash.digestSync();
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 /** A stable key binds a verified TEXT fact to one concrete rule clause, not just to the policy version. */
 export function benefitClauseClaimKeyV1(kind: BenefitClauseKindV1, clause: unknown): string {
@@ -31,6 +38,6 @@ export function benefitClauseClaimKeyV1(kind: BenefitClauseKindV1, clause: unkno
   } else {
     throw new RangeError("Unsupported policy clause kind.");
   }
-  const hash = createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 32);
+  const hash = sha256Hex(JSON.stringify(payload)).slice(0, 32);
   return `clause.${kind.toLowerCase()}.${hash}`;
 }

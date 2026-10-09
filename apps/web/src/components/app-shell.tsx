@@ -43,7 +43,16 @@ function Shell({ children }: { children: ReactNode }) {
           <SheetContent side="left" className="mobile-sheet"><SheetHeader><SheetTitle>SolarSaathi</SheetTitle><SheetDescription>Your workspace navigation</SheetDescription></SheetHeader><WorkspaceNavigation onNavigate={() => setOpen(false)} /></SheetContent>
         </Sheet>
         {previewAllowed ? <div className="role-picker"><label htmlFor="navigation-role">Navigation preview</label><select id="navigation-role" value={role} onChange={event => setRole(event.target.value as UserRole)}><option value="HOMEOWNER">Homeowner</option><option value="BROKER">Broker / consultant</option></select></div> : <p className="account-identity">{profile?.name || "Solar workspace"}</p>}
-        <div className="header-actions"><Button asChild variant="ghost"><Link href={status === "signedIn" ? "/app/settings" : "/auth/sign-in"}>{status === "signedIn" ? "Account" : "Sign in"}</Link></Button><Link href="/" className="back-to-site">Back to site<ArrowUpRight size={16} aria-hidden="true" /></Link></div>
+        <div className="header-actions">
+          {status === "signedIn" ? (
+            <Button asChild variant="ghost"><Link href="/app/settings">Account</Link></Button>
+          ) : (
+            <Button asChild size="sm" className="bg-primary text-primary-foreground font-semibold shadow-sm hover:opacity-95">
+              <Link href="/auth/sign-in">Sign in</Link>
+            </Button>
+          )}
+          <Link href="/" className="back-to-site">Back to site<ArrowUpRight size={16} aria-hidden="true" /></Link>
+        </div>
       </header>
       <div className="workspace-status" role="status">{statusText}</div>
       <main id="main-content" className="workspace-content">{children}</main>

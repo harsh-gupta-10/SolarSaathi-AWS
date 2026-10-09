@@ -343,6 +343,10 @@
 .financial-estimator-heading h3 { margin-top: 0.4rem; font-size: clamp(1.35rem, 2.2vw, 1.8rem); }
 .financial-estimator-heading p { margin-top: 0.55rem; max-width: 66ch; color: var(--muted-foreground); font-size: 0.84rem; }
 .financial-estimator-form { margin-top: 1.3rem; padding: clamp(1rem, 2vw, 1.5rem); border: 1px solid var(--border); border-radius: 0.8rem; background: var(--muted); }
+.financial-presets-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 0.85rem; margin-bottom: 1.25rem; padding: 0.65rem 0.95rem; border: 1px dashed var(--border); border-radius: 0.55rem; background: var(--background); }
+.financial-presets-label { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--primary); font-size: 0.76rem; font-weight: 650; }
+.financial-preset-chip { display: inline-flex; align-items: center; padding: 0.35rem 0.75rem; border: 1px solid var(--border); border-radius: 0.45rem; background: var(--muted); color: var(--foreground); font-size: 0.76rem; font-weight: 550; cursor: pointer; transition: all 0.15s ease; text-align: left; }
+.financial-preset-chip:hover { border-color: var(--primary); background: var(--accent); color: var(--accent-foreground); }
 .financial-input-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2rem 1.5rem; }
 .financial-input-grid label { display: block; font-size: 0.85rem; font-weight: 600; }
 .financial-input-grid input, .financial-input-grid select { display: block; width: 100%; min-height: 42px; margin-top: 0.45rem; background: var(--background); }

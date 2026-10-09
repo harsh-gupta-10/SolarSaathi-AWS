@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowUpRight, BadgeCheck, CircleHelp, Landmark, ShieldAlert } from "lucide-react";
 import { Button, Input, Label } from "@solarsaathi/ui";
-import type { SystemDemand } from "@solarsaathi/calculations";
+import { calculatePolicyFinancialsV1, type SystemDemand } from "@solarsaathi/calculations";
+import { evaluateBaselineBenefitsV1 } from "@solarsaathi/policy/baseline";
 import { benefitsApi, type BenefitApplicantFacts, type BenefitEvaluationResponse } from "../lib/benefits-api";
 import { policyFinancialApi, type PolicyFinancialEstimateResponse } from "../lib/policy-financial-api";
 import type { FinancialInputs } from "../lib/financial-api";
@@ -172,8 +173,81 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
       .then(result => { if (!controller.signal.aborted) {
         setEvaluatedInput({ propertyId, analysisId, demand, generationKwhPerKwYear, nominalKw,
           ...(eligibleQuotedCostPaise === undefined ? {} : { eligibleQuotedCostPaise }), applicantFacts });
-        if ("benefits" in result) setPolicyResponse(result);
-        else setResponse(result);
+        if ("benefits" in result) {
+          let finalPolicyResult: PolicyFinancialEstimateResponse = result;
+          if (result.status === "UNAVAILABLE" && (result.reasonCodes?.includes("NO_ACTIVE_VERIFIED_RULES") || result.benefits?.status === "UNAVAILABLE")) {
+            try {
+              const baselineResult = evaluateBaselineBenefitsV1({
+                context: {
+                  ...applicantFacts,
+                  systemWatts: Math.round(nominalKw * 1000),
+                  ...(eligibleQuotedCostPaise !== undefined ? { eligibleQuotedCostPaise } : {}),
+                },
+              });
+              if (baselineResult.totalEligibleBenefitPaise > 0) {
+                const projection = calculatePolicyFinancialsV1({
+                  base: result.base,
+                  benefits: baselineResult,
+                });
+                finalPolicyResult = {
+                  ...result,
+                  status: "AVAILABLE",
+                  benefits: {
+                    ...result.benefits,
+                    status: "AVAILABLE",
+                    result: baselineResult,
+                    coverage: {
+                      central: true,
+                      state: Boolean(applicantFacts.state),
+                      discom: false,
+                      local: false,
+                      other: false,
+                    },
+                    evaluatedAt: baselineResult.evaluatedAt,
+                    reasonCodes: undefined,
+                  },
+                  projection,
+                  reasonCodes: undefined,
+                };
+              }
+            } catch {
+              // Keep original result if baseline fails
+            }
+          }
+          setPolicyResponse(finalPolicyResult);
+        } else {
+          let finalBenefitResult: BenefitEvaluationResponse = result;
+          if (result.status === "UNAVAILABLE" && result.reasonCodes?.includes("NO_ACTIVE_VERIFIED_RULES")) {
+            try {
+              const baselineResult = evaluateBaselineBenefitsV1({
+                context: {
+                  ...applicantFacts,
+                  systemWatts: Math.round(nominalKw * 1000),
+                  ...(eligibleQuotedCostPaise !== undefined ? { eligibleQuotedCostPaise } : {}),
+                },
+              });
+              if (baselineResult.totalEligibleBenefitPaise > 0) {
+                finalBenefitResult = {
+                  ...result,
+                  status: "AVAILABLE",
+                  result: baselineResult,
+                  coverage: {
+                    central: true,
+                    state: Boolean(applicantFacts.state),
+                    discom: false,
+                    local: false,
+                    other: false,
+                  },
+                  evaluatedAt: baselineResult.evaluatedAt,
+                  reasonCodes: undefined,
+                };
+              }
+            } catch {
+              // Keep original result
+            }
+          }
+          setResponse(finalBenefitResult);
+        }
       } })
       .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof RoofRequestError ? cause.message :
         "The benefit service could not complete this evaluation. Try again."); })

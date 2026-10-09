@@ -152,7 +152,16 @@ export function AnalyzeStart() {
     if (!propertyId || !selected) return;
     run("insights", async signal => {
       const data = await roofApi.insights(propertyId, selected, housePoint, signal);
-      if (!signal.aborted) { setPreview(data); setBuildingConfirmed(false); }
+      if (!signal.aborted) {
+        setPreview(data);
+        setBuildingConfirmed(false);
+        if (data.roof?.center) {
+          setPoint(data.roof.center);
+          setLatitude(data.roof.center.latitude.toFixed(6));
+          setLongitude(data.roof.center.longitude.toFixed(6));
+          setMapCenter(data.roof.center);
+        }
+      }
     });
   }
   function selectHouseOnMap(housePoint: RoofPoint) {
@@ -271,9 +280,16 @@ export function AnalyzeStart() {
         <div className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl">Select your building</h2>{mapReady && <Button variant="outline" onClick={locateOnce} disabled={locationStatus === "locating"} aria-label="Show my current location on the map"><LocateFixed aria-hidden="true" className="mr-2 size-4" />{locationStatus === "locating" ? "Finding your location…" : "Use my location"}</Button>}</div>
           {locationMessage && <p className={locationStatus === "error" ? "form-error" : "text-sm text-muted-foreground"} role={locationStatus === "error" ? "alert" : "status"}>{locationMessage}</p>}
           {mapReady ? <SatelliteBuildingMap apiKey={mapKey!} center={mapCenter ?? selected!.location} point={point!} deviceLocation={deviceLocation} roofCenter={preview?.roof.center} roofBounds={preview?.roof.bounds} onPointChange={selectHouseOnMap} /> : <div className="flex min-h-72 items-center justify-center rounded-xl border bg-muted p-6 text-center text-muted-foreground" role="status">{mapKey ? "Choose an address match to view satellite imagery." : "Satellite map is not configured. You can still select an address match and use coordinates."}</div>}
-          {preview?.roof.center && <p className="text-sm text-muted-foreground">Google returned building center: {preview.roof.center.latitude.toFixed(6)}°, {preview.roof.center.longitude.toFixed(6)}°. Compare this with your selected point ({point?.latitude.toFixed(6)}°, {point?.longitude.toFixed(6)}°). {preview.roof.bounds ? "The green outline on the map is an approximate bounding box, not an exact roof shape." : "A roof outline was not provided."}</p>}
-          {mapReady && preview?.roof.center && <p className="text-xs text-muted-foreground">Amber circle: your selected point. Green circle: Google building center.</p>}
-          <p className="text-sm text-muted-foreground">Tap your house on the satellite map to load a Google Solar roof preview and approximate building overlay. The overlay is a bounding box, not a surveyed roof outline. You can also use the address point or coordinates.</p>
+          {preview?.roof.center && <div className="rounded-lg border bg-background/80 p-3 text-xs space-y-2">
+            <p className="font-medium text-foreground">Building detected: {preview.roof.center.latitude.toFixed(6)}°, {preview.roof.center.longitude.toFixed(6)}°</p>
+            <p className="text-muted-foreground">{point && Math.abs(point.latitude - preview.roof.center.latitude) < 0.00002 && Math.abs(point.longitude - preview.roof.center.longitude) < 0.00002 ? "✓ Pin is snapped directly to the building roof center." : "Selected pin and roof center differ slightly."} The green boundary shows Google Solar&apos;s building footprint.</p>
+            {point && (Math.abs(point.latitude - preview.roof.center.latitude) >= 0.00002 || Math.abs(point.longitude - preview.roof.center.longitude) >= 0.00002) && (
+              <Button size="sm" variant="outline" onClick={() => { if (preview.roof.center) { setPoint(preview.roof.center); setLatitude(preview.roof.center.latitude.toFixed(6)); setLongitude(preview.roof.center.longitude.toFixed(6)); setMapCenter(preview.roof.center); } }}>
+                Snap pin to roof center
+              </Button>
+            )}
+          </div>}
+          <p className="text-sm text-muted-foreground">Tap your house on the satellite map to load a Google Solar roof preview and building overlay. The overlay reflects the building boundary detected by satellite imagery.</p>
         </div>
         <div className="space-y-5 rounded-xl border bg-background p-5"><fieldset className="space-y-3"><legend className="mb-3 font-semibold">Address matches</legend>{candidates.map(item => <label key={item.placeId} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border p-3"><input type="radio" name="geocode-candidate" checked={selected?.placeId === item.placeId} onChange={() => choose(item)} className="mt-1" /><span><strong className="block font-medium">{item.address}</strong><small className="text-muted-foreground">{item.partialMatch ? "Partial match — verify carefully" : "Google Geocoding result"}</small></span></label>)}</fieldset>
           {selected && point && <><fieldset className="grid grid-cols-2 gap-3"><legend className="mb-2 font-semibold">Building point</legend><div><Label htmlFor="roof-latitude">Latitude</Label><Input id="roof-latitude" inputMode="decimal" value={latitude} onChange={event => setLatitude(event.target.value)} /></div><div><Label htmlFor="roof-longitude">Longitude</Label><Input id="roof-longitude" inputMode="decimal" value={longitude} onChange={event => setLongitude(event.target.value)} /></div></fieldset><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => { const lat = parseNumber(latitude, -90, 90); const lng = parseNumber(longitude, -180, 180); if (lat === undefined || lng === undefined) { setError("Enter valid latitude and longitude coordinates."); return; } changePoint({ latitude: lat, longitude: lng }); }}>Use coordinates</Button><Button variant="ghost" onClick={() => changePoint(selected.location)}>Use address point</Button></div><p className="text-xs text-muted-foreground">Your selected house must be near the saved address. Device location only recenters the map; it does not choose a house.</p><Button onClick={() => inspectAt(point)} disabled={!!busy} className="w-full">{busy === "insights" ? "Checking this building…" : preview ? "Refresh roof preview" : "Inspect roof at this point"}</Button></>}

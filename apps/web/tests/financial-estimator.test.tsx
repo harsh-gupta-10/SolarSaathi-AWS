@@ -79,4 +79,53 @@ describe("base financial estimate UI", () => {
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("could not be created"));
     expect(screen.queryByRole("heading", { name: "What this amount could mean" })).toBeNull();
   });
+
+  it("selects budget range tiers and input presets to populate the scenario quickly", async () => {
+    const user = userEvent.setup();
+    render(<FinancialEstimator {...props} />);
+    // Choose Standard tier from budget range dropdown (3 kW recommended * 64,000 = 192,000)
+    await user.selectOptions(screen.getByLabelText(`Indicative budget range for ${props.recommendedNominalKw} kW`), "STANDARD");
+    const quoteInput = screen.getByLabelText("Gross installed quote or planning estimate for this size (₹)") as HTMLInputElement;
+    expect(quoteInput.value).toBe("192000");
+
+    // Choose preset for self-use
+    await user.selectOptions(screen.getByLabelText("Solar self-consumption presets"), "80");
+    expect((screen.getByLabelText("Solar energy used on site (%)") as HTMLInputElement).value).toBe("80");
+
+    // Choose preset for import tariff
+    await user.selectOptions(screen.getByLabelText("Import tariff presets"), "7.5");
+    expect((screen.getByLabelText("Avoidable import energy rate (₹/kWh)") as HTMLInputElement).value).toBe("7.5");
+
+    // Choose preset for export rate
+    await user.selectOptions(screen.getByLabelText("Export credit presets"), "2.5");
+    expect((screen.getByLabelText("Assumed export credit (₹/kWh)") as HTMLInputElement).value).toBe("2.5");
+
+    // Choose preset for maintenance
+    await user.selectOptions(screen.getByLabelText("Maintenance cost presets"), "1500");
+    expect((screen.getByLabelText("Year-one maintenance (₹/year)") as HTMLInputElement).value).toBe("1500");
+
+    // Submit and verify estimate call
+    await user.click(screen.getByRole("button", { name: "Estimate 25-year cash flow" }));
+    await screen.findByRole("heading", { name: "What this amount could mean" });
+    expect(api.estimate).toHaveBeenCalledWith("property-1", "analysis-1", props.demand, 1500,
+      props.recommendedNominalKw, { grossSystemCostRupees: 192000, selfConsumptionFraction: 0.8,
+        importTariffRupeesPerKwh: 7.5, exportRateRupeesPerKwh: 2.5, annualMaintenanceRupees: 1500 }, expect.any(AbortSignal));
+  });
+
+  it("populates standard Indian residential benchmarks via quick setup button", async () => {
+    const user = userEvent.setup();
+    render(<FinancialEstimator {...props} />);
+    await user.click(screen.getByRole("button", { name: /Apply standard Indian residential benchmarks/ }));
+    expect((screen.getByLabelText("Gross installed quote or planning estimate for this size (₹)") as HTMLInputElement).value).toBe("192000");
+    expect((screen.getByLabelText("Solar energy used on site (%)") as HTMLInputElement).value).toBe("90");
+    expect((screen.getByLabelText("Avoidable import energy rate (₹/kWh)") as HTMLInputElement).value).toBe("7.5");
+    expect((screen.getByLabelText("Assumed export credit (₹/kWh)") as HTMLInputElement).value).toBe("0");
+    expect((screen.getByLabelText("Year-one maintenance (₹/year)") as HTMLInputElement).value).toBe("0");
+
+    await user.click(screen.getByRole("button", { name: "Estimate 25-year cash flow" }));
+    await screen.findByRole("heading", { name: "What this amount could mean" });
+    expect(api.estimate).toHaveBeenCalledWith("property-1", "analysis-1", props.demand, 1500,
+      props.recommendedNominalKw, { grossSystemCostRupees: 192000, selfConsumptionFraction: 0.9,
+        importTariffRupeesPerKwh: 7.5, exportRateRupeesPerKwh: 0, annualMaintenanceRupees: 0 }, expect.any(AbortSignal));
+  });
 });

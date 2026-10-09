@@ -70,3 +70,97 @@ export const SYSTEM_DESIGN_BASELINE_V1 = Object.freeze({
 export function getSystemDesignAssumptionsV1(roof: NormalizedRoofV1): SystemDesignAssumptionsV1 {
   return { schemaVersion: 1, roofLayout: getRoofLayoutAssumptionsV1(roof), ...SYSTEM_DESIGN_BASELINE_V1 };
 }
+
+export type IndicativeBudgetTierIdV1 = "ECONOMY" | "STANDARD" | "PREMIUM";
+
+export interface IndicativeBudgetTierV1 {
+  id: IndicativeBudgetTierIdV1;
+  label: string;
+  minPerKwRupees: number;
+  maxPerKwRupees: number;
+  typicalPerKwRupees: number;
+  description: string;
+}
+
+/** Prevailing Indian rooftop solar benchmark ranges (pre-subsidy gross cost per kW). */
+export const INDICATIVE_BUDGET_TIERS_V1: readonly IndicativeBudgetTierV1[] = Object.freeze([
+  {
+    id: "ECONOMY",
+    label: "Economy tier",
+    minPerKwRupees: 50_000,
+    maxPerKwRupees: 58_000,
+    typicalPerKwRupees: 54_000,
+    description: "Standard string inverter & conventional poly/mono-PERC panels.",
+  },
+  {
+    id: "STANDARD",
+    label: "Standard / Mid tier",
+    minPerKwRupees: 60_000,
+    maxPerKwRupees: 68_000,
+    typicalPerKwRupees: 64_000,
+    description: "High-efficiency mono PERC / TOPCon DCR panels & reliable tier-1 inverter.",
+  },
+  {
+    id: "PREMIUM",
+    label: "Premium tier",
+    minPerKwRupees: 70_000,
+    maxPerKwRupees: 82_000,
+    typicalPerKwRupees: 75_000,
+    description: "Bifacial / high-wattage modules, microinverters, or hybrid-ready systems.",
+  },
+]);
+
+export interface IndicativeBudgetRangeOptionV1 {
+  tier: IndicativeBudgetTierIdV1;
+  label: string;
+  description: string;
+  minPerKwRupees: number;
+  maxPerKwRupees: number;
+  typicalPerKwRupees: number;
+  minTotalRupees: number;
+  maxTotalRupees: number;
+  typicalTotalRupees: number;
+  perKwRangeLabel: string;
+}
+
+export function getIndicativeBudgetRangesV1(nominalKw: number): IndicativeBudgetRangeOptionV1[] {
+  const safeKw = Number.isFinite(nominalKw) && nominalKw > 0 ? nominalKw : 1;
+  return INDICATIVE_BUDGET_TIERS_V1.map(tier => ({
+    tier: tier.id,
+    label: tier.label,
+    description: tier.description,
+    minPerKwRupees: tier.minPerKwRupees,
+    maxPerKwRupees: tier.maxPerKwRupees,
+    typicalPerKwRupees: tier.typicalPerKwRupees,
+    minTotalRupees: Math.round(tier.minPerKwRupees * safeKw),
+    maxTotalRupees: Math.round(tier.maxPerKwRupees * safeKw),
+    typicalTotalRupees: Math.round(tier.typicalPerKwRupees * safeKw),
+    perKwRangeLabel: `₹${(tier.minPerKwRupees / 1000).toFixed(0)}k–₹${(tier.maxPerKwRupees / 1000).toFixed(0)}k/kW`,
+  }));
+}
+
+export const FINANCIAL_INPUT_PRESETS_V1 = Object.freeze({
+  selfConsumption: Object.freeze([
+    { value: 90, label: "90% — Typical residential net-metering default" },
+    { value: 80, label: "80% — Moderate daytime home presence" },
+    { value: 70, label: "70% — Working household (evening peak)" },
+    { value: 100, label: "100% — Full self-use (heavy daytime appliances/EV)" },
+  ]),
+  importTariff: Object.freeze([
+    { value: 7.5, label: "₹7.50/kWh — Average domestic DISCOM tariff (Standard slab)" },
+    { value: 6.0, label: "₹6.00/kWh — Lower consumption slab" },
+    { value: 9.0, label: "₹9.00/kWh — High-tier consumption / Metro slab" },
+    { value: 11.0, label: "₹11.00/kWh — Commercial / Peak slab" },
+  ]),
+  exportRate: Object.freeze([
+    { value: 0, label: "₹0.00/kWh — No export credit / Self-use only (Conservative)" },
+    { value: 2.5, label: "₹2.50/kWh — Average DISCOM APPC feed-in rate" },
+    { value: 3.5, label: "₹3.50/kWh — Favorable state solar feed-in tariff" },
+  ]),
+  maintenance: Object.freeze([
+    { value: 0, label: "₹0/yr — Covered by installer warranty / 5-yr free AMC" },
+    { value: 1500, label: "₹1,500/yr — Basic cleaning & electrical inspection" },
+    { value: 3000, label: "₹3,000/yr — Comprehensive annual maintenance contract (AMC)" },
+  ]),
+});
+

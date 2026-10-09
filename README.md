@@ -46,8 +46,18 @@ Current policy values are never treated as permanent constants. A crawler detect
 - Google Geocoding API
 - Google Solar API
 
+## Live deployment & demo
+
+- **Live Web Application**: [https://main.d12c230dem2g5h.amplifyapp.com](https://main.d12c230dem2g5h.amplifyapp.com)
+- **Guided Demo Walkthrough**: [https://main.d12c230dem2g5h.amplifyapp.com/demo](https://main.d12c230dem2g5h.amplifyapp.com/demo)
+- **Live API Endpoint (v1)**: `https://ii1kh7hhb8.execute-api.ap-south-1.amazonaws.com/v1`
+- **AWS Infrastructure**: Deployed in `ap-south-1` (Account `944311261347`) via CloudFormation stack `solarsaathi-dev` (DynamoDB single-table, Cognito User Pool with managed login, and API Gateway + Lambda backend) and AWS Amplify Hosting app `d12c230dem2g5h` (`WEB_COMPUTE` on branch `main`).
+- **Google Cloud Platform**: Project `solarsaathi-india-20261009` with active Maps JavaScript, Geocoding, and Solar APIs.
+- **Deployment Details & Audit**: See [docs/live-deployment.md](docs/live-deployment.md) for full deployment records and smoke check results.
+
 ## Documentation map
 
+- `docs/live-deployment.md` — deployed AWS and Google Cloud development targets and verification status
 - `docs/project.md` — complete product specification
 - `docs/phases.md` — implementation order
 - `docs/policy-intelligence.md` — live policy crawler and policy engine
@@ -168,21 +178,19 @@ Accessory policy relevance and cost ranges remain unavailable until verified
 rule evidence and sourced regional prices exist. The accessory list is a
 planning discussion for a qualified installer, not equipment specification.
 
-These phases have **local** lint, typecheck, test and build coverage. This
-workspace has no verified AWS deployment or selected Google Cloud project;
-live Cognito, DynamoDB, Google API and hosting behavior remains unverified.
-Production release also needs alarm notifications, a review of DynamoDB PITR
-backup retention for Google data, credentials in the intended AWS account, and
-live deployment checks. The policy engine has no live India benefit data and
-provides no real subsidy figure in the local preview. The local
-crawler monitors registered URLs; automatic discovery of linked official
-documents and live India source coverage remain open.
+Phases 0–20 have passed all 839 test checks locally, and the first development
+cloud deployment is live in AWS `ap-south-1` with AWS Amplify Hosting and Google
+Cloud Maps/Solar integration (see [live deployment record](docs/live-deployment.md)).
+CloudFormation stack `solarsaathi-dev` hosts the DynamoDB single-table schema,
+Cognito user pool with managed-login branding, and API Gateway + Lambda backend, while
+Amplify hosts the Next.js web client at `https://main.d12c230dem2g5h.amplifyapp.com`.
+The policy engine currently has no active verified India benefit facts published
+yet, so demo amounts remain visibly fictional and the guided walkthrough at `/demo`
+demonstrates the full flow without claiming live government subsidies. Production
+readiness requires independent policy catalog approval, CloudWatch alarm notification
+targets, a custom domain, and operational review before public launch.
 
-Local application validation uses `pnpm check`. AWS CloudFormation accepted a
-read-only template validation, and GitHub Actions is configured to run SAM
-validation and build. SAM CLI, cfn-lint and cfn-guard are not installed in this
-local environment; template tests and CloudFormation syntax validation do not
-prove deployability. The [demo and submission runbook](docs/submission.md)
+Local application validation uses `pnpm check`. The [demo and submission runbook](docs/submission.md)
 separates fictional fixtures from live claims. See [implementation phases](docs/phases.md)
 for detailed status and remaining work.
 

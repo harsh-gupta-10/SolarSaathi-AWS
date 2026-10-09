@@ -118,8 +118,13 @@ export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, ro
     const maps = window.google?.maps;
     if (!map || !maps || !elementRef.current || status !== "ready") return;
     const primary = getComputedStyle(elementRef.current).getPropertyValue("--primary").trim() || "#12633f";
-    if (roofCenter) roofCircleRef.current = new maps.Circle({ map, center: toMapPoint(roofCenter), radius: 5,
-      strokeColor: primary, strokeWeight: 3, strokeOpacity: 1, fillColor: primary, fillOpacity: 0.35, clickable: false });
+    if (roofCenter) {
+      roofCircleRef.current = new maps.Circle({ map, center: toMapPoint(roofCenter), radius: 5,
+        strokeColor: primary, strokeWeight: 3, strokeOpacity: 1, fillColor: primary, fillOpacity: 0.35, clickable: false });
+      if (typeof (map as unknown as { panTo?: (point: { lat: number; lng: number }) => void }).panTo === "function") {
+        (map as unknown as { panTo: (point: { lat: number; lng: number }) => void }).panTo(toMapPoint(roofCenter));
+      }
+    }
     if (roofBounds) boundsRef.current = new maps.Rectangle({ map, bounds: {
       south: roofBounds.southwest.latitude, west: roofBounds.southwest.longitude,
       north: roofBounds.northeast.latitude, east: roofBounds.northeast.longitude,
@@ -134,7 +139,7 @@ export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, ro
       <button type="button" className="rounded-md border border-current px-4 py-2 font-medium underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" onClick={() => setLoadAttempt(value => value + 1)}>Retry satellite map</button>
     </div>}
     {status === "ready" && <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-background/95 px-3 py-2 text-xs font-medium shadow-sm" aria-hidden="true">
-      <span>● Amber: selected house</span>{deviceLocation && <span>● Blue: device location</span>}{roofBounds && <span>▣ Green: approximate Google building bounds</span>}
+      <span>● Amber: selected house</span>{roofCenter && <span>🎯 Green: detected roof center</span>}{deviceLocation && <span>● Blue: device location</span>}{roofBounds && <span>▣ Green: approximate Google building bounds</span>}
     </div>}
   </div>;
 }

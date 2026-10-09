@@ -2,7 +2,10 @@
   "name": "@solarsaathi/policy",
   "private": true,
   "version": "0.1.0",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./baseline": "./src/baseline-catalog.ts"
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "lint": "eslint .",
@@ -10,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aws-crypto/sha256-js": "^5.2.0",
     "zod": "^4.1.12",
     "parse5": "^8.0.0",
     "pdfjs-dist": "^5.4.624"

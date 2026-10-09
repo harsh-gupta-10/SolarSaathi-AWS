@@ -15,6 +15,7 @@
     "@react-three/fiber": "9.8.1",
     "@solarsaathi/calculations": "workspace:*",
     "@solarsaathi/config": "workspace:*",
+    "@solarsaathi/policy": "workspace:*",
     "@solarsaathi/types": "workspace:*",
     "@solarsaathi/ui": "workspace:*",
     "aws-amplify": "^6.22.1",
