@@ -102,7 +102,7 @@
   Admin group membership is assigned out of band;
   the stack creates groups but grants no user membership.
 - `PolicyCrawlerFunction`: EventBridge checks at most ten due curated official
-  sources every 15 minutes with reserved concurrency one and a conditional
+  sources every 15 minutes with a conditional
   per-source lease and atomic crawl-start audit. The fetcher enforces exact official hosts, redirect and DNS
   checks, robots rules, byte and time limits. An unchanged raw response or
   cosmetic normalized-text change updates operational crawl state without
@@ -116,6 +116,10 @@
   Lambda error for failure or backlog.
   `PolicyCrawlerFailureAlarm` observes those errors. The alarm needs a monitored
   notification destination before production use.
+  `EnableCrawlerReservedConcurrency` defaults to `false` because new AWS
+  accounts may have only ten concurrent Lambda executions and AWS requires all
+  ten to remain unreserved. Set it to `true` only after the account quota is
+  raised above ten; the per-source lease remains active either way.
   The worker monitors registered source landing URLs. New linked official
   circulars and PDFs need separate admin registration; automatic link discovery
   and review is remaining Phase 9 work.

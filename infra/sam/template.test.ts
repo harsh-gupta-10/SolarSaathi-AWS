@@ -379,7 +379,8 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     const worker = properties("PolicyCrawlerFunction");
     expect(worker.Handler).toBe("handlers/policy-crawler.handler");
     expect(worker.Timeout).toBe(300);
-    expect(worker.ReservedConcurrentExecutions).toBe(1);
+    expect(template.Parameters.EnableCrawlerReservedConcurrency).toMatchObject({ Default: "false" });
+    expect(worker.ReservedConcurrentExecutions).toEqual(["CrawlerConcurrencyReserved", 1, "AWS::NoValue"]);
     expect(worker.Environment).toEqual({ Variables: {
       POLICY_TABLE_NAME: "PolicyTable", POLICY_DOCUMENT_BUCKET: "PolicyDocumentBucket",
     } });

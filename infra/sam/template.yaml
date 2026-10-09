@@ -23,6 +23,11 @@ Parameters:
     Type: Number
     Default: 14
     AllowedValues: [7, 14, 30, 60, 90, 180, 365]
+  EnableCrawlerReservedConcurrency:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Reserve one crawler execution only in accounts with a Lambda concurrency quota above the ten-execution unreserved minimum.
   ApplicationOrigin:
     Type: String
     Default: https://app.solarsaathi.in
@@ -93,6 +98,7 @@ Parameters:
     Description: Region for optional Nova Canvas image generation.
 
 Conditions:
+  CrawlerConcurrencyReserved: !Equals [!Ref EnableCrawlerReservedConcurrency, "true"]
   GoogleFederationEnabled: !Equals [!Ref EnableGoogleFederation, "true"]
   GeocodingConfigured: !Not [!Equals [!Ref GoogleGeocodingKeySecretArn, ""]]
   SolarConfigured: !Not [!Equals [!Ref GoogleSolarKeySecretArn, ""]]
@@ -1037,7 +1043,7 @@ Resources:
       Architectures: [x86_64]
       Timeout: 300
       MemorySize: 1024
-      ReservedConcurrentExecutions: 1
+      ReservedConcurrentExecutions: !If [CrawlerConcurrencyReserved, 1, !Ref AWS::NoValue]
       LoggingConfig:
         LogGroup: !Ref PolicyCrawlerLogGroup
       Environment:
