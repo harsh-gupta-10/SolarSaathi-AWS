@@ -595,6 +595,20 @@ overflow. Live SAM deployment and IAM behavior are still unverified.
 - security tests
 - failure-mode UI
 
+Status: **implemented locally (2026-10-09)**. Policy checks now fail closed
+unless the current official source is healthy, ready, document-bound and
+within its freshness window. Failed, running, stale, malformed or future-dated
+checks cannot contribute a numeric subsidy or leak an uncounted amount; a
+partial zero with unresolved rules is labelled undetermined. Deterministic
+stacking tests cover input permutations, shared caps and asymmetric
+compatibility. The financial projection independently rejects unhealthy
+selected policy checks. The API rejects malformed base64/UTF-8 JSON and a SAM
+invariant guards Cognito authorization on product routes. Web state tests and
+fixes cover account changes, map-script retry, application-network retry and
+accessible 3D canvas names. Deployed identity, policy sources and cloud
+transactions remain unverified. The local gate passed lint, typechecking,
+**834 tests**, the API bundle/PDF smoke and production builds.
+
 ## Phase 20 — Demo and submission
 Demo should show:
 address → building → roof → solar → live subsidy stacking → net cost → application checklist → AI → remaining roof concept → accessories → source trail.

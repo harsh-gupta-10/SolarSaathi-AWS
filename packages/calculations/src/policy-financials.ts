@@ -134,7 +134,7 @@ export function calculatePolicyFinancialsV1({ base, benefits }: PolicyFinancialI
       decision.citations.some(citation => !decision.sourceChecks.some(check => check.sourceId === citation.sourceId)) ||
       decision.sourceChecks.some(check => !check.fresh || check.lastCheckedAt === null ||
         Date.parse(check.lastCheckedAt) > evaluationTime ||
-        !["HEALTHY", "DEGRADED"].includes(check.status))) {
+        check.status !== "HEALTHY")) {
       throw new RangeError("Selected policy benefit lacks a current, consistent evidence binding.");
     }
     selectedByScope[decision.scope] += BigInt(decision.countedAmountPaise);

@@ -272,8 +272,24 @@ describe("verified benefit publication and owner-scoped evaluation", () => {
     if (clockResult.status === "AVAILABLE") expect(clockResult.result.evaluatedAt).toBe(clockResult.evaluatedAt);
     test.setState({ ...test.getState(), status: "ERROR", lastErrorCode: "TIMEOUT" });
     expect(await test.benefits.evaluate(identity(), test.evaluate, "req")).toMatchObject({
-      status: "AVAILABLE", result: { warnings: expect.arrayContaining(["SOURCE_CHECK_DEGRADED"]) } });
+      status: "UNAVAILABLE", reasonCodes: ["NO_CURRENT_VERIFIED_RULES", "SOURCE_CHECK_DEGRADED"] });
+    test.setState({ ...test.getState(), status: "READY", lastErrorCode: "TIMEOUT" });
+    expect(await test.benefits.evaluate(identity(), test.evaluate, "req")).toMatchObject({
+      status: "UNAVAILABLE", reasonCodes: ["NO_CURRENT_VERIFIED_RULES", "SOURCE_CHECK_DEGRADED"] });
+    test.setState({ ...test.getState(), status: "RUNNING", lastErrorCode: undefined });
+    expect(await test.benefits.evaluate(identity(), test.evaluate, "req")).toMatchObject({
+      status: "UNAVAILABLE", reasonCodes: ["NO_CURRENT_VERIFIED_RULES", "SOURCE_CHECK_DEGRADED"] });
+    test.setState({ ...test.getState(), status: "BROKEN" as PolicyCrawlStateV1["status"] });
+    expect(await test.benefits.evaluate(identity(), test.evaluate, "req")).toMatchObject({
+      status: "UNAVAILABLE", reasonCodes: ["NO_CURRENT_VERIFIED_RULES", "SOURCE_CHECK_DEGRADED"] });
     test.setState({ ...test.getState(), status: "READY", lastErrorCode: undefined });
+    expect(await test.createBenefitsAt(() => new Date(fixedNow.getTime() + 24 * 3_600_000 + 1))
+      .evaluate(identity(), test.evaluate, "req")).toMatchObject({
+      status: "UNAVAILABLE", reasonCodes: ["NO_CURRENT_VERIFIED_RULES"] });
+    test.setCurrent(policySourceSchema.parse({ ...test.source, enabled: false }));
+    expect(await test.benefits.evaluate(identity(), test.evaluate, "req")).toMatchObject({
+      status: "UNAVAILABLE", reasonCodes: ["NO_CURRENT_VERIFIED_RULES"] });
+    test.setCurrent(test.source);
     const duplicate = await test.publicationService.createDraft(test.draftRequest, author, "req");
     await test.publicationService.transition(duplicate.draft.draftId, "submit", { expectedRevision: 1 }, author, "req");
     await expect(test.publicationService.transition(duplicate.draft.draftId, "publish",
@@ -288,8 +304,8 @@ describe("verified benefit publication and owner-scoped evaluation", () => {
       status: "UNAVAILABLE", reasonCodes: ["NO_CURRENT_VERIFIED_RULES"] });
     test.setState({ ...test.getState(), lastDocumentVersion: 1, lastObservedSha256: test.document.sha256 });
     test.setCurrent(policySourceSchema.parse({ ...test.source, registryVersion: 3 }));
-    await expect(test.benefits.evaluate(identity(), test.evaluate, "req"))
-      .rejects.toMatchObject({ statusCode: 503, code: "BENEFIT_EVALUATION_UNAVAILABLE" });
+    expect(await test.benefits.evaluate(identity(), test.evaluate, "req")).toMatchObject({
+      status: "UNAVAILABLE", reasonCodes: ["NO_CURRENT_VERIFIED_RULES"] });
   });
 
   it("rejects forged citation locations, old archives, unhealthy source and unsupported authority scope", async () => {

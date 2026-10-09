@@ -188,55 +188,69 @@ function SignedInApplicationsPanel() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [loadError, setLoadError] = useState<"properties" | "applications">();
+  const [propertyRetry, setPropertyRetry] = useState(0);
+  const [applicationRetry, setApplicationRetry] = useState(0);
+  const pending = useRef<Set<AbortController>>(new Set());
   const propertyRef = useRef(selectedProperty);
   const selectionAttempt = useRef(0);
   propertyRef.current = selectedProperty;
+  useEffect(() => () => { for (const controller of pending.current) controller.abort(); pending.current.clear(); }, []);
 
   useEffect(() => {
     const controller = new AbortController();
+    setLoading(true); setError(undefined); setLoadError(undefined);
     void applicationsApi.properties(undefined, controller.signal).then(page => {
       if (controller.signal.aborted) return;
       setProperties(page.properties); setPropertyCursor(page.nextCursor);
       if (page.properties[0]) setSelectedProperty(page.properties[0].propertyId);
-    }).catch(failure => { if (!controller.signal.aborted) setError(messageFor(failure)); })
+    }).catch(failure => { if (!controller.signal.aborted) { setError(messageFor(failure)); setLoadError("properties"); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, []);
+  }, [propertyRetry]);
   useEffect(() => {
     if (!selectedProperty) return;
+    for (const pendingRequest of pending.current) pendingRequest.abort();
+    pending.current.clear(); setBusy(false);
     const controller = new AbortController();
     selectionAttempt.current += 1;
-    setLoading(true); setError(undefined); setApplications([]); setApplicationCursor(undefined); setSelected(undefined);
+    setLoading(true); setError(undefined); setLoadError(undefined);
+    setApplications([]); setApplicationCursor(undefined); setSelected(undefined);
     void applicationsApi.list(selectedProperty, undefined, controller.signal).then(page => {
       if (!controller.signal.aborted) { setApplications(page.applications); setApplicationCursor(page.nextCursor); }
-    }).catch(failure => { if (!controller.signal.aborted) setError(messageFor(failure)); })
+    }).catch(failure => { if (!controller.signal.aborted) { setError(messageFor(failure)); setLoadError("applications"); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [selectedProperty]);
+  }, [selectedProperty, applicationRetry]);
   async function moreProperties() {
     if (!propertyCursor) return;
     setBusy(true); setError(undefined);
-    try { const page = await applicationsApi.properties(propertyCursor);
+    const controller = new AbortController(); pending.current.add(controller);
+    try { const page = await applicationsApi.properties(propertyCursor, controller.signal);
+      if (controller.signal.aborted) return;
       setProperties(previous => [...previous, ...page.properties]); setPropertyCursor(page.nextCursor); }
-    catch (failure) { setError(messageFor(failure)); } finally { setBusy(false); }
+    catch (failure) { if (!controller.signal.aborted) setError(messageFor(failure)); }
+    finally { pending.current.delete(controller); if (!controller.signal.aborted) setBusy(false); }
   }
   async function moreApplications() {
     if (!applicationCursor) return;
     const propertyId = selectedProperty;
     setBusy(true); setError(undefined);
-    try { const page = await applicationsApi.list(propertyId, applicationCursor);
-      if (propertyRef.current !== propertyId) return;
+    const controller = new AbortController(); pending.current.add(controller);
+    try { const page = await applicationsApi.list(propertyId, applicationCursor, controller.signal);
+      if (controller.signal.aborted || propertyRef.current !== propertyId) return;
       setApplications(previous => [...previous, ...page.applications]); setApplicationCursor(page.nextCursor); }
-    catch (failure) { if (propertyRef.current === propertyId) setError(messageFor(failure)); }
-    finally { setBusy(false); }
+    catch (failure) { if (!controller.signal.aborted && propertyRef.current === propertyId) setError(messageFor(failure)); }
+    finally { pending.current.delete(controller); if (!controller.signal.aborted) setBusy(false); }
   }
   async function selectApplication(item: SolarApplication) {
     const attempt = ++selectionAttempt.current;
     setBusy(true); setError(undefined);
-    try { const application = await applicationsApi.get(item.propertyId, item.applicationId);
-      if (attempt === selectionAttempt.current && propertyRef.current === item.propertyId) setSelected(application); }
-    catch (failure) { if (attempt === selectionAttempt.current && propertyRef.current === item.propertyId) setError(messageFor(failure)); }
-    finally { setBusy(false); }
+    const controller = new AbortController(); pending.current.add(controller);
+    try { const application = await applicationsApi.get(item.propertyId, item.applicationId, controller.signal);
+      if (!controller.signal.aborted && attempt === selectionAttempt.current && propertyRef.current === item.propertyId) setSelected(application); }
+    catch (failure) { if (!controller.signal.aborted && attempt === selectionAttempt.current && propertyRef.current === item.propertyId) setError(messageFor(failure)); }
+    finally { pending.current.delete(controller); if (!controller.signal.aborted) setBusy(false); }
   }
 
   return <div className="applications-page"><div className="page-heading"><span className="tracker-page-kicker"><MapPin size={15} aria-hidden="true" /> Your solar journey</span>
@@ -247,11 +261,13 @@ function SignedInApplicationsPanel() {
       {propertyCursor && <Button type="button" variant="outline" onClick={() => void moreProperties()} disabled={busy}>More properties</Button>}
       {selectedProperty && <Button type="button" variant="outline" onClick={() => void selectApplication(selected ?? applications[0]!)}
         disabled={busy || !applications.length}><RefreshCw size={15} aria-hidden="true" /> {selected ? "Refresh selected" : "Open latest"}</Button>}</div>
-    {error && <p role="alert" className="form-error">{error}</p>}
+    {error && <div role="alert" className="form-error"><p>{error}</p>{loadError && <Button type="button" variant="outline" className="mt-2"
+      onClick={() => { if (loadError === "properties") setPropertyRetry(value => value + 1);
+        else setApplicationRetry(value => value + 1); }}>Retry loading {loadError}</Button>}</div>}
     {loading ? <p role="status" className="tracker-loading">Loading your properties and applications…</p> :
-      !properties.length ? <section className="tracker-empty"><CircleAlert size={26} aria-hidden="true" /><h2>No property assessment yet</h2>
+      loadError === "properties" ? null : !properties.length ? <section className="tracker-empty"><CircleAlert size={26} aria-hidden="true" /><h2>No property assessment yet</h2>
         <p>Start by confirming a roof and evaluating an official benefit.</p><Button asChild><Link href="/app/analyze">Analyze a roof <ArrowRight size={15} aria-hidden="true" /></Link></Button></section> :
-      <><section className="tracker-list" aria-labelledby="tracker-list-title"><div><h2 id="tracker-list-title">Applications for this property</h2>
+      loadError === "applications" ? null : <><section className="tracker-list" aria-labelledby="tracker-list-title"><div><h2 id="tracker-list-title">Applications for this property</h2>
         <p>{applications.length ? "Select an application to view its verified process and your recorded progress." :
           "No application tracker has been created for this property."}</p></div>
         {applications.length ? <div className="tracker-list-items">{applications.map(item => <button type="button"

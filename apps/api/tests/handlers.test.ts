@@ -59,11 +59,28 @@ describe("API foundation", () => {
 
   it("requires JSON and accepts case-insensitive headers with charset", async () => {
     expect((await analyze({ ...request(), headers: {} }, context)).statusCode).toBe(415);
+    expect((await analyze({ ...request(), headers: null as unknown as APIGatewayProxyEvent["headers"] }, context)).statusCode).toBe(415);
     expect((await analyze({ ...request(), headers: { "Content-Type": "Application/JSON; charset=utf-8" } }, context)).statusCode).toBe(501);
   });
 
   it("decodes API Gateway base64 JSON", async () => {
     expect((await analyze({ ...request(Buffer.from("{}").toString("base64")), isBase64Encoded: true }, context)).statusCode).toBe(501);
+    const unicode = Buffer.from(JSON.stringify({ note: "नमस्ते" }), "utf8").toString("base64");
+    expect((await analyze({ ...request(unicode), isBase64Encoded: true }, context)).statusCode).toBe(501);
+  });
+
+  it.each(["e30=ignored", "e30", "e30===", "e30_", "\"not base64\""])("rejects malformed base64 JSON: %s", async body => {
+    const response = await analyze({ ...request(body), isBase64Encoded: true }, context);
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body).error.code).toBe("INVALID_REQUEST");
+  });
+
+  it("rejects invalid UTF-8 and oversized encoded JSON before parsing", async () => {
+    const malformed = Buffer.from([0x7b, 0x22, 0x78, 0x22, 0x3a, 0x22, 0xff, 0x22, 0x7d]).toString("base64");
+    expect((await analyze({ ...request(malformed), isBase64Encoded: true }, context)).statusCode).toBe(400);
+    const oversized = Buffer.from(JSON.stringify({ data: "x".repeat(65_536) })).toString("base64");
+    const response = await analyze({ ...request(oversized), isBase64Encoded: true }, context);
+    expect(response.statusCode).toBe(413);
   });
 
   it("rejects oversized decoded payloads", async () => {

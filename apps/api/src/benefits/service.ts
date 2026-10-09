@@ -106,17 +106,22 @@ export class BenefitsService {
           this.records.getDocument(citation.sourceId, citation.documentId, citation.documentVersion),
           this.workflow.getCrawlState(citation.sourceId),
         ]);
-        if (!sourceVersion || !currentSource || !document ||
-          currentSource.registryVersion !== sourceVersion.registryVersion ||
-          document.sha256 !== citation.documentSha256) throw unavailable();
+        if (!sourceVersion || !currentSource || !document || document.sha256 !== citation.documentSha256) {
+          throw unavailable();
+        }
         const source = validateOfficialSourceRecord(policySourceSchema.parse(sourceVersion));
         const archived = policyDocumentSchema.parse(document);
         const bundleEvidence = facts.map(fact => ({ source, document: archived, version, fact }));
-        const fresh = currentSourceFresh(currentSource, state, evaluatedAt) &&
+        const fresh = currentSource.registryVersion === sourceVersion.registryVersion &&
+          currentSourceFresh(currentSource, state, evaluatedAt) &&
           state?.lastDocumentId === citation.documentId &&
           state.lastDocumentVersion === citation.documentVersion &&
           state.lastObservedSha256 === citation.documentSha256;
-        const status = !fresh ? "STALE" : state.status === "ERROR" ? "DEGRADED" : "HEALTHY";
+        const stateStatus: unknown = state?.status;
+        const status = stateStatus === "ERROR" || !!state?.lastErrorCode ||
+          stateStatus !== undefined && stateStatus !== "READY" && stateStatus !== "RUNNING" ? "FAILED" :
+          stateStatus === "RUNNING" ? "DEGRADED" :
+            stateStatus === "READY" && fresh ? "HEALTHY" : "STALE";
         return { bundleEvidence, health: { sourceId: source.sourceId, status,
           ...(state?.lastCheckedAt ? { lastCheckedAt: state.lastCheckedAt } : {}) } as PolicySourceHealthV1 };
       };
@@ -126,12 +131,15 @@ export class BenefitsService {
           evidence.push(...item.bundleEvidence);
           const existingHealth = sourceHealth.find(value => value.sourceId === item.health.sourceId);
           if (existingHealth) {
-            if (item.health.status === "STALE") existingHealth.status = "STALE";
+            const priority = { HEALTHY: 0, DEGRADED: 1, STALE: 2, FAILED: 3 } as const;
+            if (priority[item.health.status] > priority[existingHealth.status]) existingHealth.status = item.health.status;
           } else sourceHealth.push(item.health);
         }
       }
-      if (sourceHealth.every(item => item.status === "STALE")) return { ...common,
-        status: "UNAVAILABLE" as const, reasonCodes: ["NO_CURRENT_VERIFIED_RULES"] };
+      if (sourceHealth.every(item => item.status !== "HEALTHY")) return { ...common,
+        status: "UNAVAILABLE" as const, reasonCodes: ["NO_CURRENT_VERIFIED_RULES",
+          ...(sourceHealth.some(item => item.status === "FAILED" || item.status === "DEGRADED") ?
+            ["SOURCE_CHECK_DEGRADED"] : [])] };
       const result = evaluateBenefitStackV1({ at: evaluatedAt,
         context: benefitEvaluationContextSchema.parse({ ...input.applicantFacts,
           systemWatts: Math.round(system.actualDcKw * 1_000),

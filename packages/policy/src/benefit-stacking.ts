@@ -195,11 +195,9 @@ function citationsFor(rule: PolicyBenefitRuleV1, evidence: readonly PolicyEviden
     }
     const current = health.get(source.sourceId);
     const checked = current?.lastCheckedAt ? Date.parse(current.lastCheckedAt) : Number.NaN;
-    const sourceFresh = !!current && Number.isFinite(checked) && checked <= at.getTime() &&
-      at.getTime() - checked <= source.freshnessWindowHours * 3_600_000 && current.status !== "STALE";
-    if (!current || !Number.isFinite(checked) || checked > at.getTime() ||
-      at.getTime() - checked > source.freshnessWindowHours * 3_600_000 ||
-      current.status === "STALE") fresh = false;
+    const sourceFresh = current?.status === "HEALTHY" && Number.isFinite(checked) && checked <= at.getTime() &&
+      at.getTime() - checked <= source.freshnessWindowHours * 3_600_000;
+    if (!sourceFresh) fresh = false;
     if (current?.status === "DEGRADED" || current?.status === "FAILED") degraded = true;
     // The current successful crawl check is authoritative for freshness; do not rewrite source snapshots.
     const liveSource = { ...source, healthStatus: "HEALTHY" as const, lastCheckedAt: current?.lastCheckedAt };
@@ -290,8 +288,9 @@ export function evaluateBenefitStackV1(input: BenefitStackInputV1): BenefitStack
       anyStatuses.includes("UNKNOWN") ? "UNKNOWN" : "NO";
     if (allStatus === "NO" || anyStatus === "NO") reasons.push("APPLICANT_INELIGIBLE");
     else if (allStatus === "UNKNOWN" || anyStatus === "UNKNOWN") reasons.push("APPLICANT_FACTS_UNKNOWN");
-    const amount = calculate(rule, context);
-    if (amount === undefined) reasons.push("ELIGIBLE_COST_UNKNOWN");
+    // A historical numeric fact must not become a current quoted amount after its source check fails.
+    const amount = proven.fresh ? calculate(rule, context) : undefined;
+    if (proven.fresh && amount === undefined) reasons.push("ELIGIBLE_COST_UNKNOWN");
     const no = reasons.some(reason => ["OUTSIDE_EFFECTIVE_PERIOD", "JURISDICTION_MISMATCH",
       "SYSTEM_SIZE_INELIGIBLE", "APPLICANT_INELIGIBLE"].includes(reason));
     return { status: no ? "NO" : reasons.length ? "UNKNOWN" : "YES", reasons, amount,

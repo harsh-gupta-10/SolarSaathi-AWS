@@ -19,11 +19,38 @@ const unavailable = { schemaVersion: 1, source: "DETERMINISTIC_BENEFIT_STACK_V1"
   system: { nominalKw: 3, actualDcKw: 3.2 }, evaluatedAt: "2026-10-08T00:00:00.000Z",
   coverage: { central: false, state: false, discom: false, local: false, other: false },
   reasonCodes: ["NO_ACTIVE_VERIFIED_RULES"] };
+const citation = { schemaVersion: 1, sourceId: "SRC#SYNTHETIC", sourceRegistryVersion: 1,
+  documentId: "DOC#SYNTHETIC", documentVersion: 1, documentSha256: "a".repeat(64),
+  publisherName: "Fictional authority", documentTitle: "Synthetic test rule",
+  sourceUrl: "https://example.com/fictional", retrievedAt: "2026-10-08T00:00:00.000Z",
+  locator: { section: "Test fixture" } };
+const decision = { benefitId: "BENEFIT#SYNTHETIC", ruleId: "RULE#SYNTHETIC", scope: "CENTRAL",
+  jurisdiction: "IN", effectiveFrom: "2026-01-01", status: "INELIGIBLE", reasonCodes: ["CUSTOMER_TYPE_MISMATCH"],
+  policyId: "POLICY#SYNTHETIC", policyVersion: 1, factIds: ["FACT#SYNTHETIC"],
+  citations: [citation], sourceChecks: [{ sourceId: "SRC#SYNTHETIC", lastCheckedAt: "2026-10-08T00:00:00.000Z",
+    fresh: true, status: "HEALTHY" }], verificationStatus: "VERIFIED", lastVerifiedAt: "2026-10-08T00:00:00.000Z" };
 
 beforeEach(() => { api.evaluate.mockReset(); api.evaluate.mockResolvedValue(unavailable); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("benefit evaluation UI", () => {
+  it("does not present a partial zero as determined when another source failed", async () => {
+    api.evaluate.mockResolvedValue({ ...unavailable, status: "AVAILABLE", applicantFactsSource: "USER_DECLARED",
+      eligibilityNotGuaranteed: true, reasonCodes: undefined,
+      result: { schemaVersion: 1, source: "DETERMINISTIC_BENEFIT_STACK_V1",
+        evaluatedAt: "2026-10-08T00:00:00.000Z", totalEligibleBenefitPaise: 0,
+        coverageComplete: false, optimalWithinVerifiedRules: false,
+        decisions: [decision, { ...decision, benefitId: "BENEFIT#UNKNOWN", ruleId: "RULE#UNKNOWN",
+          scope: "STATE", status: "UNKNOWN", reasonCodes: ["SOURCE_CHECK_FAILED"],
+          sourceChecks: [{ ...decision.sourceChecks[0], fresh: false, status: "FAILED" }] }],
+        warnings: ["SOURCE_CHECK_FAILED"] } });
+    await userEvent.click(render(<BenefitEvaluator {...props} />).getByRole("button", { name: "Evaluate benefits" }));
+    expect(await screen.findByRole("heading", { name: "Benefits found in the verified rules" })).toBeTruthy();
+    expect(screen.getByText("Undetermined")).toBeTruthy();
+    expect(screen.queryByText("₹0")).toBeNull();
+    expect(screen.getByText(/Previously verified rule SYNTHETIC/)).toBeTruthy();
+    expect(screen.getByText(/current source check is missing, failed or stale/)).toBeTruthy();
+  });
   it("sends declared facts and leaves eligible cost unknown until supplied", async () => {
     const user = userEvent.setup();
     render(<BenefitEvaluator {...props} />);

@@ -43,6 +43,24 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("application tracker account and property boundaries", () => {
+  it("shows a retry instead of an empty assessment state when property loading fails", async () => {
+    api.properties.mockRejectedValueOnce(new Error("network unavailable"));
+    const user = userEvent.setup();
+    render(<ApplicationsPanel />);
+    await screen.findByRole("button", { name: "Retry loading properties" });
+    expect(screen.queryByRole("heading", { name: "No property assessment yet" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Retry loading properties" }));
+    expect(await screen.findByText(/Private address one/)).toBeTruthy();
+  });
+  it("shows a retry instead of an empty tracker state when application loading fails", async () => {
+    api.list.mockRejectedValueOnce(new Error("network unavailable"));
+    const user = userEvent.setup();
+    render(<ApplicationsPanel />);
+    await screen.findByRole("button", { name: "Retry loading applications" });
+    expect(screen.queryByText("No application tracker has been created for this property.")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Retry loading applications" }));
+    expect(await screen.findByRole("button", { name: /Synthetic/ })).toBeTruthy();
+  });
   it("unmounts private application state when the signed-in account leaves", async () => {
     const user = userEvent.setup();
     const view = render(<ApplicationsPanel />);

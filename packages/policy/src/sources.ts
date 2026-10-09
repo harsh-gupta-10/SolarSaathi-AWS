@@ -69,5 +69,6 @@ export function sourceIsStale(sourceInput: PolicySourceV1, at: Date): boolean {
   const source = policySourceSchema.parse(sourceInput);
   if (!Number.isFinite(at.getTime())) throw new RangeError("Invalid source evaluation time.");
   if (!source.lastCheckedAt) return true;
-  return at.getTime() - Date.parse(source.lastCheckedAt) > source.freshnessWindowHours * 3_600_000;
+  const age = at.getTime() - Date.parse(source.lastCheckedAt);
+  return age < 0 || age > source.freshnessWindowHours * 3_600_000;
 }

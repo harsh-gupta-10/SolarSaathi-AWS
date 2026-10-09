@@ -174,6 +174,11 @@ describe("Phase 11 policy-backed financial projection", () => {
     const stale = benefits([decision("CENTRAL", 200_000)]);
     stale.decisions[0].sourceChecks[0].fresh = false;
     expect(() => calculatePolicyFinancialsV1({ base, benefits: stale })).toThrow(RangeError);
+    for (const status of ["DEGRADED", "FAILED", "STALE"] as const) {
+      const unhealthy = benefits([decision("CENTRAL", 200_000)]);
+      unhealthy.decisions[0].sourceChecks[0].status = status;
+      expect(() => calculatePolicyFinancialsV1({ base, benefits: unhealthy })).toThrow(RangeError);
+    }
     const malformedBase = { ...base, annualRows: base.annualRows.slice(1) };
     expect(() => calculatePolicyFinancialsV1({ base: malformedBase, benefits: valid })).toThrow(RangeError);
   });

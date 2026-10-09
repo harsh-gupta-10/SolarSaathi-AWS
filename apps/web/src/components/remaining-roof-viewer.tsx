@@ -89,7 +89,7 @@ export function RemainingRoofViewer({ response, candidate }: { response: Designs
       {webGl === "unavailable" && <span>3D unavailable on this device.</span>}
     </div>
       <div className="design-viewer-stage">{mode === "3d" && webGl === "available" && hasGeometry ?
-        <div role="img" aria-label={`Interactive schematic 3D roof showing solar panels, ${shownZoneCount} of ${totalZoneCount} modeled free zones and the selected concept footprint`} className="design-canvas-wrap">
+        <div className="design-canvas-wrap">
           <SceneBoundary key={response.analysisId}><RemainingRoofScene geometry={response.geometry} placement={candidate?.placement}
             command={command} reducedMotion={reducedMotion} /></SceneBoundary></div> :
         mode === "plan" && hasGeometry ? <PlanView geometry={response.geometry} placement={candidate?.placement} /> :

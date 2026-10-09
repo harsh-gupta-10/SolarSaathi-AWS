@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { SatelliteBuildingMap } from "../src/components/satellite-building-map";
 
 afterEach(() => { cleanup(); Reflect.deleteProperty(window, "google"); });
@@ -48,5 +49,22 @@ describe("satellite building map", () => {
     expect(rectangles).toHaveLength(1);
     expect(rectangles[0]?.fillOpacity).toBe(0.16);
     expect(screen.getByText(/approximate Google building bounds/)).toBeTruthy();
+  });
+  it("offers a retry after the map script fails without losing coordinate selection", async () => {
+    const selected = { latitude: 19.076, longitude: 72.8777 };
+    render(<SatelliteBuildingMap apiKey="public-map-key" center={selected} point={selected} onPointChange={vi.fn()} />);
+    const script = document.querySelector<HTMLScriptElement>('script[src^="https://maps.googleapis.com/maps/api/js"]');
+    expect(script).toBeTruthy();
+    fireEvent.error(script!);
+    expect(await screen.findByRole("button", { name: "Retry satellite map" })).toBeTruthy();
+    expect(screen.getByText(/enter coordinates below/)).toBeTruthy();
+
+    Object.defineProperty(window, "google", { configurable: true, value: { maps: {
+      Map: class { setCenter() {} addListener() { return { remove() {} }; } },
+      Circle: class { setCenter() {} setMap() {} },
+      Rectangle: class { setMap() {} },
+    } } });
+    await userEvent.click(screen.getByRole("button", { name: "Retry satellite map" }));
+    expect(await screen.findByText(/Amber: selected house/)).toBeTruthy();
   });
 });

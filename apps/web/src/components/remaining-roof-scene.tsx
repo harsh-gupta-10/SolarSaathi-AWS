@@ -88,6 +88,7 @@ export default function RemainingRoofScene({ geometry, placement, command, reduc
   const { center, distance } = bounds;
   return <Canvas camera={{ position: [center.x + distance * 0.7, center.y + distance * 0.85,
     center.z + distance * 0.8], fov: 44, near: 0.1, far: distance * 10 }}
+    role="img" aria-label={`Interactive schematic 3D roof with ${geometry.panels.length} solar panels, ${geometry.freeZones.length} of ${geometry.totalFreeZoneCount} modeled free zones${placement ? " and a selected concept footprint" : ""}`}
     frameloop="demand" dpr={[1, 1.8]} gl={{ antialias: true, alpha: false }}
     fallback={<p role="status">3D graphics are unavailable. Use the plan view.</p>}>
     <color attach="background" args={["#102c28"]} />

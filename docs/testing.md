@@ -270,6 +270,25 @@ desktop and a 375-pixel narrow viewport; no horizontal overflow was measured.
 Cloud IAM, DynamoDB/S3 transactions and live official-source coverage remain
 unverified until deployment is authorized.
 
+### Phase 19 hardening
+
+Exercise policy source checks in READY, RUNNING and ERROR states; retain a
+failure code across a recent earlier check; reject unknown crawl states,
+future timestamps, disabled sources, changed source registry versions and
+document hash changes. A mixed healthy/failed catalog must count only healthy
+selected benefits and omit numeric amounts from unhealthy decisions while
+showing incomplete coverage. Test all orderings of a shared cap and an
+asymmetric compatibility edge. Financial projection independently rejects a
+selected decision with a non-HEALTHY source. API request parsing rejects
+noncanonical base64, invalid UTF-8, oversized encoded bodies and missing
+content-type headers. SAM tests assert every product route inherits Cognito
+authorization. Web tests cover cross-account saved-address/customer clearing,
+map-script retry, application request failure/retry, accessible 3D canvases,
+and partial policy totals that must remain undetermined.
+
+The Phase 19 `pnpm check` gate passed lint, typecheck, **834 tests**, the
+bundled API/PDF smoke and production builds.
+
 ### Phase 11 policy-backed financial scenario
 
 The Phase 11 local `pnpm check` gate passed 692 tests across the workspace,

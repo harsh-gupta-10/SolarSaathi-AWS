@@ -90,7 +90,10 @@ describe("policy source registry and provenance", () => {
     expect(sourceIsStale(source(), at)).toBe(false);
     expect(sourceIsStale(source({ lastCheckedAt: undefined }), at)).toBe(true);
     expect(sourceIsStale(source({ lastCheckedAt: "2026-10-01T00:00:00.000Z" }), at)).toBe(true);
+    expect(sourceIsStale(source({ lastCheckedAt: "2026-10-08T12:00:00.001Z" }), at)).toBe(true);
     expect(isPolicyEvidencePublishable(evidence(), at)).toBe(true);
+    expect(isPolicyEvidencePublishable(evidence(source({ lastCheckedAt: "2026-10-08T12:00:00.001Z" })), at)).toBe(false);
+    expect(isPolicyEvidencePublishable(evidence(source({ enabled: false })), at)).toBe(false);
     expect(isPolicyEvidencePublishable(evidence(source({ registryStatus: "PROPOSED", enabled: false,
       curatedAt: undefined, curatorId: undefined })), at)).toBe(false);
   });

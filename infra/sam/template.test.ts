@@ -81,6 +81,24 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(events.Health.Properties.Auth).toEqual({ Authorizer: "NONE" });
   });
 
+  it("never overrides Cognito authorization on product API events", () => {
+    let protectedRoutes = 0;
+    for (const [name, resource] of Object.entries(template.Resources)) {
+      if (resource.Type !== "AWS::Serverless::Function") continue;
+      const events = (resource.Properties.Events ?? {}) as Record<string, {
+        Type: string; Properties: { RestApiId?: unknown; Auth?: unknown };
+      }>;
+      for (const [eventName, event] of Object.entries(events)) {
+        if (event.Type !== "Api") continue;
+        expect(event.Properties.RestApiId, `${name}.${eventName} uses the protected API`).toBe("Api");
+        if (name === "HealthFunction" && eventName === "Health") continue;
+        expect(event.Properties.Auth, `${name}.${eventName} must inherit Cognito auth`).toBeUndefined();
+        protectedRoutes++;
+      }
+    }
+    expect(protectedRoutes).toBeGreaterThan(30);
+  });
+
   it("keeps international research authenticated, temporary and limited to geocode plus cache keys", () => {
     const research = properties("InternationalResearchFunction");
     expect(research.Handler).toBe("handlers/international-research.handler");

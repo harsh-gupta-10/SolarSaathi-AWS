@@ -26,13 +26,23 @@ function loadMaps(key: string): Promise<MapsApi> {
     const callback = `solarsaathiMapReady${Math.random().toString(36).slice(2)}`;
     const global = window as unknown as Record<string, unknown>;
     const script = document.createElement("script");
-    const finish = () => { delete global[callback]; };
-    global[callback] = () => {
-      finish();
-      if (window.google?.maps) resolve(window.google.maps);
-      else { loader = undefined; reject(new Error("Google Maps did not initialize.")); }
+    let finished = false;
+    const finish = () => {
+      if (finished) return false;
+      finished = true; window.clearTimeout(timeout); delete global[callback];
+      return true;
     };
-    script.onerror = () => { finish(); loader = undefined; script.remove(); reject(new Error("Google Maps could not load.")); };
+    const fail = (message: string) => {
+      if (!finish()) return;
+      loader = undefined; script.remove(); reject(new Error(message));
+    };
+    const timeout = window.setTimeout(() => fail("Google Maps took too long to load."), 15_000);
+    global[callback] = () => {
+      if (!finish()) return;
+      if (window.google?.maps) resolve(window.google.maps);
+      else { loader = undefined; script.remove(); reject(new Error("Google Maps did not initialize.")); }
+    };
+    script.onerror = () => fail("Google Maps could not load.");
     script.async = true;
     script.src = `https://maps.googleapis.com/maps/api/js?${new URLSearchParams({ key, loading: "async", v: "weekly", callback, region: "IN" })}`;
     document.head.append(script);
@@ -58,12 +68,14 @@ export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, ro
   const centerRef = useRef(center);
   const pointRef = useRef(point);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   useEffect(() => { changeRef.current = onPointChange; }, [onPointChange]);
   useEffect(() => { centerRef.current = center; mapRef.current?.setCenter(toMapPoint(center)); }, [center]);
   useEffect(() => { pointRef.current = point; circleRef.current?.setCenter(toMapPoint(point)); }, [point]);
   useEffect(() => {
     let active = true;
     let listener: MapsListener | undefined;
+    setStatus("loading");
     void loadMaps(apiKey).then(maps => {
       if (!active || !elementRef.current) return;
       const map = new maps.Map(elementRef.current, { center: toMapPoint(centerRef.current), zoom: 20, mapTypeId: "satellite",
@@ -84,7 +96,7 @@ export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, ro
       circleRef.current = null; roofCircleRef.current = null; deviceCircleRef.current = null;
       accuracyCircleRef.current = null; boundsRef.current = null; mapRef.current = null; };
     // The map instance persists while the selected candidate changes.
-  }, [apiKey]);
+  }, [apiKey, loadAttempt]);
   useEffect(() => {
     deviceCircleRef.current?.setMap(null); accuracyCircleRef.current?.setMap(null);
     deviceCircleRef.current = null; accuracyCircleRef.current = null;
@@ -117,7 +129,10 @@ export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, ro
   return <div className="relative min-h-72 overflow-hidden rounded-xl border bg-muted">
     <div ref={elementRef} className="absolute inset-0" role="region" aria-label="Satellite map for selecting your building" />
     {status === "loading" && <p className="absolute inset-0 flex items-center justify-center bg-muted p-6 text-center" role="status">Loading satellite map…</p>}
-    {status === "error" && <p className="absolute inset-0 flex items-center justify-center bg-muted p-6 text-center" role="status">Satellite imagery could not load. Select the address result or enter coordinates below.</p>}
+    {status === "error" && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-muted p-6 text-center" role="status">
+      <p>Satellite imagery could not load. Select the address result or enter coordinates below.</p>
+      <button type="button" className="rounded-md border border-current px-4 py-2 font-medium underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" onClick={() => setLoadAttempt(value => value + 1)}>Retry satellite map</button>
+    </div>}
     {status === "ready" && <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-background/95 px-3 py-2 text-xs font-medium shadow-sm" aria-hidden="true">
       <span>● Amber: selected house</span>{deviceLocation && <span>● Blue: device location</span>}{roofBounds && <span>▣ Green: approximate Google building bounds</span>}
     </div>}

@@ -69,6 +69,68 @@ describe("roof analysis flow", () => {
     expect(api.createCustomer).not.toHaveBeenCalled();
     expect(api.createProperty).not.toHaveBeenCalled();
   });
+  it("removes a backend property address on account change", async () => {
+    window.history.replaceState({}, "", "/app/analyze?propertyId=property-1");
+    identity.profile = { userId: "broker-1", cognitoSub: "broker-1", email: "broker@example.com",
+      name: "Broker", role: "BROKER" };
+    broker.property.mockResolvedValue({ propertyId: "property-1", customerId: "customer-1",
+      label: "Private home", address: "Private House, Pune 411001" });
+    const view = render(<AnalyzeStart />);
+    expect(await screen.findByText("Private House, Pune 411001")).toBeTruthy();
+    identity.status = "signedOut"; identity.profile = null;
+    view.rerender(<AnalyzeStart />);
+    expect(screen.queryByText("Private House, Pune 411001")).toBeNull();
+    expect(await screen.findByText(candidate.address)).toBeTruthy();
+
+    window.history.replaceState({}, "", "/app/analyze");
+    identity.status = "signedIn";
+    identity.profile = { userId: "broker-2", cognitoSub: "broker-2", email: "other@example.com",
+      name: "Other broker", role: "BROKER" };
+    view.rerender(<AnalyzeStart />);
+    expect(screen.queryByText("Private House, Pune 411001")).toBeNull();
+    expect(await screen.findByLabelText("Customer name")).toHaveProperty("value", "");
+  });
+  it("clears an unsaved broker customer name when another broker signs in", async () => {
+    identity.profile = { userId: "broker-1", cognitoSub: "broker-1", email: "broker@example.com",
+      name: "Broker", role: "BROKER" };
+    const user = userEvent.setup();
+    const view = render(<AnalyzeStart />);
+    await user.type(await screen.findByLabelText("Customer name"), "Previous customer");
+    identity.profile = { userId: "broker-2", cognitoSub: "broker-2", email: "other@example.com",
+      name: "Other broker", role: "BROKER" };
+    view.rerender(<AnalyzeStart />);
+    expect(await screen.findByLabelText("Customer name")).toHaveProperty("value", "");
+  });
+  it("loads a saved property link for a newly selected account", async () => {
+    window.history.replaceState({}, "", "/app/analyze?propertyId=property-1");
+    broker.property.mockResolvedValueOnce({ propertyId: "property-1", customerId: "customer-1",
+      label: "First home", address: "First House, Pune 411001" });
+    const view = render(<AnalyzeStart />);
+    expect(await screen.findByText("First House, Pune 411001")).toBeTruthy();
+    broker.property.mockResolvedValueOnce({ propertyId: "property-1", customerId: "customer-2",
+      label: "Second home", address: "Second House, Pune 411001" });
+    identity.profile = { userId: "owner-2", cognitoSub: "owner-2", email: "other@example.com",
+      name: "Other", role: "HOMEOWNER" };
+    view.rerender(<AnalyzeStart />);
+    expect(screen.queryByText("First House, Pune 411001")).toBeNull();
+    expect(await screen.findByText("Second House, Pune 411001")).toBeTruthy();
+    expect(broker.property).toHaveBeenCalledTimes(2);
+  });
+  it("reloads a linked property when the same user changes organization", async () => {
+    window.history.replaceState({}, "", "/app/analyze?propertyId=property-1");
+    identity.profile = { userId: "broker-1", cognitoSub: "broker-1", email: "broker@example.com",
+      name: "Broker", role: "BROKER", organizationId: "org-one" };
+    broker.property.mockResolvedValueOnce({ propertyId: "property-1", customerId: "customer-1",
+      label: "First organization", address: "First Org House, Pune 411001" });
+    const view = render(<AnalyzeStart />);
+    expect(await screen.findByText("First Org House, Pune 411001")).toBeTruthy();
+    broker.property.mockResolvedValueOnce({ propertyId: "property-1", customerId: "customer-2",
+      label: "Second organization", address: "Second Org House, Pune 411001" });
+    identity.profile = { ...identity.profile, organizationId: "org-two" };
+    view.rerender(<AnalyzeStart />);
+    expect(screen.queryByText("First Org House, Pune 411001")).toBeNull();
+    expect(await screen.findByText("Second Org House, Pune 411001")).toBeTruthy();
+  });
   it("keeps signed-out addresses as drafts without calling the backend", async () => {
     identity.status = "signedOut"; identity.profile = null;
     render(<AnalyzeStart />);

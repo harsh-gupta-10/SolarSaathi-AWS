@@ -60,7 +60,12 @@ function BenefitResults({ response }: { response: BenefitEvaluationResponse }) {
       <p>No active, current, approved rule set can be evaluated for this assessment. No amount is inferred.</p>
       {!!response.reasonCodes?.length && <p>Service status: {response.reasonCodes.map(displayCode).join(" · ")}</p>}
     </div></div>;
-  const amountDetermined = result.decisions.some(decision => decision.status === "SELECTED" || decision.status === "INELIGIBLE");
+  const sourceCurrent = (decision: typeof result.decisions[number]) => decision.sourceChecks.every(check =>
+    check.fresh && check.status === "HEALTHY");
+  const selected = result.decisions.filter(decision => decision.status === "SELECTED");
+  const amountDetermined = selected.every(sourceCurrent) && (selected.length > 0 ||
+    result.coverageComplete && result.decisions.length > 0 && result.decisions.every(decision =>
+      decision.status !== "UNKNOWN" && sourceCurrent(decision)));
   return <section className="benefit-results" aria-labelledby="benefit-results-title">
     <p className="sr-only" role="status">Benefit evaluation ready. {amountDetermined ?
       `Verified rules currently include ${rupees.format(result.totalEligibleBenefitPaise / 100)}.` :
@@ -86,8 +91,9 @@ function BenefitResults({ response }: { response: BenefitEvaluationResponse }) {
         {decision.status === "SELECTED" && decision.countedAmountPaise !== undefined &&
           <strong>{rupees.format(decision.countedAmountPaise / 100)}</strong>}
         {decision.reasonCodes.length > 0 && <p>{decision.reasonCodes.map(displayCode).join(" · ")}</p>}
-        <div className="benefit-evidence"><span>Verified policy {decision.policyId.replace(/^POLICY#/, "")} · version {decision.policyVersion} · {decision.jurisdiction}</span>
+        <div className="benefit-evidence"><span>{sourceCurrent(decision) ? "Verified policy" : "Previously verified rule"} {decision.policyId.replace(/^POLICY#/, "")} · version {decision.policyVersion} · {decision.jurisdiction}</span>
           <small>Rule effective {decision.effectiveFrom}{decision.effectiveTo ? ` through ${decision.effectiveTo}` : " onward"} · verified {formatDate(decision.lastVerifiedAt)}</small>
+          {!sourceCurrent(decision) && <small>A current source check is missing, failed or stale. This stored rule does not establish current eligibility.</small>}
           {decision.citations.map((source, index) => <div key={`${source.documentId}-${source.documentVersion}-${index}`}>
             <a href={source.sourceUrl} target="_blank" rel="noopener noreferrer">{source.publisherName} · {source.documentTitle}<ArrowUpRight size={14} aria-hidden="true" /></a>
             <small>Document v{source.documentVersion} · {source.locator.pageNumber ? `page ${source.locator.pageNumber}` :

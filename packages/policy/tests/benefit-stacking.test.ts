@@ -91,9 +91,15 @@ describe("verified deterministic benefit stack", () => {
     const current = evaluateBenefitStackV1(base);
     expect(current.decisions[0]).toMatchObject({ status: "SELECTED", countedAmountPaise: 10_000,
       sourceChecks: [{ sourceId: source.sourceId, lastCheckedAt: checkedAt, fresh: true, status: "HEALTHY" }] });
-    expect(evaluateBenefitStackV1({ ...base, sourceHealth: [{ sourceId: source.sourceId, status: "FAILED",
-      lastCheckedAt: checkedAt }] })).toMatchObject({ totalEligibleBenefitPaise: 10_000,
-      warnings: expect.arrayContaining(["SOURCE_CHECK_DEGRADED"]) });
+    for (const status of ["FAILED", "DEGRADED"] as const) {
+      const failed = evaluateBenefitStackV1({ ...base, sourceHealth: [{ sourceId: source.sourceId, status,
+        lastCheckedAt: checkedAt }] });
+      expect(failed).toMatchObject({ totalEligibleBenefitPaise: 0,
+        coverageComplete: false, decisions: [{ status: "UNKNOWN", reasonCodes: ["SOURCE_STALE_OR_UNCHECKED"],
+          sourceChecks: [{ fresh: false, status }] }],
+        warnings: expect.arrayContaining(["SOURCE_CHECK_DEGRADED", "POLICY_COVERAGE_UNVERIFIED"]) });
+      expect(failed.decisions[0]).not.toHaveProperty("calculatedAmountPaise");
+    }
     for (const health of [[], [{ sourceId: source.sourceId, status: "STALE" as const,
       lastCheckedAt: checkedAt }], [{ sourceId: source.sourceId, status: "HEALTHY" as const,
       lastCheckedAt: "2026-10-01T00:00:00.000Z" }]]) {
@@ -101,6 +107,35 @@ describe("verified deterministic benefit stack", () => {
         totalEligibleBenefitPaise: 0, decisions: [{ status: "UNKNOWN",
           reasonCodes: ["SOURCE_STALE_OR_UNCHECKED"] }] });
     }
+  });
+
+  it("omits a failed source's numeric amount when another healthy rule keeps the response available", () => {
+    const healthy = rule("HEALTHY", 10_000), failed = rule("FAILED", 25_000);
+    const base = input([healthy, failed]);
+    const otherSource: PolicySourceV1 = { ...source, sourceId: "SRC#SYNTHETIC_OTHER",
+      name: "Synthetic portal source", publisherName: "Synthetic portal",
+      sourceType: "SCHEME_PORTAL", canonicalUrl: "https://solarrooftop.pmsuryaghar.gov.in/",
+      allowedHosts: ["solarrooftop.pmsuryaghar.gov.in"] };
+    const evidence = base.evidence.map(item => {
+      if (item.fact.policyId !== failed.policyId) return item;
+      const document = { ...item.document, sourceId: otherSource.sourceId,
+        canonicalUrl: otherSource.canonicalUrl };
+      return { ...item, source: otherSource, document,
+        version: { ...item.version, documentRefs: item.version.documentRefs.map(ref => ({ ...ref,
+          sourceId: otherSource.sourceId })) },
+        fact: { ...item.fact, citation: buildPolicyCitation(otherSource, document,
+          item.fact.citation.locator) } };
+    });
+    const result = evaluateBenefitStackV1({ ...base, evidence, sourceHealth: [
+      { sourceId: source.sourceId, status: "HEALTHY", lastCheckedAt: checkedAt },
+      { sourceId: otherSource.sourceId, status: "FAILED", lastCheckedAt: checkedAt },
+    ] });
+    expect(result.totalEligibleBenefitPaise).toBe(10_000);
+    expect(result.decisions[0]).toMatchObject({ status: "UNKNOWN",
+      reasonCodes: ["SOURCE_STALE_OR_UNCHECKED"], sourceChecks: [{ fresh: false, status: "FAILED" }] });
+    expect(result.decisions[0]).not.toHaveProperty("calculatedAmountPaise");
+    expect(result.decisions[1]).toMatchObject({ status: "SELECTED", countedAmountPaise: 10_000 });
+    expect(result.warnings).toContain("SOURCE_CHECK_DEGRADED");
   });
 
   it("requires affirmative compatibility in both rules and respects explicit combined caps", () => {
@@ -188,6 +223,36 @@ describe("verified deterministic benefit stack", () => {
     const result = evaluateBenefitStackV1(input(rules));
     expect(result.totalEligibleBenefitPaise).toBe(40_000);
     expect(result.decisions.map(value => value.status)).toEqual(["EXCLUDED", "SELECTED", "SELECTED"]);
+  });
+
+  it("keeps the same capped optimum for every input order and rejects asymmetric compatibility", () => {
+    const amounts = { A: 30_000, B: 25_000, C: 20_000 } as const;
+    const names = ["A", "B", "C"] as const;
+    const capped = names.map(name => {
+      const edges = names.filter(other => other !== name).map(other => ({
+        withBenefitId: `BENEFIT#${other}`, mode: "CAPPED_COMBINED" as const,
+        evidenceFactIds: [`FACT#${name}#EDGE#${other}`],
+      }));
+      return rule(name, amounts[name], { factIds: [`FACT#${name}`, `FACT#${name}#CAP`,
+        ...edges.flatMap(edge => edge.evidenceFactIds)], combinedCapGroupId: "SHARED",
+      combinedCapPaise: 40_000, compatibility: edges });
+    });
+    for (const permutation of [[capped[0], capped[1], capped[2]], [capped[0], capped[2], capped[1]],
+      [capped[1], capped[0], capped[2]], [capped[1], capped[2], capped[0]],
+      [capped[2], capped[0], capped[1]], [capped[2], capped[1], capped[0]]]) {
+      const result = evaluateBenefitStackV1(input(permutation as PolicyBenefitRuleV1[]));
+      expect(result.totalEligibleBenefitPaise).toBe(40_000);
+      expect(result.decisions.filter(item => item.status === "SELECTED")
+        .map(item => [item.benefitId, item.countedAmountPaise])).toEqual([
+        ["BENEFIT#A", 30_000], ["BENEFIT#B", 10_000],
+      ]);
+    }
+    const [a, b] = pair(rule("ASYMA", 30_000), rule("ASYMB", 25_000), "ADDITIVE");
+    const asymmetric = { ...b, compatibility: b.compatibility.map(edge => ({ ...edge,
+      mode: "MUTUALLY_EXCLUSIVE" as const })) };
+    const result = evaluateBenefitStackV1(input([a, asymmetric]));
+    expect(result.totalEligibleBenefitPaise).toBe(30_000);
+    expect(result.decisions.map(item => item.status)).toEqual(["SELECTED", "EXCLUDED"]);
   });
 
   it("uses BigInt intermediates and checked paise results", () => {

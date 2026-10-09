@@ -84,6 +84,7 @@ export default function RoofLayoutScene({ layout, command, reducedMotion }: { la
   const measuredSegments = useMemo(() => layout.segments.filter(segment => segment.geometryKind !== "AREA_ONLY_ILLUSTRATION"), [layout.segments]);
   const symbolicSegments = useMemo(() => layout.segments.filter(segment => segment.geometryKind === "AREA_ONLY_ILLUSTRATION"), [layout.segments]);
   return <Canvas camera={{ position: [center.x + distance * 0.7, center.y + distance * 0.85, center.z + distance * 0.8], fov: 44, near: 0.1, far: distance * 10 }}
+    role="img" aria-label={`Interactive schematic 3D roof with ${layout.segments.length} modeled segments and ${layout.panels.length} proposed solar panels`}
     frameloop="demand" dpr={[1, 1.8]} gl={{ antialias: true, alpha: false }} fallback={<p role="status">3D graphics are unavailable. Use the plan view.</p>}>
     <color attach="background" args={["#102a27"]} />
     <ambientLight intensity={1.6} />
