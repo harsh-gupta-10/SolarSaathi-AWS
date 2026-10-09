@@ -21,7 +21,7 @@ export function createPolicyCrawlerHandler(dependencies: PolicyCrawlerHandlerDep
     }
     const result = await createCrawler(tableName, bucket, environment.AWS_REGION).runDue();
     console.log(JSON.stringify({ event: "policy_crawl_completed", ...result }));
-    if (result.failed > 0 || result.backlog) throw new Error("Policy crawler failed or exceeded its bounded source batch.");
+    if (result.status !== "COMPLETED") throw new Error("Policy crawler failed or exceeded its bounded source batch.");
     return result;
   };
 }

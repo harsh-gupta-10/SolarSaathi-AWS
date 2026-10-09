@@ -30,7 +30,7 @@ const record = { schemaVersion: 1, candidate, reviewStatus: "PENDING_APPROVAL", 
 const detail = { schemaVersion: 1, candidate: record, source,
   document: { schemaVersion: 1, documentId: "DOC#1", version: 1, title: "Illustrative note",
     canonicalUrl: "https://example.invalid/source", sha256: sha, retrievedAt: at },
-  sourceFresh: true, audit: [], requestId: "request-1" };
+  sourceFresh: true, sourceHealthStatus: "HEALTHY", sourceWarnings: [], audit: [], requestId: "request-1" };
 
 beforeEach(() => {
   mocks.session.mockReset();
@@ -102,5 +102,18 @@ describe("policy review API client", () => {
       rateLimitClearanceReason: "Official host approved retry" }));
     await policyReviewApi.crawl("admin-1", source.sourceId);
     expect(fetcher.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ sourceId: source.sourceId }));
+  });
+
+  it("parses paged source health and the server-reviewed registration host list", async () => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, status: 200,
+      json: async () => ({ schemaVersion: 1, sources: [source], sourceStates: [{ sourceId: source.sourceId,
+        sourceFresh: false, healthStatus: "STALE", warnings: ["SOURCE_CHECK_OVERDUE"] }],
+      hostRegistryVersion: 1, registerableHosts: [{ host: "official.example.gov",
+        sourceType: "STATE_ENERGY_DEPARTMENT", jurisdiction: "IN-MH" }],
+      nextCursor: "next-page", requestId: "request-1" }) });
+    vi.stubGlobal("fetch", fetcher);
+    await expect(policyReviewApi.sources("admin-1", undefined, "opaque-source"))
+      .resolves.toMatchObject({ sourceStates: [{ healthStatus: "STALE" }], nextCursor: "next-page" });
+    expect(fetcher.mock.calls[0]?.[0]).toContain("cursor=opaque-source");
   });
 });

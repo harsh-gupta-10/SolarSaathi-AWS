@@ -322,6 +322,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(routes).toEqual([
       "POST /admin/policy/sources", "GET /admin/policy/sources", "POST /admin/policy/sources/curate",
       "POST /admin/policy/sources/crawl", "POST /admin/policy/documents", "GET /admin/policy/queue",
+      "GET /admin/policy/crawler-runs", "GET /admin/policy/conflicts",
       "GET /admin/policy/candidates/{candidateId}", "POST /admin/policy/candidates/{candidateId}/approve",
       "POST /admin/policy/candidates/{candidateId}/reject",
       "GET /admin/policy/changes/{changeId}", "POST /admin/policy/changes/{changeId}/approve",
@@ -391,10 +392,19 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(publication.Handler).toBe("handlers/policy-publication.handler");
     expect(publication.Events).toMatchObject({ CreateBenefitDraft: { Properties: { Method: "POST" } },
       PublishBenefitDraft: { Properties: { Method: "POST" } },
-      RejectBenefitDraft: { Properties: { Method: "POST" } } });
+      RejectBenefitDraft: { Properties: { Method: "POST" } },
+      ListActiveBenefitPolicies: { Properties: { Method: "GET", Path: "/admin/policy/benefits/active" } },
+      ListBenefitVersions: { Properties: { Method: "GET", Path: "/admin/policy/benefits/versions/{policyId}" } },
+      BenefitVersionDetail: { Properties: { Method: "GET", Path: "/admin/policy/benefits/versions/{policyId}/{version}" } },
+      ProposeBenefitRollback: { Properties: { Method: "POST", Path: "/admin/policy/benefits/rollbacks" } },
+      ListBenefitRollbackQueue: { Properties: { Method: "GET", Path: "/admin/policy/benefits/rollbacks/queue" } },
+      BenefitRollbackDetail: { Properties: { Method: "GET", Path: "/admin/policy/benefits/rollbacks/{rollbackId}" } },
+      ApproveBenefitRollback: { Properties: { Method: "POST", Path: "/admin/policy/benefits/rollbacks/{rollbackId}/approve" } },
+      RejectBenefitRollback: { Properties: { Method: "POST", Path: "/admin/policy/benefits/rollbacks/{rollbackId}/reject" } } });
     const publishPolicy = JSON.stringify(publication.Policies);
     expect(publishPolicy).toContain("dynamodb:ConditionCheckItem");
     expect(publishPolicy).toContain("index/GSI6");
+    expect(publishPolicy).toContain("index/GSI5");
     expect(publishPolicy).toContain("s3:GetObjectVersion");
     expect(publishPolicy).not.toMatch(/AnalysesTable|DeleteObject|secretsmanager|bedrock/);
     const benefits = properties("BenefitsFunction");

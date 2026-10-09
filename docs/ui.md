@@ -303,6 +303,25 @@ or active sources have no pending changes. Neither approval path publishes a
 benefit rule or homeowner subsidy amount. `/demo/policy-review` is a clearly
 labelled synthetic interface preview without API writes.
 
+## Policy administration (Phase 18)
+
+The console adds source registration and paged health cards, a durable crawler
+run timeline, and a filtered unresolved-conflict view. Show stale or failed
+sources in text with last-check time and a path back to their official URL.
+An empty conflict page with a continuation cursor offers **Load more**; it
+cannot imply there are no remaining conflicts. Evidence review stays separate
+from verified benefit publication.
+
+Published policies have a paged history and a current-pointer badge. An
+immutable historical row is labelled **Published, not current** even if its
+stored version record says `ACTIVE`. Compare verified rule terms, effective
+dates, source/document hash and citations before proposing rollback. A
+rollback form shows current and target versions, requires an audit reason and
+creates a pending request. A separate policy administrator reviews the request
+with another reason; stale evidence, a changed active pointer or source
+precedence conflict is shown as a blocked state. The synthetic policy-review
+demo never submits a source, review or rollback request.
+
 ## Application tracker
 
 Timeline with checkboxes/status.

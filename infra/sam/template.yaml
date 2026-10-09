@@ -697,6 +697,10 @@ Resources:
               Effect: Allow
               Action: dynamodb:Query
               Resource: !Sub "${PolicyTable.Arn}/index/GSI6"
+            - Sid: ReadActivePublicationIndex
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${PolicyTable.Arn}/index/GSI5"
             - Sid: ReadPinnedPublicationEvidence
               Effect: Allow
               Action: s3:GetObjectVersion
@@ -720,6 +724,30 @@ Resources:
         RejectBenefitDraft:
           Type: Api
           Properties: { RestApiId: !Ref Api, Path: "/admin/policy/benefits/{draftId}/reject", Method: POST }
+        ListActiveBenefitPolicies:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /admin/policy/benefits/active, Method: GET }
+        ListBenefitVersions:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/policy/benefits/versions/{policyId}", Method: GET }
+        BenefitVersionDetail:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/policy/benefits/versions/{policyId}/{version}", Method: GET }
+        ProposeBenefitRollback:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /admin/policy/benefits/rollbacks, Method: POST }
+        ListBenefitRollbackQueue:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /admin/policy/benefits/rollbacks/queue, Method: GET }
+        BenefitRollbackDetail:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/policy/benefits/rollbacks/{rollbackId}", Method: GET }
+        ApproveBenefitRollback:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/policy/benefits/rollbacks/{rollbackId}/approve", Method: POST }
+        RejectBenefitRollback:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/policy/benefits/rollbacks/{rollbackId}/reject", Method: POST }
 
   BenefitsFunction:
     Type: AWS::Serverless::Function
@@ -938,6 +966,18 @@ Resources:
           Properties:
             RestApiId: !Ref Api
             Path: /admin/policy/queue
+            Method: GET
+        PolicyCrawlerRuns:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/crawler-runs
+            Method: GET
+        PolicyEvidenceConflicts:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /admin/policy/conflicts
             Method: GET
         PolicyCandidateDetail:
           Type: Api

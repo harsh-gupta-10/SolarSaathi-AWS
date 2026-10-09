@@ -44,7 +44,7 @@ const change: PolicyReviewDemoFixture["changes"][number] = {
 };
 const demo: PolicyReviewDemoFixture = {
   items: [review], changes: [change], sources: [source],
-  sourceStates: [{ sourceId: source.sourceId, sourceFresh: true,
+  sourceStates: [{ sourceId: source.sourceId, sourceFresh: true, healthStatus: "HEALTHY", warnings: [],
     crawlState: { schemaVersion: 1, sourceId: source.sourceId, status: "READY", lastCheckedAt: checkedAt } }],
   detail: {
     candidate: review, source,
@@ -52,7 +52,7 @@ const demo: PolicyReviewDemoFixture = {
       title: "Illustrative procedure note", canonicalUrl: sourceUrl,
       sha256: "0".repeat(64), retrievedAt: checkedAt },
     crawlState: { schemaVersion: 1, sourceId: source.sourceId, status: "READY", lastCheckedAt: checkedAt },
-    sourceFresh: true,
+    sourceFresh: true, sourceHealthStatus: "HEALTHY", sourceWarnings: [],
     audit: [{ schemaVersion: 1, eventId: "00000000-0000-4000-8000-000000000000",
       action: "DOCUMENT_CHANGED", occurredAt: checkedAt, actorId: "DEMO_SYSTEM",
       sourceId: source.sourceId, candidateId: review.candidate.candidateId }],
@@ -63,7 +63,8 @@ const demo: PolicyReviewDemoFixture = {
       title: "Illustrative procedure note", canonicalUrl: sourceUrl,
       sha256: "0".repeat(64), retrievedAt: checkedAt },
     crawlState: { schemaVersion: 1, sourceId: source.sourceId, status: "READY", lastCheckedAt: checkedAt },
-    sourceFresh: true, textPreview: "Fictional procedure note. Applicants may attach a roof photograph. This text is a synthetic interface fixture.",
+    sourceFresh: true, sourceHealthStatus: "HEALTHY", sourceWarnings: [],
+    textPreview: "Fictional procedure note. Applicants may attach a roof photograph. This text is a synthetic interface fixture.",
     textTruncated: false, audit: [], requestId: "synthetic-demo" },
 };
 

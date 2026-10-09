@@ -68,7 +68,9 @@ const source = z.object({
 });
 const crawlState = z.object({ schemaVersion: z.literal(1), sourceId: z.string().min(1), status: z.enum(["READY", "RUNNING", "ERROR"]),
   lastCheckedAt: timestamp.optional(), lastChangedAt: timestamp.optional(), lastErrorCode: z.string().optional() });
-const sourceState = z.object({ sourceId: z.string().min(1), crawlState: crawlState.optional(), sourceFresh: z.boolean() });
+const sourceState = z.object({ sourceId: z.string().min(1), crawlState: crawlState.optional(), sourceFresh: z.boolean(),
+  healthStatus: z.enum(["PROPOSED", "DISABLED", "UNCHECKED", "HEALTHY", "STALE", "ERROR"]),
+  warnings: z.array(z.string().min(1)).max(20) });
 const document = z.object({
   schemaVersion: z.literal(1), documentId: z.string().min(1), version: z.number().int().positive(),
   title: z.string().min(1), canonicalUrl: httpsUrl, sha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -81,14 +83,23 @@ const auditEvent = z.object({
 });
 const queueResponse = z.object({ schemaVersion: z.literal(1), items: z.array(reviewRecord).max(100),
   changes: z.array(changeRecord).max(100), nextCursor: z.string().optional(), requestId: z.string().min(1) });
-const sourceListResponse = z.object({ schemaVersion: z.literal(1), sources: z.array(source).max(500),
-  sourceStates: z.array(sourceState).max(500), requestId: z.string().min(1) });
+const registerableHost = z.object({ host: z.string().regex(/^[a-z0-9.-]+$/), sourceType: z.enum([
+  "GOVERNMENT", "MNRE", "SCHEME_PORTAL", "STATE_ENERGY_DEPARTMENT", "DISCOM", "REGULATOR",
+  "RENEWABLE_AGENCY", "OFFICIAL_NOTIFICATION", "GOVERNMENT_TECHNICAL", "OFFICIAL_INSTITUTION",
+]), jurisdiction: z.string().regex(/^[A-Z]{2}(?:-[A-Z0-9]{1,8}){0,3}$/) });
+const sourceListResponse = z.object({ schemaVersion: z.literal(1), sources: z.array(source).max(50),
+  sourceStates: z.array(sourceState).max(50), hostRegistryVersion: z.literal(1),
+  registerableHosts: z.array(registerableHost).max(50),
+  nextCursor: z.string().min(1).optional(), requestId: z.string().min(1) });
+const sourceRegisterResponse = z.object({ source, created: z.boolean(), requestId: z.string().min(1) });
 const detailResponse = z.object({ candidate: reviewRecord, source, document,
   crawlState: crawlState.optional(),
-  sourceFresh: z.boolean(), audit: z.array(auditEvent), requestId: z.string().min(1) });
+  sourceFresh: z.boolean(), sourceHealthStatus: sourceState.shape.healthStatus,
+  sourceWarnings: z.array(z.string().min(1)).max(20), audit: z.array(auditEvent), requestId: z.string().min(1) });
 const changeDetailResponse = z.object({ schemaVersion: z.literal(1), change: changeRecord, source, document,
   crawlState: crawlState.optional(),
-  sourceFresh: z.boolean(), textPreview: z.string().max(4_000).optional(),
+  sourceFresh: z.boolean(), sourceHealthStatus: sourceState.shape.healthStatus,
+  sourceWarnings: z.array(z.string().min(1)).max(20), textPreview: z.string().max(4_000).optional(),
   textTruncated: z.boolean().optional(), previousTextPreview: z.string().max(4_000).optional(),
   previousTextTruncated: z.boolean().optional(), audit: z.array(auditEvent), requestId: z.string().min(1) });
 const reviewResponse = z.object({ candidate: reviewRecord, requestId: z.string().min(1) });
@@ -101,8 +112,14 @@ export type PolicyReviewRecord = z.infer<typeof reviewRecord>;
 export type PolicyChangeRecord = z.infer<typeof changeRecord>;
 export type PolicyReviewSource = z.infer<typeof source>;
 export type PolicyReviewSourceState = z.infer<typeof sourceState>;
+export type PolicyRegisterableHost = z.infer<typeof sourceListResponse>["registerableHosts"][number];
 export type PolicyReviewDetail = z.infer<typeof detailResponse>;
 export type PolicyChangeDetail = z.infer<typeof changeDetailResponse>;
+export interface RegisterPolicySourceInput { name: string; publisherName: string; jurisdiction: string;
+  sourceType: "GOVERNMENT" | "MNRE" | "SCHEME_PORTAL" | "STATE_ENERGY_DEPARTMENT" | "DISCOM" | "REGULATOR" |
+    "RENEWABLE_AGENCY" | "OFFICIAL_NOTIFICATION" | "GOVERNMENT_TECHNICAL" | "OFFICIAL_INSTITUTION";
+  canonicalUrl: string; crawlFrequency: "DAILY" | "WEEKLY" | "MONTHLY" | "ON_DEMAND";
+  freshnessWindowHours: number; }
 
 export class PolicyReviewError extends Error {
   constructor(public readonly code: string, message: string) { super(message); }
@@ -178,7 +195,11 @@ export const policyReviewApi = {
   queue: (userId: string, signal?: AbortSignal, cursor?: string) => request(userId,
     `/admin/policy/queue?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
     "GET", queueResponse, undefined, signal),
-  sources: (userId: string, signal?: AbortSignal) => request(userId, "/admin/policy/sources", "GET", sourceListResponse, undefined, signal),
+  sources: (userId: string, signal?: AbortSignal, cursor?: string) => request(userId,
+    `/admin/policy/sources?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+    "GET", sourceListResponse, undefined, signal),
+  registerSource: (userId: string, input: RegisterPolicySourceInput, signal?: AbortSignal) => request(userId,
+    "/admin/policy/sources", "POST", sourceRegisterResponse, input, signal),
   detail: (userId: string, candidateId: string, signal?: AbortSignal) => request(userId,
     `/admin/policy/candidates/${encodeURIComponent(candidateId)}`, "GET", detailResponse, undefined, signal)
     .then(result => {

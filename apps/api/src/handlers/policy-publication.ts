@@ -7,13 +7,35 @@ import { DynamoPolicyPublicationRepository, type PolicyPublicationRepository } f
 import { DynamoPolicyRepository, S3PolicyObjectStore, type PolicyRepository } from "../policy/storage";
 import { DynamoPolicyWorkflowRepository, type PolicyWorkflowRepository } from "../policy/workflow-storage";
 
-function route(event: APIGatewayProxyEvent): { action: "create" | "queue" | "detail" | "submit" | "publish" | "reject";
-  draftId?: string } {
+function route(event: APIGatewayProxyEvent): { action: "create" | "queue" | "detail" | "submit" | "publish" | "reject" |
+  "active" | "versions" | "version-detail" | "rollback-create" | "rollback-queue" |
+  "rollback-detail" | "rollback-approve" | "rollback-reject";
+  draftId?: string; policyId?: string; version?: string; rollbackId?: string } {
   const stage = event.requestContext?.stage;
   const path = event.path.startsWith(`/${stage}/`) ? event.path.slice(stage.length + 1) : event.path;
   const selected = path.startsWith("/v1/") ? path : `/v1${path}`;
   if (selected === "/v1/admin/policy/benefits/drafts" && event.httpMethod === "POST") return { action: "create" };
   if (selected === "/v1/admin/policy/benefits/queue" && event.httpMethod === "GET") return { action: "queue" };
+  if (selected === "/v1/admin/policy/benefits/active" && event.httpMethod === "GET") return { action: "active" };
+  if (selected === "/v1/admin/policy/benefits/rollbacks" && event.httpMethod === "POST") return { action: "rollback-create" };
+  if (selected === "/v1/admin/policy/benefits/rollbacks/queue" && event.httpMethod === "GET") return { action: "rollback-queue" };
+  const versions = selected.match(/^\/v1\/admin\/policy\/benefits\/versions\/([^/]+)(?:\/(\d+))?$/);
+  if (versions) {
+    if (event.httpMethod !== "GET") throw new RequestError(405, "METHOD_NOT_ALLOWED", "Use GET for policy versions.");
+    let policyId: string;
+    try { policyId = decodeURIComponent(versions[1]!); }
+    catch { throw new RequestError(400, "INVALID_POLICY_ID", "The policy ID is invalid."); }
+    return versions[2] ? { action: "version-detail", policyId, version: versions[2] } : { action: "versions", policyId };
+  }
+  const rollback = selected.match(/^\/v1\/admin\/policy\/benefits\/rollbacks\/([^/]+)(?:\/(approve|reject))?$/);
+  if (rollback) {
+    const action = rollback[2];
+    if (event.httpMethod !== (action ? "POST" : "GET")) throw new RequestError(405, "METHOD_NOT_ALLOWED", "Use the supported method.");
+    let rollbackId: string;
+    try { rollbackId = decodeURIComponent(rollback[1]!); }
+    catch { throw new RequestError(400, "INVALID_REQUEST", "The rollback ID is invalid."); }
+    return { action: action ? `rollback-${action}` as "rollback-approve" | "rollback-reject" : "rollback-detail", rollbackId };
+  }
   const match = selected.match(/^\/v1\/admin\/policy\/benefits\/(DRAFT%23[a-f0-9]{32}|DRAFT#[a-f0-9]{32})(?:\/(submit|publish|reject))?$/i);
   if (!match) throw new RequestError(404, "NOT_FOUND", "The requested endpoint was not found.");
   const action = (match[2] ?? "detail") as "detail" | "submit" | "publish" | "reject";
@@ -50,8 +72,23 @@ export function createPolicyPublicationHandler(dependencies: PublicationHandlerD
     if (selected.action === "queue") return jsonResponse(200, await service.queue(context.awsRequestId,
       event.queryStringParameters?.cursor));
     if (selected.action === "detail") return jsonResponse(200, await service.detail(selected.draftId!, context.awsRequestId));
+    if (selected.action === "active") return jsonResponse(200, await service.activeCatalog(
+      event.queryStringParameters?.jurisdiction, event.queryStringParameters?.cursor, context.awsRequestId));
+    if (selected.action === "versions") return jsonResponse(200, await service.versions(selected.policyId!,
+      event.queryStringParameters?.cursor, context.awsRequestId));
+    if (selected.action === "version-detail") return jsonResponse(200, await service.versionDetail(
+      selected.policyId!, selected.version!, context.awsRequestId));
+    if (selected.action === "rollback-queue") return jsonResponse(200, await service.rollbackQueue(
+      event.queryStringParameters?.cursor, context.awsRequestId));
+    if (selected.action === "rollback-detail") return jsonResponse(200, await service.rollbackDetail(
+      selected.rollbackId!, context.awsRequestId));
     const body = parseJsonObject(event);
     if (selected.action === "create") return jsonResponse(201, await service.createDraft(body, identity.profile.userId, context.awsRequestId));
+    if (selected.action === "rollback-create") return jsonResponse(201, await service.createRollback(
+      body, identity.profile.userId, context.awsRequestId));
+    if (selected.action === "rollback-approve" || selected.action === "rollback-reject") return jsonResponse(200,
+      await service.reviewRollback(selected.rollbackId!, selected.action === "rollback-approve" ? "approve" : "reject",
+        body, identity.profile.userId, context.awsRequestId));
     return jsonResponse(200, await service.transition(selected.draftId!, selected.action, body,
       identity.profile.userId, context.awsRequestId));
   });

@@ -267,7 +267,12 @@ DETECTED
 Rejected:
 `PENDING_APPROVAL → REJECTED`
 
-A rollback should restore a previous verified version without deleting history.
+Phase 18 rollback requests select a previous verified version for separate
+administrator review. Approval must revalidate the bound current official
+document, source freshness, effective dates and precedence. It publishes a
+new immutable version carrying the reviewed historical semantics and links to
+the prior version in an activation event; it does not repoint `ACTIVE` to an
+older version or delete history. Stale or withdrawn evidence blocks rollback.
 
 ## 12. Staleness
 

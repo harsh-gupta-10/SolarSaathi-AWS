@@ -6,7 +6,8 @@ import { BenefitsService } from "../src/benefits/service";
 import { createPolicyPublicationHandler } from "../src/handlers/policy-publication";
 import { PolicyPublicationService } from "../src/policy/publication-service";
 import { DynamoPolicyPublicationRepository, type PolicyPublicationRepository } from "../src/policy/publication-storage";
-import type { ActivePolicyBundleV1, PolicyPublicationDraftV1, PublicationAuditV1 } from "../src/policy/publication-types";
+import type { ActivePolicyBundleV1, PolicyPublicationDraftV1, PolicyRollbackRequestV1,
+  PolicyRollbackAuditV1, PublicationAuditV1 } from "../src/policy/publication-types";
 import type { PolicyRepository } from "../src/policy/storage";
 import type { PolicyWorkflowRepository } from "../src/policy/workflow-storage";
 import type { PolicyCrawlStateV1 } from "../src/policy/workflow-types";
@@ -56,6 +57,8 @@ async function setup() {
     lastObservedSha256: document.sha256, failureCount: 0 };
   const drafts = new Map<string, PolicyPublicationDraftV1>();
   const active = new Map<string, ActivePolicyBundleV1>();
+  const published = new Map<string, Map<number, ActivePolicyBundleV1>>();
+  const rollbacks = new Map<string, PolicyRollbackRequestV1>();
   const records = { getSource: async (id: string) => id === sourceId ? current : priorSource,
     getDocument: async (id: string) => id === sourceId ? document : priorDocument,
     putSource: async () => {}, putDocument: async () => {} } as PolicyRepository;
@@ -79,13 +82,32 @@ async function setup() {
         PK: `PUB_DRAFT#${last.draftId}`, SK: "CURRENT", GSI6PK: "POLICY_PUBLICATION_PENDING",
         GSI6SK: `${last.submittedAt}#${last.draftId}` } } : {}) };
     },
-    getActive: async (id: string) => active.get(id), getPublished: async (id: string) => active.get(id),
+    getActive: async (id: string) => active.get(id),
+    getPublished: async (id: string, version: number) => published.get(id)?.get(version),
+    listPublished: async (id: string) => ({ items: [...(published.get(id)?.values() ?? [])]
+      .sort((a, b) => b.version.version - a.version.version) }),
+    listActiveCatalog: async (jurisdiction: string) => ({ items: [...active.values()]
+      .filter(value => value.rule.jurisdiction === jurisdiction) }),
     listActive: async (jurisdictions: readonly string[]) => [...active.values()]
       .filter(value => jurisdictions.includes(value.rule.jurisdiction)),
     publish: async (_previous: PolicyPublicationDraftV1, next: PolicyPublicationDraftV1,
       bundle: ActivePolicyBundleV1, _audit: PublicationAuditV1) => {
       lastPublicationAudit = _audit;
       drafts.set(next.draftId, next); active.set(bundle.policyId, bundle);
+      const versions = published.get(bundle.policyId) ?? new Map<number, ActivePolicyBundleV1>();
+      versions.set(bundle.version.version, bundle); published.set(bundle.policyId, versions);
+    },
+    getRollback: async (id: string) => rollbacks.get(id),
+    listPendingRollbacks: async () => ({ items: [...rollbacks.values()].filter(value => value.status === "PENDING_APPROVAL") }),
+    createRollback: async (value: PolicyRollbackRequestV1) => { rollbacks.set(value.rollbackId, value); },
+    rejectRollback: async (_previous: PolicyRollbackRequestV1, next: PolicyRollbackRequestV1) => {
+      rollbacks.set(next.rollbackId, next);
+    },
+    activateRollback: async (_previous: PolicyRollbackRequestV1, next: PolicyRollbackRequestV1,
+      bundle: ActivePolicyBundleV1) => {
+      rollbacks.set(next.rollbackId, next); active.set(bundle.policyId, bundle);
+      const versions = published.get(bundle.policyId) ?? new Map<number, ActivePolicyBundleV1>();
+      versions.set(bundle.version.version, bundle); published.set(bundle.policyId, versions);
     },
   } as PolicyPublicationRepository;
   const publicationService = new PolicyPublicationService(records, workflow, publication, archive, () => fixedNow);
@@ -119,11 +141,82 @@ async function setup() {
     getLastPublicationAudit: () => lastPublicationAudit,
     setLatest: (value: PolicyDocumentV1) => { latest = value; },
     getActive: () => [...active.values()][0],
+    getPublished: (version: number) => [...published.values()][0]?.get(version),
+    getRollback: (id: string) => rollbacks.get(id),
     setActive: (value: ActivePolicyBundleV1) => { active.set(value.policyId, value); },
     property, analysis };
 }
 
 describe("verified benefit publication and owner-scoped evaluation", () => {
+  it("pages published history and restores verified prior semantics as a new version after independent review", async () => {
+    const test = await setup();
+    const first = await test.publicationService.createDraft(test.draftRequest, author, "req");
+    await test.publicationService.transition(first.draft.draftId, "submit", { expectedRevision: 1 }, author, "req");
+    await test.publicationService.transition(first.draft.draftId, "publish",
+      { expectedRevision: 2, reason: "Verified the original official notice." }, reviewer, "req");
+    const secondInput = { ...test.draftRequest,
+      rule: { ...test.draftRequest.rule, maxSystemWatts: 2_000 },
+      clauseEvidence: [...test.draftRequest.clauseEvidence,
+        { clauseKey: "SYSTEM_SIZE", ...test.excerpt("for 2 kW residential rooftop solar") }] };
+    const second = await test.publicationService.createDraft(secondInput, author, "req");
+    await test.publicationService.transition(second.draft.draftId, "submit", { expectedRevision: 1 }, author, "req");
+    await test.publicationService.transition(second.draft.draftId, "publish",
+      { expectedRevision: 2, reason: "Verified the separate system-size clause." }, reviewer, "req");
+    const policyId = first.draft.policyId;
+    const catalog = await test.publicationService.activeCatalog("IN", undefined, "req");
+    expect(catalog.items).toMatchObject([{ policyId, version: 2, sourceFresh: true }]);
+    const history = await test.publicationService.versions(policyId, undefined, "req");
+    expect(history.items.map(item => [item.version, item.isCurrent])).toEqual([[2, true], [1, false]]);
+    expect((await test.publicationService.versionDetail(policyId, "1", "req"))).toMatchObject({
+      currentVersion: 2, isCurrent: false, bundle: { version: { version: 1 } }, sourceFresh: true,
+    });
+    const requested = await test.publicationService.createRollback({ policyId, targetVersion: 1,
+      expectedActiveVersion: 2, reason: "Restore the prior verified rule after reviewing the latest official text." },
+    "rollback-requester", "req");
+    expect((await test.publicationService.rollbackQueue(undefined, "req")).items[0]?.rollbackId)
+      .toBe(requested.rollback.rollbackId);
+    await expect(test.publicationService.reviewRollback(requested.rollback.rollbackId, "approve",
+      { expectedRevision: 1, reason: "Checked current official source and complete citation." }, author, "req"))
+      .rejects.toMatchObject({ code: "SEPARATE_REVIEWER_REQUIRED" });
+    const approved = await test.publicationService.reviewRollback(requested.rollback.rollbackId, "approve",
+      { expectedRevision: 1, reason: "Checked current official source and complete citation." }, reviewer, "req");
+    const restored = test.getActive()!;
+    expect(approved.rollback).toMatchObject({ status: "APPROVED", activatedVersion: 3, revision: 2 });
+    expect(restored).toMatchObject({ version: { version: 3, previousVersion: 2,
+      contentHash: test.getPublished(1)?.version.contentHash }, rule: { policyVersion: 3 } });
+    expect(restored.rule).not.toHaveProperty("maxSystemWatts");
+    expect(restored.rule.factIds).toEqual(restored.facts.map(fact => fact.factId));
+    expect(restored.rule.factIds.some(id => test.getPublished(1)?.rule.factIds.includes(id))).toBe(false);
+    expect(restored.facts.every(fact => fact.policyVersion === 3 && fact.verifiedBy === reviewer)).toBe(true);
+    expect((await test.publicationService.versions(policyId, undefined, "req")).items
+      .map(item => [item.version, item.isCurrent])).toEqual([[3, true], [2, false], [1, false]]);
+    const next = await test.publicationService.createDraft(secondInput, author, "req");
+    expect(next.draft.version).toBe(4);
+  });
+
+  it("rejects rollback when the historical document is no longer the latest crawl", async () => {
+    const test = await setup();
+    const first = await test.publicationService.createDraft(test.draftRequest, author, "req");
+    await test.publicationService.transition(first.draft.draftId, "submit", { expectedRevision: 1 }, author, "req");
+    await test.publicationService.transition(first.draft.draftId, "publish",
+      { expectedRevision: 2, reason: "Verified the original official notice." }, reviewer, "req");
+    const secondInput = { ...test.draftRequest, rule: { ...test.draftRequest.rule, maxSystemWatts: 2_000 },
+      clauseEvidence: [...test.draftRequest.clauseEvidence,
+        { clauseKey: "SYSTEM_SIZE", ...test.excerpt("for 2 kW residential rooftop solar") }] };
+    const second = await test.publicationService.createDraft(secondInput, author, "req");
+    await test.publicationService.transition(second.draft.draftId, "submit", { expectedRevision: 1 }, author, "req");
+    await test.publicationService.transition(second.draft.draftId, "publish",
+      { expectedRevision: 2, reason: "Verified the separate system-size clause." }, reviewer, "req");
+    const requested = await test.publicationService.createRollback({ policyId: first.draft.policyId,
+      targetVersion: 1, expectedActiveVersion: 2,
+      reason: "Restore the earlier rule after a second check of the official text." }, "rollback-requester", "req");
+    test.setLatest(policyDocumentSchema.parse({ ...test.document, version: 2 }));
+    await expect(test.publicationService.reviewRollback(requested.rollback.rollbackId, "approve",
+      { expectedRevision: 1, reason: "Reviewed the historical evidence before approval." }, reviewer, "req"))
+      .rejects.toMatchObject({ statusCode: 409, code: "ROLLBACK_TARGET_NOT_CURRENT" });
+    expect(test.getActive()?.version.version).toBe(2);
+  });
+
   it("publishes a sourced process checklist only with exact archived excerpts", async () => {
     const test = await setup();
     const request = { ...test.draftRequest,
@@ -330,6 +423,53 @@ describe("verified benefit publication and owner-scoped evaluation", () => {
       ]));
   });
 
+  it("conditions rollback activation on reviewer state, both official sources and the exact active version", async () => {
+    const transactions: Array<{ input: { TransactItems: Array<{
+      ConditionCheck?: { Key: { PK: string; SK: string } };
+      Put?: { Item: { PK: string; SK: string }; ConditionExpression: string } }> } }> = [];
+    const client = { send: vi.fn(async (command: unknown) => {
+      transactions.push(command as typeof transactions[number]); return {};
+    }) } as unknown as ConstructorParameters<typeof DynamoPolicyPublicationRepository>[2];
+    const repository = new DynamoPolicyPublicationRepository("test-policy", "ap-south-1", client);
+    const test = await setup();
+    const created = await test.publicationService.createDraft(test.draftRequest, author, "req");
+    const base = test.getActive() ?? { schemaVersion: 1, policyId: created.draft.policyId,
+      benefitId: created.draft.benefitId, version: {} as ActivePolicyBundleV1["version"],
+      facts: [], rule: created.draft.rule, activatedAt: fixedNow.toISOString() };
+    const bundle = { ...base, version: { ...base.version, version: 3 } } as ActivePolicyBundleV1;
+    const previous: PolicyRollbackRequestV1 = { schemaVersion: 1,
+      rollbackId: `ROLLBACK#${"f".repeat(32)}`, policyId: created.draft.policyId,
+      targetVersion: 1, expectedActiveVersion: 2, status: "PENDING_APPROVAL", revision: 1,
+      requestedAt: fixedNow.toISOString(), requestedBy: "rollback-requester",
+      requestReason: "Restore the prior verified official rule.", targetSourceId: sourceId,
+      targetSourceCuratorId: curator, targetVersionAuthorId: author };
+    const next: PolicyRollbackRequestV1 = { ...previous, status: "APPROVED", revision: 2,
+      reviewedAt: fixedNow.toISOString(), reviewedBy: reviewer,
+      reviewReason: "Checked both official sources and the current active version.", activatedVersion: 3 };
+    const audit: PolicyRollbackAuditV1 = { schemaVersion: 1, eventId: "synthetic-event",
+      rollbackId: previous.rollbackId, policyId: previous.policyId, action: "ROLLBACK_APPROVED",
+      actorId: reviewer, occurredAt: fixedNow.toISOString(), reason: next.reviewReason!,
+      expectedActiveVersion: 2, targetVersion: 1, activatedVersion: 3 };
+    const priorSourceId = `SRC#${"e".repeat(32)}`;
+    await repository.activateRollback(previous, next, bundle, audit, 2, 7,
+      { sourceId: priorSourceId, registryVersion: 4, crawlRevision: 9 });
+    const writes = transactions.at(-1)!.input.TransactItems;
+    expect(writes.filter(item => item.ConditionCheck).map(item => item.ConditionCheck?.Key))
+      .toEqual(expect.arrayContaining([
+        { PK: `SOURCE#${sourceId}`, SK: "CURRENT" },
+        { PK: `SOURCE#${sourceId}`, SK: "CRAWL_STATE" },
+        { PK: `SOURCE#${priorSourceId}`, SK: "CURRENT" },
+        { PK: `SOURCE#${priorSourceId}`, SK: "CRAWL_STATE" },
+      ]));
+    const pointer = writes.find(item => item.Put?.Item.SK === "ACTIVE")?.Put;
+    expect(pointer?.ConditionExpression).toBe("activeVersion = :prior");
+    expect(writes.some(item => item.Put?.Item.SK === "VERSION#00000003" &&
+      item.Put.ConditionExpression.includes("attribute_not_exists"))).toBe(true);
+    expect(writes.some(item => item.Put?.Item.SK === "ACTIVATION#VERSION#00000003")).toBe(true);
+    expect(writes.some(item => item.Put?.Item.PK === `POLICY_ROLLBACK#${previous.rollbackId}` &&
+      item.Put.Item.SK === "CURRENT" && item.Put.ConditionExpression.includes("revision = :revision"))).toBe(true);
+  });
+
   it("denies unverified or non-admin callers before touching publication storage", async () => {
     vi.stubEnv("ENVIRONMENT", "test"); vi.stubEnv("LOG_LEVEL", "error");
     vi.stubEnv("AWS_REGION", "ap-south-1"); vi.stubEnv("POLICY_TABLE_NAME", "test-policy");
@@ -347,6 +487,15 @@ describe("verified benefit publication and owner-scoped evaluation", () => {
     expect((await handler(event, context)).statusCode).toBe(403);
     groups = ["ADMIN_POLICY"]; verified = "false";
     expect((await handler(event, context)).statusCode).toBe(403);
+    groups = []; verified = "true";
+    expect((await handler({ ...event, path: "/v1/admin/policy/benefits/active",
+      resource: "/admin/policy/benefits/active", httpMethod: "GET" }, context)).statusCode).toBe(403);
+    expect((await handler({ ...event, path: "/v1/admin/policy/benefits/rollbacks",
+      resource: "/admin/policy/benefits/rollbacks" }, context)).statusCode).toBe(403);
+    expect((await handler({ ...event, path: `/v1/admin/policy/benefits/versions/${encodeURIComponent(`POLICY#${"a".repeat(32)}`)}/1`,
+      resource: "/admin/policy/benefits/versions/{policyId}/{version}", httpMethod: "GET" }, context)).statusCode).toBe(403);
+    expect((await handler({ ...event, path: `/v1/admin/policy/benefits/rollbacks/${encodeURIComponent(`ROLLBACK#${"a".repeat(32)}`)}/approve`,
+      resource: "/admin/policy/benefits/rollbacks/{rollbackId}/approve" }, context)).statusCode).toBe(403);
     expect(storageCalls).toBe(0);
     vi.unstubAllEnvs();
   });

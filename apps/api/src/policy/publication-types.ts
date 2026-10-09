@@ -46,3 +46,38 @@ export interface PublicationAuditV1 {
   supersededSourceAuthorityTier?: number;
   replacementSourceAuthorityTier?: number;
 }
+
+/** A rollback is a new activation of previously verified semantics, never a mutation of history. */
+export interface PolicyRollbackRequestV1 {
+  schemaVersion: 1;
+  rollbackId: string;
+  policyId: string;
+  targetVersion: number;
+  expectedActiveVersion: number;
+  status: "PENDING_APPROVAL" | "APPROVED" | "REJECTED";
+  revision: number;
+  requestedAt: string;
+  requestedBy: string;
+  requestReason: string;
+  targetSourceId: string;
+  targetSourceCuratorId: string;
+  targetVersionAuthorId: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewReason?: string;
+  activatedVersion?: number;
+}
+
+export interface PolicyRollbackAuditV1 {
+  schemaVersion: 1;
+  eventId: string;
+  rollbackId: string;
+  policyId: string;
+  action: "ROLLBACK_REQUESTED" | "ROLLBACK_APPROVED" | "ROLLBACK_REJECTED";
+  actorId: string;
+  occurredAt: string;
+  reason: string;
+  expectedActiveVersion: number;
+  targetVersion: number;
+  activatedVersion?: number;
+}

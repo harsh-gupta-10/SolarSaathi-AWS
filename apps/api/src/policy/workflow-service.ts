@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { policySourceSchema, validateOfficialSourceRecord } from "@solarsaathi/policy";
+import { OFFICIAL_POLICY_HOSTS_V1, policySourceSchema, validateOfficialSourceRecord } from "@solarsaathi/policy";
 import { z } from "zod";
 import { RequestError } from "../lib/http";
 import type { PolicyRepository } from "./storage";
@@ -12,6 +12,9 @@ const changeId = z.string().regex(/^CHANGE#[a-f0-9]{32}$/);
 const curateRequest = z.object({ sourceId, expectedRegistryVersion: z.number().int().positive() }).strict();
 const crawlRequest = z.object({ sourceId, rateLimitClearanceReason: z.string().trim().min(10).max(500).optional() }).strict();
 const reviewRequest = z.object({ expectedRevision: z.number().int().positive(), reason: z.string().trim().min(1).max(1_000).optional() }).strict();
+const registerableHosts = OFFICIAL_POLICY_HOSTS_V1.map(({ host, sourceType, jurisdiction }) =>
+  ({ host, sourceType, jurisdiction }));
+if (registerableHosts.length > 50) throw new Error("The policy host registry exceeds the bounded admin response.");
 const unavailable = () => new RequestError(503, "POLICY_STORAGE_UNAVAILABLE", "The policy registry is temporarily unavailable.");
 const changed = () => new RequestError(409, "POLICY_STATE_CHANGED", "This policy record changed. Refresh and retry.");
 const conditional = (error: unknown) => {
@@ -53,6 +56,75 @@ function decodeCursor(raw: string | undefined): Record<string, unknown> | undefi
   } catch { throw new RequestError(400, "INVALID_CURSOR", "The queue cursor is invalid."); }
 }
 
+type PageKind = "sources" | "runs";
+function decodePageCursor(raw: string | undefined, kind: PageKind): Record<string, string> | undefined {
+  if (!raw) return undefined;
+  if (raw.length > 1_024 || !/^[A-Za-z0-9_-]+$/.test(raw)) {
+    throw new RequestError(400, "INVALID_CURSOR", "The policy listing cursor is invalid.");
+  }
+  try {
+    const bytes = Buffer.from(raw, "base64url");
+    if (bytes.toString("base64url") !== raw) throw new Error("Noncanonical cursor.");
+    const value: unknown = JSON.parse(bytes.toString("utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid cursor.");
+    const record = value as Record<string, unknown>;
+    const keys = kind === "sources" ? ["PK", "SK", "GSI4PK", "GSI4SK"] : ["PK", "SK"];
+    if (Object.keys(record).length !== keys.length || keys.some(key => typeof record[key] !== "string")) {
+      throw new Error("Invalid cursor fields.");
+    }
+    if (kind === "sources") {
+      const id = String(record.PK).slice(7);
+      if (!sourceId.safeParse(id).success || record.PK !== `SOURCE#${id}` || record.SK !== "CURRENT" ||
+        record.GSI4PK !== "POLICY_SOURCES" ||
+        typeof record.GSI4SK !== "string" || !record.GSI4SK.endsWith(`#${id}`) ||
+        !z.iso.datetime({ offset: true }).safeParse(record.GSI4SK.slice(0, -id.length - 1)).success) {
+        throw new Error("Invalid source cursor.");
+      }
+    } else if (record.PK !== "POLICY_CRAWLER_RUNS" || typeof record.SK !== "string" ||
+      !/^RUN#\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z#[0-9a-f-]{36}$/.test(record.SK)) {
+      throw new Error("Invalid run cursor.");
+    }
+    return record as Record<string, string>;
+  } catch { throw new RequestError(400, "INVALID_CURSOR", "The policy listing cursor is invalid."); }
+}
+
+function encodePageCursor(value: Record<string, unknown> | undefined, kind: PageKind): string | undefined {
+  if (!value) return undefined;
+  const encoded = Buffer.from(JSON.stringify(value)).toString("base64url");
+  decodePageCursor(encoded, kind);
+  return encoded;
+}
+
+function pageLimit(value: string | undefined): number {
+  const limit = value === undefined ? 20 : Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
+    throw new RequestError(400, "INVALID_LIMIT", "Listing limit must be from 1 to 50.");
+  }
+  return limit;
+}
+
+function sourceHealth(source: ReturnType<typeof validateOfficialSourceRecord>, state: PolicyCrawlStateV1 | undefined,
+  now: Date) {
+  const warnings: string[] = [];
+  let healthStatus: "PROPOSED" | "DISABLED" | "UNCHECKED" | "HEALTHY" | "STALE" | "ERROR";
+  const checkedMs = state?.lastCheckedAt ? Date.parse(state.lastCheckedAt) : NaN;
+  const ageMs = now.getTime() - checkedMs;
+  const sourceFresh = source.registryStatus === "CURATED" && source.enabled &&
+    state?.status === "READY" && !state.lastErrorCode && Number.isFinite(checkedMs) && ageMs >= 0 &&
+    ageMs <= source.freshnessWindowHours * 3_600_000;
+  if (state?.lastCheckedAt && (!Number.isFinite(checkedMs) || ageMs < 0)) warnings.push("SOURCE_CHECK_TIME_INVALID");
+  else if (state?.lastCheckedAt && ageMs > source.freshnessWindowHours * 3_600_000) warnings.push("SOURCE_CHECK_STALE");
+  if (state?.status === "RUNNING") warnings.push("SOURCE_CHECK_IN_PROGRESS");
+  if (state?.lastErrorCode) warnings.push("SOURCE_LAST_ERROR");
+  if (source.registryStatus !== "CURATED") { healthStatus = "PROPOSED"; warnings.push("SOURCE_NOT_CURATED"); }
+  else if (!source.enabled) { healthStatus = "DISABLED"; warnings.push("SOURCE_DISABLED"); }
+  else if (state?.status === "ERROR" || state?.lastErrorCode) { healthStatus = "ERROR"; warnings.push("SOURCE_CRAWL_ERROR"); }
+  else if (!state?.lastCheckedAt) { healthStatus = "UNCHECKED"; warnings.push("SOURCE_NEVER_CHECKED"); }
+  else if (!sourceFresh) healthStatus = "STALE";
+  else healthStatus = "HEALTHY";
+  return { sourceId: source.sourceId, ...(state ? { crawlState: state } : {}), sourceFresh, healthStatus, warnings };
+}
+
 export class PolicyWorkflowService {
   constructor(private readonly records: PolicyRepository, private readonly workflow: PolicyWorkflowRepository,
     private readonly now: () => Date = () => new Date(),
@@ -76,17 +148,49 @@ export class PolicyWorkflowService {
     return { text: normalizedText.slice(0, 4_000), truncated: normalizedText.length > 4_000 };
   }
 
-  async listSources(requestId: string) {
+  async listSources(requestId: string, limitInput?: string, cursorInput?: string) {
+    const limit = pageLimit(limitInput);
+    const cursor = decodePageCursor(cursorInput, "sources");
     try {
-      const sources = (await this.workflow.listSources(50)).map(value => validateOfficialSourceRecord(value));
+      const page = await this.workflow.listSources(limit, cursor);
+      const sources = page.items.map(value => validateOfficialSourceRecord(value));
       const states = await Promise.all(sources.map(source => this.workflow.getCrawlState(source.sourceId)));
-      const sourceStates = sources.map((source, index) => {
-        const crawlState = states[index];
-        const sourceFresh = crawlState?.lastCheckedAt ?
-          this.now().getTime() - Date.parse(crawlState.lastCheckedAt) <= source.freshnessWindowHours * 3_600_000 : false;
-        return { sourceId: source.sourceId, crawlState, sourceFresh };
-      });
-      return { schemaVersion: 1 as const, sources, sourceStates, requestId };
+      const now = this.now();
+      const sourceStates = sources.map((source, index) => sourceHealth(source, states[index], now));
+      const nextCursor = encodePageCursor(page.cursor, "sources");
+      return { schemaVersion: 1 as const, hostRegistryVersion: 1 as const, registerableHosts,
+        sources, sourceStates,
+        ...(nextCursor ? { nextCursor } : {}), requestId };
+    } catch { throw unavailable(); }
+  }
+
+  async listRuns(requestId: string, limitInput?: string, cursorInput?: string) {
+    const limit = pageLimit(limitInput);
+    const cursor = decodePageCursor(cursorInput, "runs");
+    try {
+      const page = await this.workflow.listRuns(limit, cursor);
+      const nextCursor = encodePageCursor(page.cursor, "runs");
+      return { schemaVersion: 1 as const, runs: page.items,
+        ...(nextCursor ? { nextCursor } : {}), requestId };
+    } catch { throw unavailable(); }
+  }
+
+  async listConflicts(requestId: string, limitInput?: string, cursorInput?: string) {
+    const limit = pageLimit(limitInput);
+    const cursor = decodeCursor(cursorInput);
+    try {
+      const page = await this.workflow.listQueue(limit, cursor);
+      const current = await Promise.all(page.items.map(item => this.workflow.getCandidate(item.candidate.candidateId)));
+      const conflicts = current.filter((item): item is PolicyReviewRecordV1 => !!item &&
+        item.reviewStatus === "PENDING_APPROVAL" && item.conflictFlags.some(flag =>
+          flag === "POTENTIAL_CROSS_SOURCE_CONFLICT" || flag === "POTENTIAL_POLICY_CONFLICT"))
+        .map(item => ({ candidateId: item.candidate.candidateId, sourceId: item.candidate.sourceId,
+          jurisdiction: item.candidate.jurisdiction, categoryHint: item.candidate.categoryHint,
+          claimKey: item.candidate.claimKey, detectedAt: item.detectedAt,
+          reviewStatus: "PENDING_APPROVAL" as const, resolutionStatus: "UNRESOLVED" as const,
+          flags: item.conflictFlags }));
+      return { schemaVersion: 1 as const, conflicts,
+        ...(page.cursor ? { nextCursor: Buffer.from(JSON.stringify(page.cursor)).toString("base64url") } : {}), requestId };
     } catch { throw unavailable(); }
   }
 
@@ -111,8 +215,7 @@ export class PolicyWorkflowService {
   }
 
   async queue(limitInput: string | undefined, cursorInput: string | undefined, requestId: string) {
-    const limit = limitInput === undefined ? 20 : Number(limitInput);
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) throw new RequestError(400, "INVALID_LIMIT", "Queue limit must be from 1 to 50.");
+    const limit = pageLimit(limitInput);
     const cursor = decodeCursor(cursorInput);
     try {
       const page = await this.workflow.listQueue(limit, cursor);
@@ -141,8 +244,7 @@ export class PolicyWorkflowService {
       if (record.assessment.currentRawSha256 !== document.sha256 ||
         record.assessment.currentNormalizedTextSha256 !== document.normalizedTextSha256) throw unavailable();
       const verifiedSource = validateOfficialSourceRecord(source);
-      const sourceFresh = crawlState?.lastCheckedAt ?
-        this.now().getTime() - Date.parse(crawlState.lastCheckedAt) <= verifiedSource.freshnessWindowHours * 3_600_000 : false;
+      const health = sourceHealth(verifiedSource, crawlState, this.now());
       const [currentPreview, previousDocument] = await Promise.all([
         this.documentPreview(document),
         document.version > 1 ? this.records.getDocument(record.sourceId, record.documentId, document.version - 1) : undefined,
@@ -152,7 +254,8 @@ export class PolicyWorkflowService {
           previousDocument.normalizedTextSha256 !== record.assessment.previousNormalizedTextSha256)) throw unavailable();
       const previousPreview = previousDocument ? await this.documentPreview(previousDocument) : undefined;
       return { schemaVersion: 1 as const, change: record, source: verifiedSource, document,
-        crawlState, sourceFresh,
+        crawlState, sourceFresh: health.sourceFresh, sourceHealthStatus: health.healthStatus,
+        sourceWarnings: health.warnings,
         ...(currentPreview ? { textPreview: currentPreview.text, textTruncated: currentPreview.truncated } : {}),
         ...(previousPreview ? { previousTextPreview: previousPreview.text,
           previousTextTruncated: previousPreview.truncated } : {}),
@@ -197,10 +300,10 @@ export class PolicyWorkflowService {
       ]);
       if (!source || !document) throw unavailable();
       const verifiedSource = validateOfficialSourceRecord(source);
-      const freshness = crawlState?.lastCheckedAt ?
-        this.now().getTime() - Date.parse(crawlState.lastCheckedAt) <= verifiedSource.freshnessWindowHours * 3_600_000 : false;
+      const health = sourceHealth(verifiedSource, crawlState, this.now());
       return { schemaVersion: 1 as const, candidate: review, source: verifiedSource, document,
-        crawlState, sourceFresh: freshness, audit: events, requestId };
+        crawlState, sourceFresh: health.sourceFresh, sourceHealthStatus: health.healthStatus,
+        sourceWarnings: health.warnings, audit: events, requestId };
     } catch { throw unavailable(); }
   }
 

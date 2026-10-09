@@ -1,7 +1,8 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { PolicyDocumentV1, PolicySourceV1 } from "@solarsaathi/policy";
-import type { PolicyChangeRecordV1, PolicyCrawlStateV1, PolicyReviewRecordV1, PolicyWorkflowAuditV1 } from "./workflow-types";
+import { policyCrawlerRunSchema, type PolicyCrawlerRunV1, type PolicyChangeRecordV1, type PolicyCrawlStateV1,
+  type PolicyReviewRecordV1, type PolicyWorkflowAuditV1 } from "./workflow-types";
 
 const sourcePK = (sourceId: string) => `SOURCE#${sourceId}`;
 const sourceKey = (sourceId: string, sort: string) => ({ PK: sourcePK(sourceId), SK: sort });
@@ -11,9 +12,14 @@ const changePK = (changeId: string) => `CHANGE#${changeId}`;
 const changeKey = (changeId: string, sort = "CURRENT") => ({ PK: changePK(changeId), SK: sort });
 const version = (value: number) => String(value).padStart(8, "0");
 const auditSort = (audit: PolicyWorkflowAuditV1) => `AUDIT#${audit.occurredAt}#${audit.eventId}`;
+const RUN_PARTITION = "POLICY_CRAWLER_RUNS";
 
 export interface PolicyWorkflowRepository {
-  listSources(limit: number): Promise<PolicySourceV1[]>;
+  listSources(limit: number, cursor?: Record<string, unknown>): Promise<{
+    items: PolicySourceV1[]; cursor?: Record<string, unknown> }>;
+  recordRun(run: PolicyCrawlerRunV1): Promise<void>;
+  listRuns(limit: number, cursor?: Record<string, unknown>): Promise<{
+    items: PolicyCrawlerRunV1[]; cursor?: Record<string, unknown> }>;
   getSourceVersion(sourceId: string, registryVersion: number): Promise<PolicySourceV1 | undefined>;
   getCrawlState(sourceId: string): Promise<PolicyCrawlStateV1 | undefined>;
   curateSource(previous: PolicySourceV1, next: PolicySourceV1, state: PolicyCrawlStateV1, audit: PolicyWorkflowAuditV1): Promise<void>;
@@ -44,12 +50,38 @@ export class DynamoPolicyWorkflowRepository implements PolicyWorkflowRepository 
     }), { marshallOptions: { removeUndefinedValues: true } });
   }
 
-  async listSources(limit: number): Promise<PolicySourceV1[]> {
+  async listSources(limit: number, cursor?: Record<string, unknown>) {
     const response = await this.client.send(new QueryCommand({ TableName: this.tableName, IndexName: "GSI4",
       KeyConditionExpression: "GSI4PK = :registry", ExpressionAttributeValues: { ":registry": "POLICY_SOURCES" },
-      ScanIndexForward: false, Limit: limit,
+      ScanIndexForward: false, Limit: limit, ExclusiveStartKey: cursor,
     }), { abortSignal: AbortSignal.timeout(5_000) });
-    return (response.Items ?? []).map(item => item.value as PolicySourceV1);
+    return { items: (response.Items ?? []).filter(item => item.entityType === "POLICY_SOURCE_CURRENT")
+      .map(item => item.value as PolicySourceV1),
+    cursor: response.LastEvaluatedKey as Record<string, unknown> | undefined };
+  }
+
+  async recordRun(input: PolicyCrawlerRunV1): Promise<void> {
+    const run = policyCrawlerRunSchema.parse(input);
+    await this.client.send(new PutCommand({ TableName: this.tableName,
+      Item: { PK: RUN_PARTITION, SK: `RUN#${run.startedAt}#${run.runId}`,
+        entityType: "POLICY_CRAWLER_RUN", value: run },
+      ConditionExpression: "attribute_not_exists(PK) AND attribute_not_exists(SK)",
+    }), { abortSignal: AbortSignal.timeout(5_000) });
+  }
+
+  async listRuns(limit: number, cursor?: Record<string, unknown>) {
+    const response = await this.client.send(new QueryCommand({ TableName: this.tableName,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": RUN_PARTITION, ":prefix": "RUN#" },
+      ScanIndexForward: false, ConsistentRead: true, Limit: limit, ExclusiveStartKey: cursor,
+    }), { abortSignal: AbortSignal.timeout(5_000) });
+    const items = (response.Items ?? []).map(item => {
+      const run = policyCrawlerRunSchema.parse(item.value);
+      if (item.PK !== RUN_PARTITION || item.SK !== `RUN#${run.startedAt}#${run.runId}` ||
+        item.entityType !== "POLICY_CRAWLER_RUN") throw new Error("Invalid crawler run record.");
+      return run;
+    });
+    return { items, cursor: response.LastEvaluatedKey as Record<string, unknown> | undefined };
   }
 
   async getSourceVersion(sourceId: string, registryVersion: number): Promise<PolicySourceV1 | undefined> {

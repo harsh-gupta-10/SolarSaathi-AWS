@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   benefitClauseClaimKeyV1, buildPolicyCitation, comparePolicyEvidence, compareSourceAuthority,
   policyBenefitRuleSchema, policyDocumentChunkSchema, policyDocumentSchema,
-  policyFactSchema, policyLocatorSchema, policySourceSchema, policyVersionSchema,
+  policyFactSchema, policyJurisdictionSchema, policyLocatorSchema, policySourceSchema, policyVersionSchema,
   validateOfficialSourceRecord,
   type PolicyBenefitRuleV1, type PolicyDocumentV1, type PolicySourceV1,
 } from "@solarsaathi/policy";
@@ -10,7 +10,8 @@ import { z } from "zod";
 import { RequestError } from "../lib/http";
 import type { PolicyRepository } from "./storage";
 import type { PolicyWorkflowRepository } from "./workflow-storage";
-import type { ActivePolicyBundleV1, PolicyPublicationDraftV1, PublicationAuditV1 } from "./publication-types";
+import type { ActivePolicyBundleV1, PolicyPublicationDraftV1, PolicyRollbackAuditV1,
+  PolicyRollbackRequestV1, PublicationAuditV1 } from "./publication-types";
 import type { PolicyPublicationRepository } from "./publication-storage";
 
 const hexId = (prefix: string) => z.string().regex(new RegExp(`^${prefix}#[a-f0-9]{32}$`));
@@ -23,9 +24,37 @@ const draftRequest = z.object({ benefitId, sourceId: hexId("SRC"), documentId: h
 }).strict();
 const transitionRequest = z.object({ expectedRevision: z.number().int().positive(),
   reason: z.string().trim().min(10).max(1_000).optional() }).strict();
+const policyIdSchema = hexId("POLICY");
+const rollbackIdSchema = hexId("ROLLBACK");
+const rollbackRequestSchema = z.strictObject({ policyId: policyIdSchema,
+  targetVersion: z.number().int().positive().max(1_000_000),
+  expectedActiveVersion: z.number().int().positive().max(1_000_000),
+  reason: z.string().trim().min(10).max(1_000) });
+const rollbackReviewSchema = z.strictObject({ expectedRevision: z.number().int().positive(),
+  reason: z.string().trim().min(10).max(1_000) });
+const bundleSchema = z.strictObject({ schemaVersion: z.literal(1), policyId: policyIdSchema,
+  benefitId, version: policyVersionSchema, facts: z.array(policyFactSchema).min(1).max(100),
+  rule: policyBenefitRuleSchema, activatedAt: z.iso.datetime() });
+const rollbackRecordSchema = z.strictObject({ schemaVersion: z.literal(1), rollbackId: rollbackIdSchema,
+  policyId: policyIdSchema, targetVersion: z.number().int().positive(),
+  expectedActiveVersion: z.number().int().positive(),
+  status: z.enum(["PENDING_APPROVAL", "APPROVED", "REJECTED"]), revision: z.number().int().positive(),
+  requestedAt: z.iso.datetime(), requestedBy: z.string().min(1).max(128),
+  requestReason: z.string().min(10).max(1_000), targetSourceId: hexId("SRC"),
+  targetSourceCuratorId: z.string().min(1).max(128), targetVersionAuthorId: z.string().min(1).max(128),
+  reviewedAt: z.iso.datetime().optional(), reviewedBy: z.string().min(1).max(128).optional(),
+  reviewReason: z.string().min(10).max(1_000).optional(), activatedVersion: z.number().int().positive().optional() });
 const queueCursorSchema = z.object({ PK: z.string().regex(/^PUB_DRAFT#DRAFT#[a-f0-9]{32}$/),
   SK: z.literal("CURRENT"), GSI6PK: z.literal("POLICY_PUBLICATION_PENDING"),
   GSI6SK: z.string().max(160) }).strict();
+const versionCursorSchema = z.strictObject({ PK: z.string().regex(/^PUBLISHED_POLICY#POLICY#[a-f0-9]{32}$/),
+  SK: z.string().regex(/^VERSION#\d{8}$/) });
+const activeCursorSchema = z.strictObject({ PK: z.string().regex(/^PUBLISHED_POLICY#POLICY#[a-f0-9]{32}$/),
+  SK: z.literal("ACTIVE"), GSI5PK: z.string().regex(/^ACTIVE_POLICY_BENEFITS#[A-Z]{2}(?:-[A-Z0-9]{1,8}){0,3}$/),
+  GSI5SK: policyIdSchema });
+const rollbackCursorSchema = z.strictObject({ PK: z.string().regex(/^POLICY_ROLLBACK#ROLLBACK#[a-f0-9]{32}$/),
+  SK: z.literal("CURRENT"), GSI6PK: z.literal("POLICY_ROLLBACK_PENDING"),
+  GSI6SK: z.string().max(160) });
 function decodeQueueCursor(raw: string | undefined): Record<string, string> | undefined {
   if (!raw) return undefined;
   if (raw.length > 1_024 || !/^[A-Za-z0-9_-]+$/.test(raw)) {
@@ -39,6 +68,72 @@ function decodeQueueCursor(raw: string | undefined): Record<string, string> | un
 const unavailable = () => new RequestError(503, "POLICY_PUBLICATION_UNAVAILABLE", "Policy publication is temporarily unavailable.");
 const conflict = () => new RequestError(409, "POLICY_PUBLICATION_CONFLICT", "This policy publication changed. Refresh and retry.");
 const digest = (input: string) => createHash("sha256").update(input).digest("hex");
+function decodeCursor(raw: string | undefined, schema: z.ZodType<Record<string, string>>,
+  expectedKey?: { field: string; value: string }): Record<string, string> | undefined {
+  if (!raw) return undefined;
+  if (raw.length > 1_024 || !/^[A-Za-z0-9_-]+$/.test(raw)) {
+    throw new RequestError(400, "INVALID_CURSOR", "The policy cursor is invalid.");
+  }
+  try {
+    const parsed = schema.parse(JSON.parse(Buffer.from(raw, "base64url").toString("utf8")));
+    if (expectedKey && parsed[expectedKey.field] !== expectedKey.value) throw new Error("CURSOR_SCOPE");
+    return parsed;
+  } catch { throw new RequestError(400, "INVALID_CURSOR", "The policy cursor is invalid."); }
+}
+function cursorValue(cursor: Record<string, string> | undefined) {
+  return cursor ? Buffer.from(JSON.stringify(cursor)).toString("base64url") : undefined;
+}
+function validatedBundle(raw: unknown): ActivePolicyBundleV1 {
+  const parsed = bundleSchema.safeParse(raw);
+  if (!parsed.success) throw unavailable();
+  const bundle = parsed.data;
+  if (bundle.policyId !== bundle.version.policyId || bundle.policyId !== bundle.rule.policyId ||
+    bundle.benefitId !== bundle.rule.benefitId || bundle.version.version !== bundle.rule.policyVersion ||
+    bundle.version.jurisdiction !== bundle.rule.jurisdiction ||
+    bundle.version.effectiveFrom !== bundle.rule.effectiveFrom ||
+    bundle.version.effectiveTo !== bundle.rule.effectiveTo ||
+    bundle.version.status !== "ACTIVE" || bundle.version.verificationStatus !== "VERIFIED" ||
+    bundle.version.activatedAt !== bundle.activatedAt ||
+    bundle.facts.some(fact => fact.policyId !== bundle.policyId ||
+      fact.policyVersion !== bundle.version.version || fact.verificationStatus !== "VERIFIED" ||
+      fact.jurisdiction !== bundle.version.jurisdiction || fact.category !== bundle.version.category ||
+      fact.effectiveFrom !== bundle.version.effectiveFrom || fact.effectiveTo !== bundle.version.effectiveTo) ||
+    JSON.stringify(bundle.rule.factIds) !== JSON.stringify(bundle.facts.map(fact => fact.factId)) ||
+    JSON.stringify(bundle.version.factIds) !== JSON.stringify(bundle.rule.factIds)) throw unavailable();
+  return bundle;
+}
+function validatedRollback(raw: unknown): PolicyRollbackRequestV1 {
+  const parsed = rollbackRecordSchema.safeParse(raw);
+  if (!parsed.success) throw unavailable();
+  const value = parsed.data;
+  if (value.status === "PENDING_APPROVAL" && (value.reviewedAt || value.reviewedBy || value.activatedVersion) ||
+    value.status === "APPROVED" && (!value.reviewedAt || !value.reviewedBy || !value.activatedVersion) ||
+    value.status === "REJECTED" && (!value.reviewedAt || !value.reviewedBy || value.activatedVersion)) throw unavailable();
+  return value;
+}
+function policySummary(bundle: ActivePolicyBundleV1, currentVersion: number | null) {
+  const citation = bundle.facts[0]?.citation;
+  if (!citation || !bundle.version.lastVerifiedAt) throw unavailable();
+  return { version: bundle.version.version, isCurrent: bundle.version.version === currentVersion,
+    contentHash: bundle.version.contentHash, effectiveFrom: bundle.version.effectiveFrom,
+    ...(bundle.version.effectiveTo ? { effectiveTo: bundle.version.effectiveTo } : {}),
+    verifiedAt: bundle.version.lastVerifiedAt, activatedAt: bundle.activatedAt,
+    sourceId: citation.sourceId, sourceUrl: citation.sourceUrl,
+    verificationStatus: "VERIFIED" as const };
+}
+function citationCurrent(citation: ActivePolicyBundleV1["facts"][number]["citation"],
+  crawl: { lastDocumentId?: string; lastDocumentVersion?: number; lastObservedSha256?: string } | undefined) {
+  return !!crawl && crawl.lastDocumentId === citation.documentId &&
+    crawl.lastDocumentVersion === citation.documentVersion &&
+    crawl.lastObservedSha256 === citation.documentSha256;
+}
+function rollbackAudit(request: PolicyRollbackRequestV1, action: PolicyRollbackAuditV1["action"],
+  actorId: string, at: string, reason: string, activatedVersion?: number): PolicyRollbackAuditV1 {
+  return { schemaVersion: 1, eventId: randomUUID(), rollbackId: request.rollbackId,
+    policyId: request.policyId, action, actorId, occurredAt: at, reason,
+    expectedActiveVersion: request.expectedActiveVersion, targetVersion: request.targetVersion,
+    ...(activatedVersion ? { activatedVersion } : {}) };
+}
 const semanticRule = (rule: PolicyBenefitRuleV1) => JSON.parse(JSON.stringify(rule,
   (key, value: unknown) => ["ruleId", "policyId", "policyVersion", "factIds", "evidenceFactIds",
     "sizeEvidenceFactIds", "overlapEvidenceFactIds"].includes(key) ? undefined : value)) as unknown;
@@ -141,6 +236,33 @@ export function currentSourceFresh(source: PolicySourceV1,
     at.getTime() - checked <= source.freshnessWindowHours * 3_600_000;
 }
 
+function reissueVerifiedBundle(target: ActivePolicyBundleV1, active: ActivePolicyBundleV1,
+  requester: string, reviewer: string, at: string): ActivePolicyBundleV1 {
+  const versionNumber = active.version.version + 1;
+  const factIds = new Map(target.facts.map(fact => [fact.factId,
+    `FACT#${digest(`${target.policyId}:${versionNumber}:rollback:${fact.factId}`).slice(0, 32)}`]));
+  const remap = (id: string) => {
+    const next = factIds.get(id);
+    if (!next) throw conflict();
+    return next;
+  };
+  const rewritten = JSON.parse(JSON.stringify(target.rule, (key, value: unknown) =>
+    (key === "factIds" || key.endsWith("EvidenceFactIds") || key === "evidenceFactIds") && Array.isArray(value)
+      ? value.map(item => remap(String(item))) : value)) as Record<string, unknown>;
+  const rule = policyBenefitRuleSchema.parse({ ...rewritten,
+    ruleId: `RULE#${digest(`${target.policyId}:${versionNumber}`).slice(0, 32)}`,
+    policyVersion: versionNumber });
+  const facts = target.facts.map(fact => policyFactSchema.parse({ ...fact,
+    factId: remap(fact.factId), policyVersion: versionNumber,
+    lastVerifiedAt: at, verifiedBy: reviewer, recordedAt: at }));
+  const version = policyVersionSchema.parse({ ...target.version, version: versionNumber,
+    previousVersion: active.version.version, factIds: facts.map(fact => fact.factId),
+    createdAt: at, createdBy: requester, lastVerifiedAt: at, verifiedBy: reviewer,
+    approvedAt: at, approvedBy: reviewer, activatedAt: at });
+  return validatedBundle({ schemaVersion: 1, policyId: target.policyId,
+    benefitId: target.benefitId, version, facts, rule, activatedAt: at });
+}
+
 export class PolicyPublicationService {
   constructor(private readonly records: PolicyRepository, private readonly workflow: PolicyWorkflowRepository,
     private readonly publication: PolicyPublicationRepository,
@@ -181,6 +303,284 @@ export class PolicyPublicationService {
     return { source: verifiedSource, document: parsedDocument,
       citation: validateExcerpt(verifiedSource, parsedDocument, archive.normalizedText,
         archive.chunks, locatorInput, quote), normalizedText: archive.normalizedText, chunks: archive.chunks };
+  }
+
+  private async currentBundle(policyId: string): Promise<ActivePolicyBundleV1> {
+    const raw = await this.publication.getActive(policyId);
+    if (!raw) throw new RequestError(404, "POLICY_NOT_FOUND", "No active published policy was found.");
+    const active = validatedBundle(raw);
+    const immutable = await this.publication.getPublished(policyId, active.version.version);
+    if (!immutable || JSON.stringify(validatedBundle(immutable)) !== JSON.stringify(active)) throw unavailable();
+    return active;
+  }
+
+  private async boundRollbackTarget(target: ActivePolicyBundleV1) {
+    const primary = target.facts[0]?.citation;
+    if (!primary || target.version.status !== "ACTIVE" ||
+      target.version.documentRefs.length !== 1 || target.version.documentRefs[0]?.sourceId !== primary.sourceId ||
+      target.version.documentRefs[0]?.documentId !== primary.documentId ||
+      target.version.documentRefs[0]?.documentVersion !== primary.documentVersion ||
+      target.version.documentRefs[0]?.sha256 !== primary.documentSha256 ||
+      target.facts.some(fact => fact.citation.sourceId !== primary.sourceId ||
+        fact.citation.documentId !== primary.documentId ||
+        fact.citation.documentVersion !== primary.documentVersion ||
+        fact.citation.documentSha256 !== primary.documentSha256)) throw conflict();
+    try {
+      const evidence = await this.boundEvidence(primary.sourceId, primary.documentId,
+        primary.documentVersion, primary.locator, target.facts[0]!.statement);
+      for (const fact of target.facts) {
+        const citation = validateExcerpt(evidence.source, evidence.document, evidence.normalizedText,
+          evidence.chunks, fact.citation.locator, fact.statement);
+        if (JSON.stringify(citation) !== JSON.stringify(fact.citation)) throw conflict();
+      }
+      const crawl = await this.workflow.getCrawlState(primary.sourceId);
+      if (!crawl || crawl.status !== "READY" || crawl.lastErrorCode ||
+        !currentSourceFresh(evidence.source, crawl, this.now()) || !evidence.source.curatorId) throw conflict();
+      return { ...evidence, crawl };
+    } catch (error) {
+      if (error instanceof RequestError && error.code === "POLICY_PUBLICATION_CONFLICT") throw error;
+      throw new RequestError(409, "ROLLBACK_TARGET_NOT_CURRENT",
+        "The historical rule is no longer backed by the latest healthy official document. Review a new publication instead.");
+    }
+  }
+
+  async activeCatalog(jurisdictionInput: string | undefined, cursorInput: string | undefined, requestId: string) {
+    const jurisdiction = policyJurisdictionSchema.safeParse(jurisdictionInput);
+    if (!jurisdiction.success || !jurisdiction.data.startsWith("IN")) {
+      throw new RequestError(400, "INVALID_JURISDICTION", "Select a valid India jurisdiction.");
+    }
+    const cursor = decodeCursor(cursorInput, activeCursorSchema,
+      { field: "GSI5PK", value: `ACTIVE_POLICY_BENEFITS#${jurisdiction.data}` });
+    try {
+      const page = await this.publication.listActiveCatalog(jurisdiction.data, 20, cursor);
+      const bundles = page.items.map(validatedBundle);
+      const items = await Promise.all(bundles.map(async bundle => {
+        const citation = bundle.facts[0]?.citation;
+        if (!citation || bundle.rule.jurisdiction !== jurisdiction.data) throw unavailable();
+        const [source, crawl] = await Promise.all([
+          this.records.getSource(citation.sourceId), this.workflow.getCrawlState(citation.sourceId),
+        ]);
+        return { policyId: bundle.policyId, benefitId: bundle.benefitId,
+          version: bundle.version.version, scope: bundle.rule.scope, jurisdiction: bundle.rule.jurisdiction,
+          effectiveFrom: bundle.version.effectiveFrom,
+          ...(bundle.version.effectiveTo ? { effectiveTo: bundle.version.effectiveTo } : {}),
+          activatedAt: bundle.activatedAt, sourceId: citation.sourceId, sourceUrl: citation.sourceUrl,
+          lastCheckedAt: crawl?.lastCheckedAt ?? null,
+          sourceFresh: !!source && source.registryVersion === citation.sourceRegistryVersion &&
+            crawl?.status === "READY" && !crawl.lastErrorCode &&
+            citationCurrent(citation, crawl) &&
+            currentSourceFresh(source, crawl, this.now()) };
+      }));
+      return { schemaVersion: 1 as const, jurisdiction: jurisdiction.data, items,
+        hasMore: !!page.cursor, ...(page.cursor ? { nextCursor: cursorValue(page.cursor) } : {}), requestId };
+    } catch (error) { if (error instanceof RequestError) throw error; throw unavailable(); }
+  }
+
+  async versions(policyIdInput: string, cursorInput: string | undefined, requestId: string) {
+    const parsed = policyIdSchema.safeParse(policyIdInput);
+    if (!parsed.success) throw new RequestError(400, "INVALID_POLICY_ID", "The policy ID is invalid.");
+    const cursor = decodeCursor(cursorInput, versionCursorSchema,
+      { field: "PK", value: `PUBLISHED_POLICY#${parsed.data}` });
+    try {
+      const active = await this.currentBundle(parsed.data);
+      const page = await this.publication.listPublished(parsed.data, 20, cursor);
+      const items = page.items.map(value => {
+        const bundle = validatedBundle(value);
+        if (bundle.policyId !== parsed.data) throw unavailable();
+        return policySummary(bundle, active.version.version);
+      });
+      return { schemaVersion: 1 as const, policyId: parsed.data, currentVersion: active.version.version,
+        items, hasMore: !!page.cursor,
+        ...(page.cursor ? { nextCursor: cursorValue(page.cursor) } : {}), requestId };
+    } catch (error) { if (error instanceof RequestError) throw error; throw unavailable(); }
+  }
+
+  async versionDetail(policyIdInput: string, versionInput: string, requestId: string) {
+    const id = policyIdSchema.safeParse(policyIdInput);
+    const number = z.coerce.number().int().positive().max(1_000_000).safeParse(versionInput);
+    if (!id.success || !number.success) throw new RequestError(400, "INVALID_REQUEST", "The published version ID is invalid.");
+    try {
+      const [active, raw] = await Promise.all([
+        this.currentBundle(id.data), this.publication.getPublished(id.data, number.data),
+      ]);
+      if (!raw) throw new RequestError(404, "VERSION_NOT_FOUND", "The published version was not found.");
+      const bundle = validatedBundle(raw);
+      if (bundle.policyId !== id.data || bundle.version.version !== number.data) throw unavailable();
+      const citation = bundle.facts[0]!.citation;
+      const [source, crawl] = await Promise.all([
+        this.records.getSource(citation.sourceId), this.workflow.getCrawlState(citation.sourceId),
+      ]);
+      return { schemaVersion: 1 as const, policyId: id.data, currentVersion: active.version.version,
+        isCurrent: number.data === active.version.version, bundle,
+        targetDocumentCurrent: citationCurrent(citation, crawl),
+        sourceFresh: !!source && source.registryVersion === citation.sourceRegistryVersion &&
+          crawl?.status === "READY" && !crawl.lastErrorCode &&
+          citationCurrent(citation, crawl) &&
+          currentSourceFresh(source, crawl, this.now()), lastCheckedAt: crawl?.lastCheckedAt ?? null, requestId };
+    } catch (error) { if (error instanceof RequestError) throw error; throw unavailable(); }
+  }
+
+  private async rollbackPrecedence(active: ActivePolicyBundleV1, target: ActivePolicyBundleV1,
+    evidence: Awaited<ReturnType<PolicyPublicationService["boundRollbackTarget"]>>): Promise<
+      { sourceId: string; registryVersion: number; crawlRevision: number } | undefined> {
+    const priorCitation = active.facts[0]?.citation;
+    if (!priorCitation || active.facts.some(fact => fact.citation.sourceId !== priorCitation.sourceId)) throw conflict();
+    if (priorCitation.sourceId === evidence.source.sourceId) return undefined;
+    const [priorSnapshot, priorCurrent, priorCrawl, priorDocument] = await Promise.all([
+      this.workflow.getSourceVersion(priorCitation.sourceId, priorCitation.sourceRegistryVersion),
+      this.records.getSource(priorCitation.sourceId),
+      this.workflow.getCrawlState(priorCitation.sourceId),
+      this.records.getDocument(priorCitation.sourceId, priorCitation.documentId, priorCitation.documentVersion),
+    ]);
+    if (!priorSnapshot || !priorCurrent || !priorCrawl || !priorDocument) throw unavailable();
+    const priorSource = validateOfficialSourceRecord(policySourceSchema.parse(priorSnapshot));
+    const priorDocumentParsed = policyDocumentSchema.parse(priorDocument);
+    if (priorCurrent.registryVersion !== priorSource.registryVersion ||
+      !currentSourceFresh(priorCurrent, priorCrawl, this.now()) || priorCrawl.status !== "READY" ||
+      priorCrawl.lastErrorCode || priorCrawl.lastDocumentId !== priorCitation.documentId ||
+      priorCrawl.lastDocumentVersion !== priorCitation.documentVersion ||
+      priorCrawl.lastObservedSha256 !== priorCitation.documentSha256 ||
+      priorDocumentParsed.sha256 !== priorCitation.documentSha256) {
+      throw new RequestError(409, "POLICY_SOURCE_PRECEDENCE_CONFLICT",
+        "The active source needs a fresh official check before cross-source rollback.");
+    }
+    const targetFact = target.facts.find(fact => fact.value?.kind === "NUMBER");
+    const activeFact = active.facts.find(fact => fact.value?.kind === "NUMBER" &&
+      fact.claimKey === targetFact?.claimKey);
+    if (!targetFact || !activeFact) throw conflict();
+    const proposedForPrecedence = policySourceSchema.parse({ ...evidence.source,
+      healthStatus: "HEALTHY", lastCheckedAt: evidence.crawl.lastCheckedAt });
+    const priorForPrecedence = policySourceSchema.parse({ ...priorSource,
+      healthStatus: "HEALTHY", lastCheckedAt: priorCrawl.lastCheckedAt });
+    const comparison = comparePolicyEvidence(
+      { source: proposedForPrecedence, document: evidence.document,
+        version: target.version, fact: targetFact },
+      { source: priorForPrecedence, document: priorDocumentParsed,
+        version: active.version, fact: activeFact }, this.now());
+    if (compareSourceAuthority(evidence.source, priorSource) > 0 ||
+      comparison.outcome !== "PREFER_LEFT" || !comparison.publishable) {
+      throw new RequestError(409, "POLICY_SOURCE_PRECEDENCE_CONFLICT",
+        "The historical source does not outrank the current official source. Resolve the conflict before rollback.");
+    }
+    return { sourceId: priorSource.sourceId, registryVersion: priorSource.registryVersion,
+      crawlRevision: priorCrawl.revision };
+  }
+
+  async createRollback(body: unknown, actorId: string, requestId: string) {
+    const parsed = rollbackRequestSchema.safeParse(body);
+    if (!parsed.success) throw new RequestError(400, "INVALID_REQUEST", "The rollback request is invalid.");
+    const input = parsed.data;
+    try {
+      const active = await this.currentBundle(input.policyId);
+      if (active.version.version !== input.expectedActiveVersion) throw conflict();
+      if (input.targetVersion >= active.version.version) {
+        throw new RequestError(409, "ROLLBACK_TARGET_NOT_HISTORICAL", "Select an earlier published version.");
+      }
+      const raw = await this.publication.getPublished(input.policyId, input.targetVersion);
+      if (!raw) throw new RequestError(404, "VERSION_NOT_FOUND", "The historical published version was not found.");
+      const target = validatedBundle(raw);
+      if (target.policyId !== input.policyId || target.version.version !== input.targetVersion) throw unavailable();
+      if (target.version.contentHash === active.version.contentHash) {
+        throw new RequestError(409, "ROLLBACK_NO_CHANGE", "The active policy already has the selected rule semantics.");
+      }
+      const evidence = await this.boundRollbackTarget(target);
+      const at = this.now().toISOString();
+      const rollback: PolicyRollbackRequestV1 = { schemaVersion: 1,
+        rollbackId: `ROLLBACK#${randomUUID().replaceAll("-", "")}`, policyId: input.policyId,
+        targetVersion: input.targetVersion, expectedActiveVersion: input.expectedActiveVersion,
+        status: "PENDING_APPROVAL", revision: 1, requestedAt: at, requestedBy: actorId,
+        requestReason: input.reason, targetSourceId: evidence.source.sourceId,
+        targetSourceCuratorId: evidence.source.curatorId!, targetVersionAuthorId: target.version.createdBy };
+      await this.publication.createRollback(rollback,
+        rollbackAudit(rollback, "ROLLBACK_REQUESTED", actorId, at, input.reason));
+      return { schemaVersion: 1 as const, rollback, requestId };
+    } catch (error) { if (error instanceof RequestError) throw error; throw conditional(error) ? conflict() : unavailable(); }
+  }
+
+  async rollbackQueue(cursorInput: string | undefined, requestId: string) {
+    const cursor = decodeCursor(cursorInput, rollbackCursorSchema);
+    try {
+      const page = await this.publication.listPendingRollbacks(20, cursor);
+      const current = await Promise.all(page.items.map(item => this.publication.getRollback(item.rollbackId)));
+      const items = current.filter((item): item is PolicyRollbackRequestV1 => !!item)
+        .map(validatedRollback).filter(item => item.status === "PENDING_APPROVAL");
+      return { schemaVersion: 1 as const, items, hasMore: !!page.cursor,
+        ...(page.cursor ? { nextCursor: cursorValue(page.cursor) } : {}), requestId };
+    } catch (error) { if (error instanceof RequestError) throw error; throw unavailable(); }
+  }
+
+  async rollbackDetail(rollbackIdInput: string, requestId: string) {
+    const parsed = rollbackIdSchema.safeParse(rollbackIdInput);
+    if (!parsed.success) throw new RequestError(400, "INVALID_REQUEST", "The rollback ID is invalid.");
+    try {
+      const raw = await this.publication.getRollback(parsed.data);
+      if (!raw) throw new RequestError(404, "ROLLBACK_NOT_FOUND", "The rollback request was not found.");
+      const rollback = validatedRollback(raw);
+      const [active, source, crawl] = await Promise.all([
+        this.currentBundle(rollback.policyId), this.records.getSource(rollback.targetSourceId),
+        this.workflow.getCrawlState(rollback.targetSourceId),
+      ]);
+      const target = await this.publication.getPublished(rollback.policyId, rollback.targetVersion);
+      if (!target) throw unavailable();
+      const citation = validatedBundle(target).facts[0]!.citation;
+      return { schemaVersion: 1 as const, rollback, currentVersion: active.version.version,
+        targetDocumentCurrent: citationCurrent(citation, crawl),
+        sourceFresh: !!source && source.registryVersion === citation.sourceRegistryVersion &&
+          crawl?.status === "READY" && !crawl.lastErrorCode &&
+          citationCurrent(citation, crawl) &&
+          currentSourceFresh(source, crawl, this.now()), lastCheckedAt: crawl?.lastCheckedAt ?? null, requestId };
+    } catch (error) { if (error instanceof RequestError) throw error; throw unavailable(); }
+  }
+
+  async reviewRollback(rollbackIdInput: string, action: "approve" | "reject", body: unknown,
+    actorId: string, requestId: string) {
+    const id = rollbackIdSchema.safeParse(rollbackIdInput);
+    const input = rollbackReviewSchema.safeParse(body);
+    if (!id.success || !input.success) throw new RequestError(400, "INVALID_REQUEST", "The rollback review is invalid.");
+    try {
+      const raw = await this.publication.getRollback(id.data);
+      if (!raw) throw new RequestError(404, "ROLLBACK_NOT_FOUND", "The rollback request was not found.");
+      const previous = validatedRollback(raw);
+      if (previous.revision !== input.data.expectedRevision || previous.status !== "PENDING_APPROVAL") throw conflict();
+      if ([previous.requestedBy, previous.targetVersionAuthorId, previous.targetSourceCuratorId].includes(actorId)) {
+        throw new RequestError(403, "SEPARATE_REVIEWER_REQUIRED",
+          "A different administrator from the requester, historical author and source curator must review rollback.");
+      }
+      const at = this.now().toISOString();
+      if (action === "reject") {
+        const next: PolicyRollbackRequestV1 = { ...previous, revision: previous.revision + 1,
+          status: "REJECTED", reviewedAt: at, reviewedBy: actorId, reviewReason: input.data.reason };
+        await this.publication.rejectRollback(previous, next,
+          rollbackAudit(next, "ROLLBACK_REJECTED", actorId, at, input.data.reason));
+        return { schemaVersion: 1 as const, rollback: next, requestId };
+      }
+      const active = await this.currentBundle(previous.policyId);
+      if (active.version.version !== previous.expectedActiveVersion) throw conflict();
+      const rawTarget = await this.publication.getPublished(previous.policyId, previous.targetVersion);
+      if (!rawTarget) throw new RequestError(404, "VERSION_NOT_FOUND", "The historical version was not found.");
+      const target = validatedBundle(rawTarget);
+      if (target.policyId !== previous.policyId || target.version.version !== previous.targetVersion ||
+        target.version.contentHash === active.version.contentHash) throw conflict();
+      const evidence = await this.boundRollbackTarget(target);
+      if (evidence.source.sourceId !== previous.targetSourceId ||
+        evidence.source.curatorId !== previous.targetSourceCuratorId ||
+        target.version.createdBy !== previous.targetVersionAuthorId) throw conflict();
+      const indiaToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric",
+        month: "2-digit", day: "2-digit" }).format(this.now());
+      if (target.rule.effectiveFrom > indiaToday ||
+        target.rule.effectiveTo && target.rule.effectiveTo < indiaToday) {
+        throw new RequestError(409, "RULE_NOT_CURRENT", "The historical rule is outside its effective period.");
+      }
+      const priorSource = await this.rollbackPrecedence(active, target, evidence);
+      const bundle = reissueVerifiedBundle(target, active, previous.requestedBy, actorId, at);
+      const next: PolicyRollbackRequestV1 = { ...previous, revision: previous.revision + 1,
+        status: "APPROVED", reviewedAt: at, reviewedBy: actorId,
+        reviewReason: input.data.reason, activatedVersion: bundle.version.version };
+      await this.publication.activateRollback(previous, next, bundle,
+        rollbackAudit(next, "ROLLBACK_APPROVED", actorId, at, input.data.reason, bundle.version.version),
+        evidence.source.registryVersion, evidence.crawl.revision, priorSource);
+      return { schemaVersion: 1 as const, rollback: next, publishedVersion: bundle.version, requestId };
+    } catch (error) { if (error instanceof RequestError) throw error; throw conditional(error) ? conflict() : unavailable(); }
   }
 
   async createDraft(body: unknown, actorId: string, requestId: string) {

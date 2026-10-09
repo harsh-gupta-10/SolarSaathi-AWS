@@ -141,6 +141,16 @@ Stored under the relevant source/change/candidate partition with
 changes and reviewer actions append events; review transactions write the
 audit event with the immutable review snapshot.
 
+### POLICY_CRAWLER_RUN
+`PK=POLICY_CRAWLER_RUNS`, `SK=RUN#startedAt#runId`
+
+Phase 18 persists one bounded summary before a scheduled crawler invocation
+returns or reports failure. It records status, checked/changed/failed/skipped
+counts, backlog and limited per-source outcomes without raw official content.
+The descending sort key supports an administrator-only timeline with an opaque
+cursor. Per-source crawl state and immutable source audits remain the detailed
+history; a run summary is not evidence approval.
+
 ### POLICY_PUBLICATION_DRAFT
 `PK=PUB_DRAFT#draftId`, `SK=CURRENT` and `SK=AUDIT#time#eventId`
 
@@ -162,10 +172,24 @@ by jurisdiction for bounded homeowner evaluation. Historical versions remain
 readable; the pointer controls which version participates in calculations.
 Current crawl state is separate from immutable source/document snapshots.
 
+### POLICY_ROLLBACK_REQUEST
+`PK=POLICY_ROLLBACK#rollbackId`, `SK=CURRENT` and
+`SK=AUDIT#timestamp#eventId`
+
+A reasoned request binds policy ID, verified historical target, expected active
+version, source/author provenance and requester. Pending requests use sparse
+GSI6; reviewer actions condition-check revision and append immutable audit.
+Approval by an independent administrator revalidates current source/document,
+effective dates and precedence before a transaction writes a **new** published
+version, activation event, active pointer and reviewed request. Original
+versions remain untouched. A direct pointer change to an old version is
+forbidden because the next publication version must remain monotonic.
+
 ### POLICY_CHANGE
-The Phase 10 activation event records version lineage. More detailed semantic
-field diffs and rollback remain future work. This is distinct from Phase 9
-document-change evidence above.
+Activation events record version lineage and, for a Phase 18 rollback, the
+historical version restored into a new published version, requester/reviewer
+reasons and approval actor. This is distinct from Phase 9 document-change
+evidence above. Detailed field-by-field semantic diffs remain future work.
 
 ### POLICY_RESEARCH_CACHE
 Phase 17 stores bounded, temporary international source metadata in the core
@@ -301,6 +325,9 @@ Must support:
 - get policy history
 - list pending policy changes
 - get source health
+- page crawler runs and unresolved evidence conflicts for administrators
+- page active policy IDs and immutable versions for administrators
+- review and conditionally activate a rollback request
 - get active benefits for property
 - get application and steps
 - get user's saved designs

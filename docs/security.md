@@ -106,6 +106,18 @@ Lead stage changes use a broker-only expected-revision transaction with
 current organization membership and stored role checks plus an immutable
 event. Stage labels are user reported workflow notes.
 
+Phase 18 policy rollback is an administrator-only publication action. A
+requester records a reason and expected active version; a different verified
+policy administrator approves or rejects with a separate reason. The reviewer
+cannot be the historical version author or bound source curator. Approval
+rechecks the immutable target's official citation against the current crawled
+document, source freshness, effective dates and any cross-source precedence.
+The final DynamoDB transaction condition-checks active version and source/crawl
+revisions, writes a new immutable version and activation/audit records, and
+never deletes or rewrites older versions. A stale or conflicting target is
+blocked rather than silently reactivated. The browser cannot choose trusted
+facts, amounts or citations for a rollback.
+
 ## Sensitive data
 Protect:
 - identity data

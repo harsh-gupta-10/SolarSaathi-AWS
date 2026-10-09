@@ -126,6 +126,17 @@ or its dependencies are unavailable, show that state plainly. The
 `/demo/international` screen is synthetic and visibly fictional; it never
 claims that its source cards were fetched during the demo session.
 
+### Policy administrator operations
+
+With a verified policy administrator account, register an official source and
+inspect its proposed/curated health, then show the paged crawler run and
+unresolved conflict views. Review a document change as evidence only. For a
+published rule, compare the current version with a historical version and
+submit a reasoned rollback request; a different administrator must review it.
+If no live policy corpus is available, use `/demo/policy-review` only as a
+clearly labelled fictional read-only preview. Never simulate a rollback as an
+actual active government policy change.
+
 ## Demo reliability
 
 Live services should be used when available.

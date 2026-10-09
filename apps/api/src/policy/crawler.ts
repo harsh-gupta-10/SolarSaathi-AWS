@@ -9,7 +9,8 @@ import {
 } from "@solarsaathi/policy";
 import type { PolicyObjectStore, PolicyRepository } from "./storage";
 import type { PolicyWorkflowRepository } from "./workflow-storage";
-import type { PolicyChangeRecordV1, PolicyCrawlStateV1, PolicyReviewRecordV1, PolicyWorkflowAuditV1 } from "./workflow-types";
+import { policyCrawlerRunSchema, type PolicyCrawlerRunV1, type PolicyChangeRecordV1,
+  type PolicyCrawlStateV1, type PolicyReviewRecordV1, type PolicyWorkflowAuditV1 } from "./workflow-types";
 
 const hash = (input: string | Uint8Array) => createHash("sha256").update(input).digest("hex");
 const MAX_DUE_SOURCES = 10;
@@ -115,20 +116,36 @@ export class PolicyCrawler {
     }
   }
 
-  async runDue(): Promise<{ checked: number; changed: number; failed: number; backlog: boolean }> {
-    const nowEpoch = Math.floor(this.now().getTime() / 1_000);
-    const due = await this.workflow.listDue(nowEpoch, MAX_DUE_SOURCES + 1);
+  async runDue(): Promise<PolicyCrawlerRunV1> {
+    const runId = randomUUID(); // Distinct from each source's claim/audit run ID.
+    const startedAt = this.now().toISOString();
+    const nowEpoch = Math.floor(Date.parse(startedAt) / 1_000);
+    let due: PolicyCrawlStateV1[] = [];
+    let listFailed = false;
+    try { due = await this.workflow.listDue(nowEpoch, MAX_DUE_SOURCES + 1); }
+    catch { listFailed = true; }
     const backlog = due.length > MAX_DUE_SOURCES;
-    let checked = 0, changed = 0, failed = 0;
+    let checked = 0, changed = 0, failed = 0, skipped = 0;
+    const sourceOutcomes: PolicyCrawlerRunV1["sourceOutcomes"] = [];
     for (const state of due.slice(0, MAX_DUE_SOURCES)) {
       try {
         const outcome = await this.processSource(state);
-        if (outcome === "SKIPPED") continue;
+        sourceOutcomes.push({ sourceId: state.sourceId, outcome });
+        if (outcome === "SKIPPED") { skipped++; continue; }
         checked++;
         if (outcome === "CHANGED") changed++;
-      } catch { failed++; }
+      } catch { failed++; sourceOutcomes.push({ sourceId: state.sourceId, outcome: "FAILED" }); }
     }
-    return { checked, changed, failed, backlog };
+    const status = listFailed || failed > 0 && checked === 0 ? "FAILED" :
+      failed > 0 || backlog ? "PARTIAL" : "COMPLETED";
+    const summary = policyCrawlerRunSchema.parse({ schemaVersion: 1, runId, startedAt,
+      finishedAt: this.now().toISOString(), status, checked, changed, failed, skipped,
+      backlog, sourceOutcomes, ...(listFailed ? { errorCode: "SOURCE_LIST_FAILED" } : {}) });
+    // A scheduled invocation must fail if its operational history cannot be persisted.
+    try { await this.workflow.recordRun(summary); }
+    catch { throw new Error("POLICY_CRAWLER_RUN_PERSIST_FAILED"); }
+    if (listFailed) throw new Error("POLICY_CRAWLER_SOURCE_LIST_FAILED");
+    return summary;
   }
 
   async processSource(dueState: PolicyCrawlStateV1): Promise<"SKIPPED" | "UNCHANGED" | "CHANGED"> {

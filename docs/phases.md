@@ -567,6 +567,22 @@ remains pending cloud access.
 - rollback
 - stale-source warnings
 
+Status: **implemented locally (2026-10-09)**. Verified policy administrators can
+page the official-source registry with a reviewed host picker, inspect source
+health and warning codes, browse durable bounded crawler runs and unresolved
+evidence conflicts, and review source/document changes separately from benefit
+publication. Active India policies have a jurisdiction-scoped catalog,
+immutable version history, cited rule comparison and current-pointer labels.
+A reasoned rollback request requires an independent reviewer; approval
+revalidates current official evidence, effective dates and cross-source
+precedence, then conditionally publishes a new monotonic version with audit
+lineage. The fictional demo is read-only. Live Cognito, DynamoDB, S3, EventBridge
+and official-policy coverage remain unverified until authorized cloud setup.
+The full local gate passed lint, typechecking, **823 tests**, API bundle/PDF
+smoke and 34-route production build. Desktop and 375-pixel browser checks
+covered the synthetic admin tabs and signed-out guard without horizontal
+overflow. Live SAM deployment and IAM behavior are still unverified.
+
 ## Phase 19 — Testing and hardening
 - unit tests
 - integration tests

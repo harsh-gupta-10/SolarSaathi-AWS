@@ -12,15 +12,19 @@ const DOCUMENT_ROUTE = "/v1/admin/policy/documents";
 const CURATE_ROUTE = "/v1/admin/policy/sources/curate";
 const CRAWL_ROUTE = "/v1/admin/policy/sources/crawl";
 const QUEUE_ROUTE = "/v1/admin/policy/queue";
+const CRAWLER_RUNS_ROUTE = "/v1/admin/policy/crawler-runs";
+const CONFLICTS_ROUTE = "/v1/admin/policy/conflicts";
 
 function route(event: APIGatewayProxyEvent): { kind: string; candidateId?: string; changeId?: string } {
   const resource = event.resource.startsWith("/v1/") ? event.resource : `/v1${event.resource}`;
   const stage = event.requestContext?.stage;
   const relative = stage && event.path.startsWith(`/${stage}/`) ? event.path.slice(stage.length + 1) : event.path;
   const path = relative.startsWith("/v1/") ? relative : `/v1${relative}`;
-  const selected = [resource, path].find(value => [SOURCE_ROUTE, DOCUMENT_ROUTE, CURATE_ROUTE, CRAWL_ROUTE, QUEUE_ROUTE].includes(value));
+  const selected = [resource, path].find(value =>
+    [SOURCE_ROUTE, DOCUMENT_ROUTE, CURATE_ROUTE, CRAWL_ROUTE, QUEUE_ROUTE, CRAWLER_RUNS_ROUTE, CONFLICTS_ROUTE].includes(value));
   if (selected) {
-    const method = selected === QUEUE_ROUTE ? "GET" : selected === SOURCE_ROUTE ? event.httpMethod : "POST";
+    const method = [QUEUE_ROUTE, CRAWLER_RUNS_ROUTE, CONFLICTS_ROUTE].includes(selected) ? "GET" :
+      selected === SOURCE_ROUTE ? event.httpMethod : "POST";
     if (event.httpMethod !== method || (selected === SOURCE_ROUTE && !["GET", "POST"].includes(method))) {
       throw new RequestError(405, "METHOD_NOT_ALLOWED", "Use the supported method for this endpoint.");
     }
@@ -87,7 +91,16 @@ export function createPolicyHandler(dependencies: PolicyHandlerDependencies = {}
       createWorkflowRepository(tableName, environment.AWS_REGION), dependencies.now,
       objects.getDerived ? { getDerived: (key, versionId) => objects.getDerived!(key, versionId) } : undefined);
     if (selected.kind === SOURCE_ROUTE && event.httpMethod === "GET") {
-      return jsonResponse(200, await workflow.listSources(context.awsRequestId));
+      return jsonResponse(200, await workflow.listSources(context.awsRequestId,
+        event.queryStringParameters?.limit, event.queryStringParameters?.cursor));
+    }
+    if (selected.kind === CRAWLER_RUNS_ROUTE) {
+      return jsonResponse(200, await workflow.listRuns(context.awsRequestId,
+        event.queryStringParameters?.limit, event.queryStringParameters?.cursor));
+    }
+    if (selected.kind === CONFLICTS_ROUTE) {
+      return jsonResponse(200, await workflow.listConflicts(context.awsRequestId,
+        event.queryStringParameters?.limit, event.queryStringParameters?.cursor));
     }
     if (selected.kind === QUEUE_ROUTE) {
       return jsonResponse(200, await workflow.queue(event.queryStringParameters?.limit,

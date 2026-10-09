@@ -479,9 +479,41 @@ an installation or official application is complete.
 
 ## Admin
 
-`POST /v1/admin/policy/:id/rollback`
+Phase 18 adds paged policy operations for verified policy administrators.
+`GET /v1/admin/policy/sources?limit=20&cursor=...` returns a bounded source
+registry page with per-source health, freshness and warning codes. Every page
+also includes `hostRegistryVersion` and the reviewed `registerableHosts`
+bindings (exact host, source type and jurisdiction) for the registration form. A source
+still enters through `POST /v1/admin/policy/sources` as proposed and disabled;
+curation and evidence approval remain separate actions.
 
-`GET /v1/admin/crawler/runs`
+`GET /v1/admin/policy/crawler-runs?limit=20&cursor=...` returns durable,
+bounded run summaries and per-source outcomes. `GET
+/v1/admin/policy/conflicts?limit=20&cursor=...` filters pending evidence
+with potential conflict flags, labels it unresolved, and retains a cursor even
+when a scanned queue page has no matching item. Neither route resolves or
+publishes a policy rule.
+
+`GET /v1/admin/policy/benefits/active?jurisdiction=IN&cursor=...` discovers
+active policy IDs. `GET /v1/admin/policy/benefits/versions/{policyId}` pages
+immutable published history; `GET
+/v1/admin/policy/benefits/versions/{policyId}/{version}` returns a cited
+bundle and current-pointer/freshness context. An old bundle's stored `ACTIVE`
+status is historical metadata; only the current pointer participates in
+calculations.
+
+`POST /v1/admin/policy/benefits/rollbacks` accepts `policyId`,
+`targetVersion`, `expectedActiveVersion`, and an audited reason. It creates a
+pending request, not an immediate policy change. `GET
+/v1/admin/policy/benefits/rollbacks/queue` and `GET
+/v1/admin/policy/benefits/rollbacks/{rollbackId}` expose the review state.
+`POST` to `/{rollbackId}/approve` or `/reject` requires `expectedRevision`
+and a separate review reason. Approval requires an independent administrator,
+rechecks the current official source/document and active pointer, then
+transactionally activates a new immutable version copied from the verified
+historical semantics with a rollback audit trail. Stale source, conflicting
+precedence, changed active pointer and insufficient reviewer separation fail
+closed.
 
 ## Error principles
 

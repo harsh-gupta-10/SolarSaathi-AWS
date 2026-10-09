@@ -49,7 +49,8 @@ function setup(derived?: { getDerived(key: string, versionId: string): Promise<U
     listQueue: async () => ({ items: candidate ? [candidate] : [], changes: change ? [change] : [] }),
     listCandidateAudit: async () => audits.filter(value => value.candidateId),
     listChangeAudit: async () => audits.filter(value => value.changeId),
-    listSources: async () => [currentSource],
+    listSources: async () => ({ items: [currentSource] }),
+    listRuns: async () => ({ items: [] }),
   } as unknown as PolicyWorkflowRepository;
   return { service: new PolicyWorkflowService(records, workflow, () => at, derived),
     setCandidate: (value: PolicyReviewRecordV1) => { candidate = value; },
@@ -227,7 +228,8 @@ describe("policy curation and separate evidence review", () => {
         status: "INITIAL_REVIEW_REQUIRED", reviewStatus: "PENDING_APPROVAL", candidateCount: 0, materialChanges: [] } });
     const detail = await test.service.change(id, "req");
     expect(detail).toMatchObject({ textPreview: normalizedText, textTruncated: false,
-      change: { changeId: id }, document: { normalizedTextSha256 } });
+      change: { changeId: id }, document: { normalizedTextSha256 },
+      sourceFresh: false, sourceHealthStatus: "UNCHECKED", sourceWarnings: ["SOURCE_NEVER_CHECKED"] });
   });
 
   it("returns bounded pinned before-and-after text for a versioned document change", async () => {

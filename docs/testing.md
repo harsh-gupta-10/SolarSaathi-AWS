@@ -247,6 +247,29 @@ fictional demo were inspected in the browser; narrow-viewport DOM metrics
 showed no horizontal overflow. These checks do not establish deployed
 Amazon Location, Cognito, DynamoDB, or Brave-key behavior.
 
+### Phase 18 admin policy console
+
+Test paged source, run, conflict and published-version queries with malformed
+or cross-scope cursors, empty filtered pages that still have continuation, and
+stale/failing source warnings. A crawler invocation must persist a bounded run
+summary before reporting a processing error; a summary-write failure must fail
+the invocation. Registering or approving evidence must never activate a
+benefit rule. Rollback tests must reject author/curator/requester self-review,
+changed active pointers, stale/withdrawn target documents, out-of-date
+effective periods and cross-source precedence conflicts. Approval must create
+a new immutable version with remapped version-bound facts, a conditional
+active pointer, activation lineage and audit atomically; a later publication
+must use the next monotonic version. UI tests cover account changes, role
+guards, reasoned confirmations, historical/current badges and no live actions
+in the synthetic demo.
+
+The Phase 18 `pnpm check` gate passed lint, typecheck, **823 tests**, bundled
+API/PDF smoke and production builds. Browser inspection covered the synthetic
+run, conflict and version views plus the signed-out administrator guard at
+desktop and a 375-pixel narrow viewport; no horizontal overflow was measured.
+Cloud IAM, DynamoDB/S3 transactions and live official-source coverage remain
+unverified until deployment is authorized.
+
 ### Phase 11 policy-backed financial scenario
 
 The Phase 11 local `pnpm check` gate passed 692 tests across the workspace,

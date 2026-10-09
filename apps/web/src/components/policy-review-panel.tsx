@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { AlertTriangle, ArrowUpRight, Check, FileSearch, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { Button, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@solarsaathi/ui";
 import { useAuth } from "../auth/auth-provider";
 import { policyReviewApi, type PolicyChangeDetail, type PolicyChangeRecord, type PolicyReviewDetail,
-  type PolicyReviewRecord, type PolicyReviewSource, type PolicyReviewSourceState } from "../lib/policy-review-api";
+  type PolicyReviewRecord, type PolicyReviewSource, type PolicyReviewSourceState, type RegisterPolicySourceInput,
+  type PolicyRegisterableHost } from "../lib/policy-review-api";
 import { PolicyPublicationPanel } from "./policy-publication-panel";
+import { PolicyMonitoringPanel } from "./policy-monitoring-panel";
+import { PolicyVersionPanel } from "./policy-version-panel";
 
 type ReviewAction = { kind: "approve" | "reject"; item: PolicyReviewRecord } |
   { kind: "approve-change" | "reject-change"; change: PolicyChangeRecord } |
@@ -31,11 +34,19 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
   activeUserId.current = userId;
   const previousUserId = useRef(userId);
   const queueGeneration = useRef(0);
-  const [view, setView] = useState<"queue" | "sources" | "rules">("queue");
+  const sourceGeneration = useRef(0);
+  const pending = useRef<Set<AbortController>>(new Set());
+  const [view, setView] = useState<"queue" | "sources" | "runs" | "conflicts" | "rules" | "versions">("queue");
   const [items, setItems] = useState<PolicyReviewRecord[]>([]);
   const [changes, setChanges] = useState<PolicyChangeRecord[]>([]);
   const [sources, setSources] = useState<PolicyReviewSource[]>([]);
   const [sourceStates, setSourceStates] = useState<PolicyReviewSourceState[]>([]);
+  const [registerableHosts, setRegisterableHosts] = useState<PolicyRegisterableHost[]>([]);
+  const [selectedBinding, setSelectedBinding] = useState("");
+  const [sourceCursor, setSourceCursor] = useState<string>();
+  const [loadingMoreSources, setLoadingMoreSources] = useState(false);
+  const [sourceInput, setSourceInput] = useState<RegisterPolicySourceInput>({ name: "", publisherName: "",
+    jurisdiction: "IN", sourceType: "GOVERNMENT", canonicalUrl: "", crawlFrequency: "MONTHLY", freshnessWindowHours: 720 });
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -50,25 +61,35 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const refreshQueue = () => { queueGeneration.current++; setRefresh(value => value + 1); };
+  const newController = () => { const controller = new AbortController(); pending.current.add(controller); return controller; };
+  const release = (controller: AbortController) => { pending.current.delete(controller); };
+
+  useEffect(() => () => { for (const controller of pending.current) controller.abort(); pending.current.clear(); }, [userId]);
 
   useEffect(() => {
     if (previousUserId.current !== userId) {
       previousUserId.current = userId;
       setAuthorEvidence(null);
+      setSourceInput({ name: "", publisherName: "", jurisdiction: "IN", sourceType: "GOVERNMENT",
+        canonicalUrl: "", crawlFrequency: "MONTHLY", freshnessWindowHours: 720 });
+      setSelectedBinding(""); setRegisterableHosts([]);
+      setBusy(false); setLoadingMore(false); setLoadingMoreSources(false);
     }
   }, [userId]);
 
   useEffect(() => {
     queueGeneration.current++;
+    sourceGeneration.current++;
     if (demo) {
       setItems(demo.items); setChanges(demo.changes); setSources(demo.sources); setSourceStates(demo.sourceStates);
-      setNextCursor(null);
+      setRegisterableHosts([]);
+      setNextCursor(null); setSourceCursor(undefined);
       setSelectedId(demo.items[0]?.candidate.candidateId ?? demo.changes[0]?.changeId ?? null);
       setLoading(false);
       return;
     }
-    if (!userId) { setItems([]); setChanges([]); setSources([]); setSourceStates([]);
-      setNextCursor(null); setSelectedId(null);
+    if (!userId) { setItems([]); setChanges([]); setSources([]); setSourceStates([]); setRegisterableHosts([]);
+      setNextCursor(null); setSourceCursor(undefined); setSelectedId(null);
       setDetail(null); setChangeDetail(null);
       setAuthorEvidence(null); setAction(null); setReason(""); setMessage(null); setError(null); return; }
     const controller = new AbortController();
@@ -78,6 +99,8 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
         if (controller.signal.aborted) return;
         setItems(queue.items); setChanges(queue.changes); setSources(registry.sources);
         setSourceStates(registry.sourceStates);
+        setRegisterableHosts(registry.registerableHosts);
+        setSourceCursor(registry.nextCursor);
         setNextCursor(queue.nextCursor ?? null);
         setSelectedId(previous => queue.items.some(item => item.candidate.candidateId === previous) ||
           queue.changes.some(change => change.changeId === previous) ? previous :
@@ -105,21 +128,26 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
 
   async function confirm() {
     if (!userId || demo || !action || (action.kind !== "curate" && reason.trim().length < 10) || busy) return;
+    const controller = newController();
     setBusy(true); setError(null);
     try {
       if (action.kind === "curate") {
-        await policyReviewApi.curate(userId, action.source.sourceId, action.source.registryVersion);
+        await policyReviewApi.curate(userId, action.source.sourceId, action.source.registryVersion, controller.signal);
+        if (controller.signal.aborted || activeUserId.current !== userId) return;
         setMessage(`${action.source.name} was curated. Its official source can now be monitored.`);
       } else if ("source" in action) {
-        await policyReviewApi.crawl(userId, action.source.sourceId, reason.trim());
+        await policyReviewApi.crawl(userId, action.source.sourceId, reason.trim(), controller.signal);
+        if (controller.signal.aborted || activeUserId.current !== userId) return;
         setMessage(`${action.source.name} was queued after the rate-limit review. Monitor the next check.`);
       } else if ("change" in action) {
         await policyReviewApi.changeReview(userId, action.change.changeId,
-          action.kind === "approve-change" ? "approve" : "reject", action.change.revision, reason.trim());
+          action.kind === "approve-change" ? "approve" : "reject", action.change.revision, reason.trim(), controller.signal);
+        if (controller.signal.aborted || activeUserId.current !== userId) return;
         setMessage(`Document change ${action.kind === "approve-change" ? "reviewed" : "rejected"}. No policy fact was published.`);
       } else {
         const reviewed = await policyReviewApi.review(userId, action.item.candidate.candidateId, action.kind,
-          action.item.revision, reason.trim());
+          action.item.revision, reason.trim(), controller.signal);
+        if (controller.signal.aborted || activeUserId.current !== userId) return;
         setMessage(`Evidence ${action.kind === "approve" ? "approved for policy drafting" : "rejected"}. No benefit rule was published.`);
         if (action.kind === "approve" && detail?.candidate.candidate.candidateId === action.item.candidate.candidateId) {
           setAuthorEvidence({ ...detail, candidate: reviewed.candidate });
@@ -127,35 +155,78 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
         }
       }
       setAction(null); setReason(""); refreshQueue();
-    } catch (cause) { setError(errorText(cause)); }
-    finally { setBusy(false); }
+    } catch (cause) { if (!controller.signal.aborted) setError(errorText(cause)); }
+    finally { release(controller); if (!controller.signal.aborted) setBusy(false); }
   }
 
   async function crawl(source: PolicyReviewSource) {
     if (!userId || demo || !source.enabled || busy) return;
+    const controller = newController();
     setBusy(true); setError(null);
     try {
-      const result = await policyReviewApi.crawl(userId, source.sourceId);
+      const result = await policyReviewApi.crawl(userId, source.sourceId, undefined, controller.signal);
+      if (controller.signal.aborted || activeUserId.current !== userId) return;
       setMessage(result.queued ? `${source.name} was queued for a check. Refresh to see the result.` :
         `${source.name} is already due for its next scheduled check.`);
-    } catch (cause) { setError(errorText(cause)); }
-    finally { setBusy(false); }
+    } catch (cause) { if (!controller.signal.aborted) setError(errorText(cause)); }
+    finally { release(controller); if (!controller.signal.aborted) setBusy(false); }
   }
 
   async function loadMore() {
     if (!userId || demo || !nextCursor || loadingMore) return;
     const generation = queueGeneration.current;
+    const controller = newController();
     setLoadingMore(true); setError(null);
     try {
-      const page = await policyReviewApi.queue(userId, undefined, nextCursor);
-      if (activeUserId.current !== userId || queueGeneration.current !== generation) return;
+      const page = await policyReviewApi.queue(userId, controller.signal, nextCursor);
+      if (controller.signal.aborted || activeUserId.current !== userId || queueGeneration.current !== generation) return;
       setItems(previous => [...previous, ...page.items.filter(item =>
         !previous.some(existing => existing.candidate.candidateId === item.candidate.candidateId))]);
       setChanges(previous => [...previous, ...page.changes.filter(change =>
         !previous.some(existing => existing.changeId === change.changeId))]);
       setNextCursor(page.nextCursor ?? null);
-    } catch (cause) { setError(errorText(cause)); }
-    finally { setLoadingMore(false); }
+    } catch (cause) { if (!controller.signal.aborted) setError(errorText(cause)); }
+    finally { release(controller); if (!controller.signal.aborted) setLoadingMore(false); }
+  }
+
+  async function loadMoreSources() {
+    if (!userId || demo || !sourceCursor || loadingMoreSources) return;
+    const generation = sourceGeneration.current;
+    const controller = newController(); setLoadingMoreSources(true); setError(null);
+    try {
+      const page = await policyReviewApi.sources(userId, controller.signal, sourceCursor);
+      if (controller.signal.aborted || activeUserId.current !== userId || sourceGeneration.current !== generation) return;
+      setSources(previous => [...previous, ...page.sources.filter(source => !previous.some(old => old.sourceId === source.sourceId))]);
+      setSourceStates(previous => [...previous, ...page.sourceStates.filter(state => !previous.some(old => old.sourceId === state.sourceId))]);
+      setSourceCursor(page.nextCursor);
+    } catch (cause) { if (!controller.signal.aborted) setError(errorText(cause)); }
+    finally { release(controller); if (!controller.signal.aborted) setLoadingMoreSources(false); }
+  }
+
+  async function registerSource(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userId || demo || busy) return;
+    const binding = registerableHosts.find(item => `${item.host}|${item.sourceType}|${item.jurisdiction}` === selectedBinding);
+    const url = (() => { try { return new URL(sourceInput.canonicalUrl.trim()); } catch { return null; } })();
+    if (!binding || !url || url.protocol !== "https:" || url.hostname !== binding.host || url.port ||
+      url.username || url.password || url.hash ||
+      !Number.isInteger(sourceInput.freshnessWindowHours) || sourceInput.freshnessWindowHours < 1 ||
+      sourceInput.freshnessWindowHours > 8760) {
+      setError("Choose a reviewed host, enter an exact HTTPS URL on that host, and use a freshness window from 1 to 8760 hours."); return;
+    }
+    const controller = newController(); setBusy(true); setError(null);
+    try {
+      const result = await policyReviewApi.registerSource(userId, { ...sourceInput,
+        name: sourceInput.name.trim(), publisherName: sourceInput.publisherName.trim(),
+        jurisdiction: binding.jurisdiction, sourceType: binding.sourceType, canonicalUrl: url.toString() }, controller.signal);
+      if (controller.signal.aborted || activeUserId.current !== userId) return;
+      setMessage(result.created ? "Official source proposed. A curator must enable monitoring; evidence needs separate review before a benefit can be published." :
+        "This exact official source was already registered.");
+      setSources(previous => [result.source, ...previous.filter(source => source.sourceId !== result.source.sourceId)]);
+      setSourceInput({ name: "", publisherName: "", jurisdiction: binding.jurisdiction, sourceType: binding.sourceType,
+        canonicalUrl: `https://${binding.host}/`, crawlFrequency: "MONTHLY", freshnessWindowHours: 720 });
+    } catch (cause) { if (!controller.signal.aborted) setError(errorText(cause)); }
+    finally { release(controller); if (!controller.signal.aborted) setBusy(false); }
   }
 
   if (!demo && status === "loading") return <p role="status">Checking your policy review access…</p>;
@@ -176,8 +247,11 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
     {message && <p className="policy-review-feedback" role="status"><Check size={18} aria-hidden="true" />{message}</p>}
     <div className="policy-review-tabs" role="group" aria-label="Policy review sections">
       <button type="button" aria-pressed={view === "queue"} onClick={() => setView("queue")}>Review queue <span>{items.length + changes.length}</span></button>
-      <button type="button" aria-pressed={view === "sources"} onClick={() => setView("sources")}>Official sources <span>{sources.length}</span></button>
+      <button type="button" aria-pressed={view === "sources"} onClick={() => setView("sources")}>Official sources <span>{sources.length}{sourceCursor ? "+" : ""}</span></button>
+      <button type="button" aria-pressed={view === "runs"} onClick={() => setView("runs")}>Crawler runs</button>
+      <button type="button" aria-pressed={view === "conflicts"} onClick={() => setView("conflicts")}>Conflicts</button>
       <button type="button" aria-pressed={view === "rules"} onClick={() => setView("rules")}>Benefit rules</button>
+      <button type="button" aria-pressed={view === "versions"} onClick={() => setView("versions")}>Versions and rollback</button>
     </div>
     {view === "queue" ? <div className="policy-review-grid">
       <div className="policy-review-list" role="group" aria-label="Pending evidence">
@@ -212,6 +286,7 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
           <blockquote>{selected.candidate.quotedText}</blockquote>
           <p className="policy-review-caution"><AlertTriangle size={17} aria-hidden="true" />Mentions are copied from the source. No subsidy amount or eligibility has been calculated.</p>
           {!currentDetail.sourceFresh && <p className="policy-review-caution"><AlertTriangle size={17} aria-hidden="true" />This source is outside its freshness window. Verify the latest official document before using this evidence.</p>}
+          {currentDetail.sourceWarnings.map(code => <p key={code} className="policy-review-caution"><AlertTriangle size={17} aria-hidden="true" />Source {label(currentDetail.sourceHealthStatus)}: {label(code)}</p>)}
           <dl className="policy-review-facts">
             <div><dt>Publisher</dt><dd>{currentDetail.source.publisherName}</dd></div>
             <div><dt>Document</dt><dd>{currentDetail.document.title} · version {currentDetail.document.version}</dd></div>
@@ -248,6 +323,7 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
           </div>
           <p className="policy-review-change-context">These are bounded excerpts. Check the official document for full context before recording a decision.</p>
           {!currentChangeDetail.sourceFresh && <p className="policy-review-caution"><AlertTriangle size={17} aria-hidden="true" />This source is outside its freshness window. Verify the latest official document before approving this change.</p>}
+          {currentChangeDetail.sourceWarnings.map(code => <p key={code} className="policy-review-caution"><AlertTriangle size={17} aria-hidden="true" />Source {label(currentChangeDetail.sourceHealthStatus)}: {label(code)}</p>)}
           <dl className="policy-review-facts">
             <div><dt>Publisher</dt><dd>{currentChangeDetail.source.publisherName}</dd></div>
             <div><dt>Document</dt><dd>{currentChangeDetail.document.title} · version {currentChangeDetail.document.version}</dd></div>
@@ -275,17 +351,46 @@ export function PolicyReviewPanel({ demo }: { demo?: PolicyReviewDemoFixture }) 
         return <article key={source.sourceId} className="policy-review-source-card"><div>
         <span>{label(source.sourceType)} · {source.jurisdiction}</span><h2>{source.name}</h2><p>{source.publisherName}</p>
         <a href={source.canonicalUrl} target="_blank" rel="noopener noreferrer">View official source<ArrowUpRight size={14} aria-hidden="true" /></a></div>
-        <div className="policy-review-source-side"><strong>{source.registryStatus === "CURATED" ?
-          state?.crawlState?.status === "ERROR" ? "Check failed" : state?.crawlState?.status === "RUNNING" ? "Checking" :
-            state?.sourceFresh ? "Recently checked" : "Check due or stale" : label(source.registryStatus)}</strong>
+        <div className="policy-review-source-side"><strong>{label(state?.healthStatus ?? source.registryStatus)}</strong>
           <small>Last checked: {time(state?.crawlState?.lastCheckedAt)}</small>
+          {state?.warnings.map(code => <small key={code} className="policy-source-warning"><AlertTriangle size={13} aria-hidden="true" />{label(code)}</small>)}
           {state?.crawlState?.lastErrorCode && <small role="status">Failure: {label(state.crawlState.lastErrorCode)}</small>}
           {source.registryStatus === "PROPOSED" ? <Button variant="outline" disabled={busy || !!demo} onClick={() => { setAction({ kind: "curate", source }); setReason(""); }}>Curate source</Button>
             : source.enabled && state?.crawlState?.lastErrorCode === "RATE_LIMITED_MANUAL_REVIEW" ?
               <Button variant="outline" disabled={busy || !!demo} onClick={() => { setAction({ kind: "clear-rate-limit", source }); setReason(""); }}>Review rate limit</Button>
             : source.enabled ? <Button variant="outline" disabled={busy || !!demo} onClick={() => void crawl(source)}>Queue check</Button> : null}</div>
       </article>; })}
-    </div> : <PolicyPublicationPanel key={userId} userId={userId} demo={!!demo} evidence={authorEvidence ?? currentDetail} />}
+      {sourceCursor && <Button variant="outline" disabled={loadingMoreSources} onClick={() => void loadMoreSources()}>
+        {loadingMoreSources ? "Loading more…" : "Load more sources"}</Button>}
+      <section className="policy-source-register" aria-labelledby="policy-source-register-title"><div><h2 id="policy-source-register-title">Propose an official source</h2>
+        <p>Only exact allowlisted official URLs can be registered. Registration does not approve evidence or publish a benefit.</p></div>
+        <form onSubmit={event => void registerSource(event)}><div><label htmlFor="policy-source-name">Source name</label><input id="policy-source-name" required maxLength={200}
+          value={sourceInput.name} onChange={event => setSourceInput(previous => ({ ...previous, name: event.target.value }))} /></div>
+          <div><label htmlFor="policy-source-publisher">Official publisher</label><input id="policy-source-publisher" required maxLength={200}
+            value={sourceInput.publisherName} onChange={event => setSourceInput(previous => ({ ...previous, publisherName: event.target.value }))} /></div>
+          <div className="policy-source-wide"><label htmlFor="policy-source-host">Reviewed official host</label><select id="policy-source-host" required value={selectedBinding}
+            onChange={event => { const value = event.target.value;
+              const binding = registerableHosts.find(item => `${item.host}|${item.sourceType}|${item.jurisdiction}` === value);
+              setSelectedBinding(value);
+              if (binding) setSourceInput(previous => ({ ...previous, sourceType: binding.sourceType,
+                jurisdiction: binding.jurisdiction, canonicalUrl: `https://${binding.host}/` }));
+            }}><option value="">Choose a supported official website</option>{registerableHosts.map(item => {
+              const key = `${item.host}|${item.sourceType}|${item.jurisdiction}`;
+              return <option key={key} value={key}>{item.host} · {label(item.sourceType)} · {item.jurisdiction}</option>;
+            })}</select><small>The server’s reviewed host list fixes the authority type and jurisdiction. Enter the exact page path below.</small></div>
+          <div className="policy-source-wide"><label htmlFor="policy-source-url">Canonical official HTTPS URL</label><input id="policy-source-url" type="url" required maxLength={2048}
+            value={sourceInput.canonicalUrl} onChange={event => setSourceInput(previous => ({ ...previous, canonicalUrl: event.target.value }))}
+            placeholder={selectedBinding ? `https://${selectedBinding.split("|")[0]}/official-page` : "Choose a reviewed host first"} />
+            <small>Only an HTTPS page on the selected exact host can be proposed. A matching host does not itself verify the page’s policy facts.</small></div>
+          <div><label htmlFor="policy-source-frequency">Check frequency</label><select id="policy-source-frequency" value={sourceInput.crawlFrequency}
+            onChange={event => setSourceInput(previous => ({ ...previous, crawlFrequency: event.target.value as RegisterPolicySourceInput["crawlFrequency"] }))}>
+            {["DAILY", "WEEKLY", "MONTHLY", "ON_DEMAND"].map(value => <option key={value} value={value}>{label(value)}</option>)}</select></div>
+          <div><label htmlFor="policy-source-freshness">Freshness window (hours)</label><input id="policy-source-freshness" type="number" min={1} max={8760} required
+            value={sourceInput.freshnessWindowHours} onChange={event => setSourceInput(previous => ({ ...previous, freshnessWindowHours: Number(event.target.value) }))} /></div>
+          <Button type="submit" disabled={busy || !!demo}>{busy ? "Registering…" : "Propose source for curation"}</Button></form></section>
+    </div> : view === "rules" ? <PolicyPublicationPanel key={userId} userId={userId} demo={!!demo} evidence={authorEvidence ?? currentDetail} /> :
+      view === "runs" || view === "conflicts" ? <PolicyMonitoringPanel key={`${userId}:${view}`} userId={userId} demo={!!demo} mode={view} /> :
+        <PolicyVersionPanel key={userId} userId={userId} demo={!!demo} />}
     <Sheet open={action !== null} onOpenChange={open => { if (!open && !busy) { setAction(null); setReason(""); } }}>
       <SheetContent side="right"><SheetHeader><SheetTitle>{action?.kind === "curate" ? "Curate official source" : action?.kind === "clear-rate-limit" ? "Review official rate limit" : action?.kind === "approve" ? "Approve evidence" : action?.kind === "approve-change" ? "Mark document reviewed" : "Reject evidence"}</SheetTitle>
         <SheetDescription>{action?.kind === "curate" ? "This enables scheduled checks for the registered source." : action?.kind === "clear-rate-limit" ?

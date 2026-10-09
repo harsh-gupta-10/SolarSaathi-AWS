@@ -1,4 +1,19 @@
 import type { PolicyCandidateFactV1, PolicyChangeAssessmentV1 } from "@solarsaathi/policy";
+import { z } from "zod";
+
+export const policyCrawlerRunSchema = z.strictObject({
+  schemaVersion: z.literal(1), runId: z.uuid(),
+  startedAt: z.iso.datetime({ offset: true }), finishedAt: z.iso.datetime({ offset: true }),
+  status: z.enum(["COMPLETED", "PARTIAL", "FAILED"]),
+  checked: z.number().int().nonnegative().max(10), changed: z.number().int().nonnegative().max(10),
+  failed: z.number().int().nonnegative().max(10), skipped: z.number().int().nonnegative().max(10),
+  backlog: z.boolean(),
+  sourceOutcomes: z.array(z.strictObject({ sourceId: z.string().regex(/^SRC#[a-f0-9]{32}$/),
+    outcome: z.enum(["CHANGED", "UNCHANGED", "SKIPPED", "FAILED"]) })).max(10),
+  errorCode: z.enum(["SOURCE_LIST_FAILED"]).optional(),
+});
+
+export type PolicyCrawlerRunV1 = z.infer<typeof policyCrawlerRunSchema>;
 
 export interface PolicyCrawlStateV1 {
   schemaVersion: 1;
