@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowUpRight, BadgeCheck, CircleHelp, Landmark, ShieldAlert } from "lucide-react";
-import { Button, Input, Label } from "@solarsaathi/ui";
+import { Button, ChipGroup, CurrencyInput, Field, Input, Select } from "@solarsaathi/ui";
 import type { SystemDemand } from "@solarsaathi/calculations";
 import { benefitsApi, type BenefitApplicantFacts, type BenefitEvaluationResponse } from "../lib/benefits-api";
 import { policyFinancialApi, type PolicyFinancialEstimateResponse } from "../lib/policy-financial-api";
@@ -11,21 +11,11 @@ import { RoofRequestError } from "../lib/roof-api";
 import { PolicyFinancialResults } from "./policy-financial-results";
 import { ApplicationStart } from "./application-start";
 import type { CreateApplicationInput } from "../lib/applications-api";
+import { regions } from "../lib/regions";
 
 const rupees = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const dateTime = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
-const regions = [
-  ["AN", "Andaman and Nicobar Islands"], ["AP", "Andhra Pradesh"], ["AR", "Arunachal Pradesh"],
-  ["AS", "Assam"], ["BR", "Bihar"], ["CH", "Chandigarh"], ["CT", "Chhattisgarh"],
-  ["DN", "Dadra and Nagar Haveli and Daman and Diu"], ["DL", "Delhi"], ["GA", "Goa"],
-  ["GJ", "Gujarat"], ["HR", "Haryana"], ["HP", "Himachal Pradesh"], ["JK", "Jammu and Kashmir"],
-  ["JH", "Jharkhand"], ["KA", "Karnataka"], ["KL", "Kerala"], ["LA", "Ladakh"],
-  ["LD", "Lakshadweep"], ["MP", "Madhya Pradesh"], ["MH", "Maharashtra"], ["MN", "Manipur"],
-  ["ML", "Meghalaya"], ["MZ", "Mizoram"], ["NL", "Nagaland"], ["OR", "Odisha"],
-  ["PY", "Puducherry"], ["PB", "Punjab"], ["RJ", "Rajasthan"], ["SK", "Sikkim"],
-  ["TN", "Tamil Nadu"], ["TG", "Telangana"], ["TR", "Tripura"], ["UP", "Uttar Pradesh"],
-  ["UT", "Uttarakhand"], ["WB", "West Bengal"],
-] as const;
+
 const scopeName = { CENTRAL: "Central", STATE: "State", DISCOM: "DISCOM", LOCAL: "Local", OTHER: "Other" };
 const statusName = { SELECTED: "Included", INELIGIBLE: "Ineligible", UNKNOWN: "More information needed", EXCLUDED: "Not in compatible stack" };
 const displayCode = (code: string) => code.toLowerCase().replaceAll("_", " ").replace(/^./, letter => letter.toUpperCase());
@@ -46,12 +36,20 @@ const initialFields: Fields = { state: "", customerType: "", propertyType: "", o
 
 function Choice({ id, label, value, options, onChange, help }: { id: string; label: string; value: string;
   options: readonly (readonly [string, string])[]; onChange: (value: string) => void; help?: string }) {
-  return <div><Label htmlFor={id}>{label}</Label><select id={id} value={value} onChange={event => onChange(event.target.value)}
-    aria-describedby={help ? `${id}-help` : undefined}>
-    <option value="">Not provided</option>{options.map(([key, name]) => <option key={key} value={key}>{name}</option>)}
-  </select>{help && <p id={`${id}-help`}>{help}</p>}</div>;
+  return <Field id={id} label={label} hint={help}>
+    {control => <Select {...control} value={value} onChange={event => onChange(event.target.value)}>
+      <option value="">Not provided</option>{options.map(([key, name]) => <option key={key} value={key}>{name}</option>)}
+    </Select>}
+  </Field>;
 }
-const yesNoOptions = [["YES", "Yes"], ["NO", "No"]] as const;
+/** Yes / No quick answer. Leaving it unselected keeps the fact unknown; nothing is answered for the user. */
+function YesNo({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return <div role="group" aria-label={label} className="grid gap-1.5">
+    <p className="text-sm font-medium leading-snug">{label}</p>
+    <ChipGroup label={label} value={value} onChange={next => onChange(next === value ? "" : next)}
+      options={[{ label: "Yes", value: "YES" }, { label: "No", value: "NO" }]} />
+  </div>;
+}
 
 function BenefitResults({ response }: { response: BenefitEvaluationResponse }) {
   const result = response.result;
@@ -121,30 +119,34 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
   const [evaluatedInput, setEvaluatedInput] = useState<Omit<CreateApplicationInput, "policyId">>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
   function update(key: keyof Fields, value: string) {
     request.current?.abort(); request.current = null; setBusy(false); setResponse(undefined); setPolicyResponse(undefined);
-    setEvaluatedInput(undefined); setError(undefined);
+    setEvaluatedInput(undefined); setError(undefined); setFieldErrors({});
     setFields(previous => ({ ...previous, [key]: value }));
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const district = optionalCode(fields.district), localBody = optionalCode(fields.localBody), discom = optionalCode(fields.discom);
-    const schemes = fields.participatingSchemeIds.split(",").map(optionalCode).filter((item): item is string => !!item);
+    const schemes: string[] = [];
     const codePattern = /^[A-Z0-9][A-Z0-9_-]{0,63}$/;
     if ([district, localBody, discom, ...schemes].some(value => value && !codePattern.test(value)) || schemes.length > 50) {
-      setError("Use letters, numbers, underscores or dashes for the optional jurisdiction and scheme codes."); return;
+      setFieldErrors({ "benefit-district": "Use letters, numbers, underscores or dashes only." });
+      setError("Check the official codes: use letters, numbers, underscores or dashes only."); return;
     }
     const load = fields.sanctionedLoadKw.trim() ? Number(fields.sanctionedLoadKw) : undefined;
     if (load !== undefined && (!Number.isFinite(load) || load < 0 || load > 100_000)) {
+      setFieldErrors({ "benefit-load": "Enter a load in kW, or leave it blank." });
       setError("Enter a valid sanctioned load in kW or leave it blank."); return;
     }
     const eligibleCostRupees = fields.eligibleCostRupees.trim() ? Number(fields.eligibleCostRupees) : undefined;
     const eligibleQuotedCostPaise = eligibleCostRupees === undefined ? undefined : Math.round(eligibleCostRupees * 100);
     if (eligibleCostRupees !== undefined && (!Number.isFinite(eligibleCostRupees) || eligibleCostRupees <= 0 ||
       eligibleCostRupees > grossSystemCostRupees || !Number.isSafeInteger(eligibleQuotedCostPaise))) {
-      setError("Enter a policy-eligible cost no greater than the gross quote, or leave it blank."); return;
+      setFieldErrors({ "benefit-eligible-cost": "Enter an amount no greater than your installed cost quote, or leave it blank." });
+      setError("Enter a policy-eligible cost no greater than the installed cost quote, or leave it blank."); return;
     }
     const applicantFacts: BenefitApplicantFacts = { country: "IN",
       ...(fields.state ? { state: fields.state } : {}), ...(district ? { district } : {}),
@@ -188,10 +190,10 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
           <h3 id="benefit-evaluator-title">Check eligibility and compatible incentives</h3>
         </div>
       </div>
-      <p>Use the {nominalKw} kW planning system and your {rupees.format(grossSystemCostRupees)} gross quote. The service checks active, verified rules against the saved roof and your self-reported details. Missing answers remain unknown.</p>
+      <p>Using the {nominalKw} kW system and your {rupees.format(grossSystemCostRupees)} installed cost quote. Active, verified rules are checked against your saved roof and your answers. Unanswered questions stay unknown.</p>
     </div>
     <form onSubmit={submit} noValidate className="benefit-form">
-      <div className="benefit-form-grid">
+      <div className="grid gap-5 md:grid-cols-2">
         <Choice id="benefit-state" label="State or union territory" value={fields.state} options={regions}
           onChange={value => update("state", value)} help="Needed for state and many DISCOM incentives." />
         <Choice id="benefit-customer" label="Electricity customer type" value={fields.customerType}
@@ -204,36 +206,42 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
         <Choice id="benefit-ownership" label="Your relationship to the property" value={fields.ownership}
           options={[["OWNER", "Owner"], ["TENANT", "Tenant"], ["SOCIETY", "Housing society"], ["OTHER", "Other"]]}
           onChange={value => update("ownership", value)} />
-        <Choice id="benefit-grid" label="Connected to the electricity grid?" value={fields.gridConnected}
-          options={yesNoOptions} onChange={value => update("gridConnected", value)} />
-        <Choice id="benefit-prior" label="Received a rooftop solar subsidy before?" value={fields.priorSubsidyReceived}
-          options={yesNoOptions} onChange={value => update("priorSubsidyReceived", value)} />
+        <YesNo label="Connected to the electricity grid?" value={fields.gridConnected} onChange={value => update("gridConnected", value)} />
+        <YesNo label="Received a rooftop solar subsidy before?" value={fields.priorSubsidyReceived} onChange={value => update("priorSubsidyReceived", value)} />
       </div>
-      <details className="benefit-more"><summary>More eligibility details, if known</summary><div className="benefit-form-grid">
-        <Choice id="benefit-vendor" label="Installer approved under the relevant scheme?" value={fields.vendorApproved}
-          options={yesNoOptions} onChange={value => update("vendorApproved", value)} />
-        <Choice id="benefit-equipment" label="Equipment approved under the relevant scheme?" value={fields.equipmentApproved}
-          options={yesNoOptions} onChange={value => update("equipmentApproved", value)} />
-        <div><Label htmlFor="benefit-district">District code</Label><Input id="benefit-district" value={fields.district}
-          onChange={event => update("district", event.target.value)} maxLength={64} /><p>Optional; use the official district identifier if a scheme requires one.</p></div>
-        <div><Label htmlFor="benefit-local">Local body code</Label><Input id="benefit-local" value={fields.localBody}
-          onChange={event => update("localBody", event.target.value)} maxLength={64} /></div>
-        <div><Label htmlFor="benefit-discom">DISCOM code</Label><Input id="benefit-discom" value={fields.discom}
-          onChange={event => update("discom", event.target.value)} maxLength={64} /></div>
-        <div><Label htmlFor="benefit-load">Sanctioned load (kW)</Label><Input id="benefit-load" type="number" inputMode="decimal"
-          min="0" max="100000" step="any" value={fields.sanctionedLoadKw} onChange={event => update("sanctionedLoadKw", event.target.value)} /></div>
-        <div><Label htmlFor="benefit-eligible-cost">Policy-eligible cost (₹)</Label><Input id="benefit-eligible-cost" type="number"
-          inputMode="decimal" min="0" max={grossSystemCostRupees} step="any" value={fields.eligibleCostRupees}
-          onChange={event => update("eligibleCostRupees", event.target.value)} aria-describedby="benefit-eligible-cost-help" />
-          <p id="benefit-eligible-cost-help">Only enter the amount your official scheme and itemized quote treat as eligible. The full gross quote is not assumed eligible.</p></div>
-        <div><Label htmlFor="benefit-installed">Installation date</Label><Input id="benefit-installed" type="date"
-          value={fields.installationDate} onChange={event => update("installationDate", event.target.value)} /></div>
-        <div><Label htmlFor="benefit-applied">Application date</Label><Input id="benefit-applied" type="date"
-          value={fields.applicationDate} onChange={event => update("applicationDate", event.target.value)} /></div>
-        <div className="benefit-scheme-input"><Label htmlFor="benefit-schemes">Scheme IDs already joined</Label><Input id="benefit-schemes"
-          value={fields.participatingSchemeIds} onChange={event => update("participatingSchemeIds", event.target.value)}
-          placeholder="Comma-separated IDs, if known" maxLength={500} /></div>
-      </div></details>
+      <details className="mt-5 rounded-lg border p-4"><summary className="cursor-pointer text-sm font-semibold">More eligibility details, if known</summary>
+        <div className="mt-4 grid gap-5 md:grid-cols-2">
+          <YesNo label="Installer approved under the relevant scheme?" value={fields.vendorApproved} onChange={value => update("vendorApproved", value)} />
+          <YesNo label="Equipment approved under the relevant scheme?" value={fields.equipmentApproved} onChange={value => update("equipmentApproved", value)} />
+          <Field id="benefit-load" label="Sanctioned load (kW)" error={fieldErrors["benefit-load"]} liveError={false} hint="Printed on your electricity bill.">
+            {control => <Input {...control} type="number" inputMode="decimal" min="0" max="100000" step="any" value={fields.sanctionedLoadKw}
+              onChange={event => update("sanctionedLoadKw", event.target.value)} />}
+          </Field>
+          <Field id="benefit-eligible-cost" label="Policy-eligible cost (₹)" error={fieldErrors["benefit-eligible-cost"]} liveError={false}
+            hint="Only the amount your scheme and itemized quote treat as eligible. The full quote is not assumed eligible.">
+            {control => <CurrencyInput {...control} value={fields.eligibleCostRupees} onValueChange={digits => update("eligibleCostRupees", digits)} />}
+          </Field>
+          <Field id="benefit-installed" label="Installation date" hint="Leave blank if not installed yet.">
+            {control => <Input {...control} type="date" value={fields.installationDate} onChange={event => update("installationDate", event.target.value)} />}
+          </Field>
+          <Field id="benefit-applied" label="Application date" hint="Leave blank if you have not applied yet.">
+            {control => <Input {...control} type="date" value={fields.applicationDate} onChange={event => update("applicationDate", event.target.value)} />}
+          </Field>
+        </div>
+        <details className="mt-5 rounded-lg border p-4"><summary className="cursor-pointer text-sm font-semibold">Official codes (only if a scheme asks for them)</summary>
+          <div className="mt-4 grid gap-5 md:grid-cols-3">
+            <Field id="benefit-district" label="District code" error={fieldErrors["benefit-district"]} liveError={false} hint="Official district identifier.">
+              {control => <Input {...control} value={fields.district} onChange={event => update("district", event.target.value)} maxLength={64} />}
+            </Field>
+            <Field id="benefit-local" label="Local body code">
+              {control => <Input {...control} value={fields.localBody} onChange={event => update("localBody", event.target.value)} maxLength={64} />}
+            </Field>
+            <Field id="benefit-discom" label="DISCOM code" hint="For example the short code of your electricity company.">
+              {control => <Input {...control} value={fields.discom} onChange={event => update("discom", event.target.value)} maxLength={64} />}
+            </Field>
+          </div>
+        </details>
+      </details>
       <div className="benefit-form-footer"><Button type="submit" disabled={busy}>{busy ? "Checking verified rules…" : financialInputs ? "Estimate with verified benefits" : "Evaluate benefits"}</Button>
         <p><CircleHelp size={15} aria-hidden="true" /> This is an eligibility estimate, not a government approval or application.</p></div>
       {busy && <p role="status" className="system-form-status">Checking the saved system, current sources and rule compatibility…</p>}

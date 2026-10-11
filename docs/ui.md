@@ -426,3 +426,23 @@ the cited source applies to that area or customer. Official source links open
 separately. The page never shows a researched subsidy amount or eligibility
 result. A visibly fictional demo explains the result format without calling
 live services.
+
+## Chat-first workspace and shared design system (2026-10-11)
+
+- **One brand.** Solar green tokens (`--primary #12633f`) and Inter via `next/font`. The marketing "Samara" token names
+  are kept only as aliases onto the same palette until their CSS is retired. New UI uses Tailwind utilities and the
+  `@solarsaathi/ui` primitives, not new global classes.
+- **Primitives** (`packages/ui`): `Field` (label, hint, per-field error wired to `aria-describedby` / `aria-invalid`;
+  `liveError={false}` when a form shows one summary alert), `Select`, `CurrencyInput` (₹ prefix, Indian grouping, digits
+  only), `ChipGroup` (radio-semantics quick answers), `Card`, `Badge`, `Callout`, `EmptyState`, `SourceCitation`. Inputs and
+  selects are 44 px tall.
+- **Forms:** one input per fact with quick-pick chips; rarely needed assumptions sit under "Advanced". Required answers
+  are never prefilled. Advanced assumptions start at an explicit, labelled "none assumed" value.
+- **Chat home (`/app`):** conversation list on the left, the thread in the centre, a pinned "solar summary" on the right
+  (a bottom panel on small screens). Assistant text is explanation only; every figure is rendered from a server-built
+  card (`ChatCard`, `packages/types/src/chat.ts`) with its source, status badge and date. Changes (create property,
+  confirm roof, create application, update a step) appear as a "Please confirm" card and run only when the user clicks
+  Confirm. Chat needs sign-in. If `NEXT_PUBLIC_CHAT_STREAM_URL` is not set the guided overview is shown instead.
+- **Navigation:** Chat, My roofs, Applications, Help, Settings, plus a collapsed "More tools" group for the step-level pages.
+- **Marketing hero** is the chat composer: the typed question is held in `sessionStorage`, carried through sign-in
+  (validated `returnTo`) and becomes the first chat turn.

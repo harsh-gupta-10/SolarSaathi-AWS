@@ -86,6 +86,16 @@ Parameters:
     Default: ap-south-1
     AllowedPattern: '^[a-z]{2}(-gov)?-[a-z0-9-]+-[0-9]+$'
     Description: Region used for optional Bedrock fact-card selection.
+  GuardrailId:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^[a-z0-9]{10,64}$'
+    Description: Optional existing Bedrock guardrail ID. Blank creates and uses the stack-managed ChatGuardrail.
+  GuardrailVersion:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^([0-9]{1,8}|DRAFT)$'
+    Description: Version for an external GuardrailId; required when GuardrailId is set, ignored otherwise.
   DesignImageModelId:
     Type: String
     Default: ""
@@ -105,6 +115,8 @@ Conditions:
   BraveSearchConfigured: !Not [!Equals [!Ref BraveSearchKeySecretArn, ""]]
   AdvisorBedrockConfigured: !Not [!Equals [!Ref AdvisorBedrockModelArn, ""]]
   AdvisorFoundationModelConfigured: !Not [!Equals [!Ref AdvisorBedrockFoundationModelArn, ""]]
+  ExternalGuardrail: !Not [!Equals [!Ref GuardrailId, ""]]
+  ManagedGuardrail: !Equals [!Ref GuardrailId, ""]
   DesignImageConfigured: !Not [!Equals [!Ref DesignImageModelId, ""]]
 
 Rules:
@@ -115,6 +127,11 @@ Rules:
         AssertDescription: Google federation requires an OAuth client ID.
       - Assert: !Not [!Equals [!Ref GoogleOAuthSecretArn, ""]]
         AssertDescription: Google federation requires a Secrets Manager ARN.
+  ExternalGuardrailNeedsVersion:
+    RuleCondition: !Not [!Equals [!Ref GuardrailId, ""]]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref GuardrailVersion, ""]]
+        AssertDescription: An external GuardrailId requires GuardrailVersion.
   AdvisorModelConfigurationPaired:
     Assertions:
       - Assert: !Or
@@ -151,21 +168,21 @@ Resources:
       EndpointConfiguration: REGIONAL
       Cors:
         AllowOrigin: !Sub "'${ApplicationOrigin}'"
-        AllowHeaders: "'Content-Type,Authorization'"
-        AllowMethods: "'GET,POST,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,Idempotency-Key'"
+        AllowMethods: "'GET,POST,DELETE,PATCH,OPTIONS'"
       GatewayResponses:
         DEFAULT_4XX:
           ResponseParameters:
             Headers:
               Access-Control-Allow-Origin: !Sub "'${ApplicationOrigin}'"
-              Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization,Idempotency-Key'"
           ResponseTemplates:
             application/json: '{"error":{"code":"GATEWAY_REQUEST_ERROR","message":"Check your sign-in session and request.","requestId":"$context.requestId"}}'
         DEFAULT_5XX:
           ResponseParameters:
             Headers:
               Access-Control-Allow-Origin: !Sub "'${ApplicationOrigin}'"
-              Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization,Idempotency-Key'"
           ResponseTemplates:
             application/json: '{"error":{"code":"GATEWAY_SERVICE_ERROR","message":"The service is unavailable. Try again later.","requestId":"$context.requestId"}}'
       Auth:
@@ -198,6 +215,24 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/advisor"
+      RetentionInDays: !Ref LogRetentionDays
+
+  ChatAgentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/chat-agent"
+      RetentionInDays: !Ref LogRetentionDays
+
+  ChatsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/chats"
+      RetentionInDays: !Ref LogRetentionDays
+
+  PriceAdminLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/solarsaathi/${AWS::StackName}/${Environment}/price-admin"
       RetentionInDays: !Ref LogRetentionDays
 
   ProfileLogGroup:
@@ -845,6 +880,15 @@ Resources:
                   "dynamodb:LeadingKeys": ["USER#*", "ORG#*", "CUSTOMER#*", "PROPERTY#*", "APPLICATION#*"]
                 "Null":
                   "dynamodb:LeadingKeys": "false"
+            - Sid: ApplicationIdempotencyKeys
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem]
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["IDEMPOTENCY#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
             - Sid: ReadCurrentVerifiedPolicy
               Effect: Allow
               Action: dynamodb:GetItem
@@ -1180,6 +1224,15 @@ Resources:
                 - dynamodb:ConditionCheckItem
                 - dynamodb:Query
               Resource: !GetAtt AnalysesTable.Arn
+            - Sid: CoreIdempotencyUpdates
+              Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["IDEMPOTENCY#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
             - Sid: CorePropertyIndexes
               Effect: Allow
               Action: dynamodb:Query
@@ -1382,6 +1435,363 @@ Resources:
             RestApiId: !Ref Api
             Path: /chat
             Method: POST
+
+  ChatAgentFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Streams a signed-in user's solar assistant turn over a Lambda Function URL, calling deterministic services in-process with the verified identity.
+        must:
+          - Verify the Cognito access token in code on every request; the Function URL itself has no IAM auth.
+          - Limit CORS to the application origin.
+          - Grant Bedrock invoke and guardrail access only to the configured model, inference profile and guardrail.
+          - Never log message text, prompts, tool results or model output.
+          - Write only chat state, price research candidates and counters; never policy or account records.
+    Properties:
+      Handler: handlers/chat-stream.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 120
+      MemorySize: 512
+      LoggingConfig:
+        LogGroup: !Ref ChatAgentLogGroup
+      FunctionUrlConfig:
+        AuthType: NONE
+        InvokeMode: RESPONSE_STREAM
+        Cors:
+          AllowOrigins: [!Ref ApplicationOrigin]
+          AllowMethods: [POST]
+          AllowHeaders: [content-type, authorization]
+          MaxAge: 600
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+          POLICY_TABLE_NAME: !Ref PolicyTable
+          BEDROCK_MODEL_ID: !Ref AdvisorBedrockModelId
+          BEDROCK_REGION: !Ref AdvisorBedrockRegion
+          GUARDRAIL_ID: !If [ExternalGuardrail, !Ref GuardrailId, !GetAtt ChatGuardrail.GuardrailId]
+          GUARDRAIL_VERSION: !If [ExternalGuardrail, !Ref GuardrailVersion, !GetAtt ChatGuardrailVersion.Version]
+          BRAVE_SEARCH_API_KEY: !If
+            - BraveSearchConfigured
+            - !Sub "{{resolve:secretsmanager:${BraveSearchKeySecretArn}:SecretString:apiKey}}"
+            - ""
+      Policies:
+        - Statement:
+            - Sid: ReadChatContext
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query]
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["USER#*", "ORG#*", "CUSTOMER#*", "PROPERTY#*", "APPLICATION#*", "CHAT#*", "PRICE_BENCHMARK#*", "PRICE_STATUS#APPROVED"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: ReadPropertyIndexes
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource:
+                - !Sub "${AnalysesTable.Arn}/index/GSI1"
+                - !Sub "${AnalysesTable.Arn}/index/GSI2"
+            - Sid: WriteChatStateAndPriceCandidates
+              Effect: Allow
+              Action: [dynamodb:PutItem, dynamodb:UpdateItem]
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["CHAT#*", "PRICE_BENCHMARK#*", "PRICE_STATUS#CANDIDATE"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: ReadCurrentChatPolicy
+              Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt PolicyTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["PUBLISHED_POLICY#*", "SOURCE#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: ListActiveChatPolicy
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${PolicyTable.Arn}/index/GSI5"
+            - Sid: ApplyChatGuardrail
+              Effect: Allow
+              Action: bedrock:ApplyGuardrail
+              Resource: !If
+                - ExternalGuardrail
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/${GuardrailId}"
+                - !GetAtt ChatGuardrail.GuardrailArn
+        - !If
+          - AdvisorBedrockConfigured
+          - Statement:
+              - Sid: StreamChatModel
+                Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+                Resource: !If
+                  - AdvisorFoundationModelConfigured
+                  - [!Ref AdvisorBedrockModelArn, !Ref AdvisorBedrockFoundationModelArn]
+                  - !Ref AdvisorBedrockModelArn
+          - !Ref AWS::NoValue
+
+  ChatAgentFunctionUrlInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ChatAgentFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+  ChatsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Lists, reads and deletes the signed-in user's conversations and executes a confirmed single-use assistant proposal through the existing services.
+        must:
+          - Keep the Cognito authorizer on every route and key every conversation read and delete by the verified user id.
+          - Execute only a stored, unexpired, single-use proposal owned by the caller.
+          - Delete only chat partitions; never account, property or policy records.
+    Properties:
+      Handler: handlers/chats.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 28
+      MemorySize: 512
+      LoggingConfig:
+        LogGroup: !Ref ChatsLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+          POLICY_TABLE_NAME: !Ref PolicyTable
+      Policies:
+        - Statement:
+            - Sid: ReadChatAndOwnedRecords
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query]
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["USER#*", "ORG#*", "CUSTOMER#*", "PROPERTY#*", "APPLICATION#*", "CHAT#*", "IDEMPOTENCY#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: WriteConfirmedRecords
+              Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["CHAT#*", "IDEMPOTENCY#*", "CUSTOMER#*", "PROPERTY#*", "APPLICATION#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: GuardConfirmedWrites
+              Effect: Allow
+              Action: dynamodb:ConditionCheckItem
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["USER#*", "ORG#*", "CUSTOMER#*", "PROPERTY#*", "APPLICATION#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: UpdateChatProposalState
+              Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["CHAT#*", "IDEMPOTENCY#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: DeleteChatPartition
+              Effect: Allow
+              Action: [dynamodb:DeleteItem, dynamodb:BatchWriteItem]
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["CHAT#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: ReadCurrentVerifiedPolicy
+              Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt PolicyTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["PUBLISHED_POLICY#*", "SOURCE#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: GuardActiveApplicationPolicy
+              Effect: Allow
+              Action: dynamodb:ConditionCheckItem
+              Resource: !GetAtt PolicyTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["PUBLISHED_POLICY#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+            - Sid: ListActiveApplicationPolicy
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${PolicyTable.Arn}/index/GSI5"
+      Events:
+        ListChats:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /chats, Method: GET }
+        DeleteAllChats:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /chats, Method: DELETE }
+        GetChat:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/chats/{chatId}", Method: GET }
+        DeleteChat:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/chats/{chatId}", Method: DELETE }
+        ConfirmProposal:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /chat/confirm, Method: POST }
+
+  PriceAdminFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Lets policy administrators review, approve and reject price benchmark candidates with a separate-reviewer rule.
+        must:
+          - Require a verified ADMIN_POLICY or ADMIN Cognito group in handler code.
+          - Touch only price benchmark and price status items.
+    Properties:
+      Handler: handlers/price-admin.handler
+      CodeUri: ../../apps/api/dist
+      Timeout: 28
+      LoggingConfig:
+        LogGroup: !Ref PriceAdminLogGroup
+      Environment:
+        Variables:
+          CORE_TABLE_NAME: !Ref AnalysesTable
+      Policies:
+        - Statement:
+            - Sid: ManagePriceBenchmarks
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem]
+              Resource: !GetAtt AnalysesTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  "dynamodb:LeadingKeys": ["PRICE_BENCHMARK#*", "PRICE_STATUS#*"]
+                "Null":
+                  "dynamodb:LeadingKeys": "false"
+      Events:
+        ListPriceBenchmarks:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /admin/pricing/benchmarks, Method: GET }
+        CreatePriceBenchmark:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: /admin/pricing/benchmarks, Method: POST }
+        PriceBenchmarkDetail:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/pricing/benchmarks/{benchmarkId}", Method: GET }
+        ApprovePriceBenchmark:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/pricing/benchmarks/{benchmarkId}/approve", Method: POST }
+        RejectPriceBenchmark:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/admin/pricing/benchmarks/{benchmarkId}/reject", Method: POST }
+
+  ChatGuardrail:
+    Type: AWS::Bedrock::Guardrail
+    Condition: ManagedGuardrail
+    Properties:
+      Name: !Sub "solarsaathi-chat-${Environment}"
+      Description: Keeps the solar assistant on topic, blocks prompt attacks and masks sensitive identifiers.
+      BlockedInputMessaging: "I can help with rooftop solar, electricity bills, subsidies and installation. I cannot help with that request."
+      BlockedOutputsMessaging: "I cannot share that response. Please ask me something about rooftop solar."
+      TopicPolicyConfig:
+        TopicsConfig:
+          - Name: NonSolarRequests
+            Type: DENY
+            Definition: Requests unrelated to rooftop solar, electricity bills, roofs, subsidies, installation or using the SolarSaathi app, such as general chat, coding help, homework, entertainment or politics.
+            Examples:
+              - Write a Python script for me
+              - Who will win the cricket match
+              - Tell me a joke
+          - Name: LegalAdvice
+            Type: DENY
+            Definition: Requests for legal advice, contract interpretation or dispute strategy.
+            Examples:
+              - Can I sue my installer
+              - Review this legal contract for me
+          - Name: MedicalAdvice
+            Type: DENY
+            Definition: Requests for medical diagnosis, treatment or medication advice.
+            Examples:
+              - What medicine should I take for a headache
+          - Name: InvestmentAdvice
+            Type: DENY
+            Definition: Requests for investment, trading, loan or insurance product advice beyond the solar cost and savings estimates the app calculates.
+            Examples:
+              - Which stocks should I buy
+              - Should I invest in crypto
+      ContentPolicyConfig:
+        FiltersConfig:
+          - Type: PROMPT_ATTACK
+            InputStrength: HIGH
+            OutputStrength: NONE
+          - Type: HATE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: INSULTS
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: SEXUAL
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: VIOLENCE
+            InputStrength: MEDIUM
+            OutputStrength: MEDIUM
+          - Type: MISCONDUCT
+            InputStrength: MEDIUM
+            OutputStrength: MEDIUM
+      WordPolicyConfig:
+        ManagedWordListsConfig:
+          - Type: PROFANITY
+      SensitiveInformationPolicyConfig:
+        PiiEntitiesConfig:
+          - Type: PASSWORD
+            Action: ANONYMIZE
+          - Type: PIN
+            Action: ANONYMIZE
+          - Type: CREDIT_DEBIT_CARD_NUMBER
+            Action: ANONYMIZE
+          - Type: CREDIT_DEBIT_CARD_CVV
+            Action: ANONYMIZE
+          - Type: INTERNATIONAL_BANK_ACCOUNT_NUMBER
+            Action: ANONYMIZE
+        RegexesConfig:
+          - Name: AadhaarNumber
+            Description: Twelve digit Aadhaar style number
+            Pattern: '\b[2-9][0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4}\b'
+            Action: ANONYMIZE
+          - Name: PanNumber
+            Description: Indian PAN
+            Pattern: '\b[A-Z]{5}[0-9]{4}[A-Z]\b'
+            Action: ANONYMIZE
+          - Name: IfscCode
+            Description: Indian bank IFSC
+            Pattern: '\b[A-Z]{4}0[A-Z0-9]{6}\b'
+            Action: ANONYMIZE
+          - Name: BankAccountNumber
+            Description: Account number after an account label
+            Pattern: '([Aa][Cc][Cc][Oo][Uu][Nn][Tt]|[Aa]/[Cc]|[Aa][Cc][Cc][Tt])[^0-9]{0,20}[0-9]{9,18}'
+            Action: ANONYMIZE
+          - Name: OneTimePassword
+            Description: OTP shared with a label
+            Pattern: '([Oo][Tt][Pp]|OTP|[Oo]ne[- ][Tt]ime [A-Za-z]+|[Vv]erification code)[^0-9]{0,12}[0-9]{4,8}'
+            Action: ANONYMIZE
+          - Name: ConsumerNumber
+            Description: Electricity consumer number after a label
+            Pattern: '([Cc]onsumer|CONSUMER|[Kk])[ ]?([Nn]o|[Nn]umber|[Ii][Dd]|NO|NUMBER)[^A-Za-z0-9]{0,6}[A-Za-z0-9-]{6,20}'
+            Action: ANONYMIZE
+
+  ChatGuardrailVersion:
+    Type: AWS::Bedrock::GuardrailVersion
+    Condition: ManagedGuardrail
+    Properties:
+      GuardrailIdentifier: !GetAtt ChatGuardrail.GuardrailId
+      Description: Immutable version used by the chat assistant.
 
   UserPool:
     Type: AWS::Cognito::UserPool
@@ -1799,6 +2209,12 @@ Resources:
           Value: !Ref Environment
 
 Outputs:
+  ChatStreamUrl:
+    Description: Streaming assistant endpoint (Lambda Function URL). Set NEXT_PUBLIC_CHAT_STREAM_URL to this value.
+    Value: !GetAtt ChatAgentFunctionUrl.FunctionUrl
+  ChatGuardrailId:
+    Description: Bedrock guardrail applied to every assistant turn.
+    Value: !If [ExternalGuardrail, !Ref GuardrailId, !GetAtt ChatGuardrail.GuardrailId]
   ApiUrl:
     Description: API base URL; roof and advisor endpoints remain unavailable.
     Value: !Sub "https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/v1"

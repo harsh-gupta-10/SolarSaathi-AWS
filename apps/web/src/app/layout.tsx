@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Inter } from "next/font/google";
 import { getPublicEnvironment } from "../lib/env";
 import { AppProviders } from "../components/app-providers";
 import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "SolarSaathi | Rooftop solar, with clarity",
@@ -13,7 +16,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   getPublicEnvironment();
 
   return (
-    <html lang="en-IN">
+    <html lang="en-IN" className={inter.variable}>
       <body>
         <a className="skip-link" href="#main-content">Skip to content</a>
         <AppProviders>{children}</AppProviders>

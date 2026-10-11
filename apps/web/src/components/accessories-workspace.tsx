@@ -1,5 +1,6 @@
 "use client";
 
+import { SignInLink } from "./sign-in-link";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Activity, ArrowRight, BatteryCharging, Bolt, ChevronDown, CircleHelp, Home, Leaf,
@@ -220,7 +221,7 @@ export function AccessoriesWorkspace() {
     <h1>{status === "unconfigured" ? "Accessory advice is not connected here yet" : "Sign in to review equipment for your roof"}</h1>
     <p>{status === "unconfigured" ? "Account sign-in and the accessory API are not configured in this deployment. You can inspect a clearly fictional layout preview." :
       "Recommendations use your saved, confirmed roof and your stated goals."}</p>
-    {status === "signedOut" && <Button asChild><Link href="/auth/sign-in">Sign in</Link></Button>}
+    {status === "signedOut" && <SignInLink />}
     {(status === "signedOut" || status === "unconfigured") && <Button asChild variant="outline"><Link href="/demo/accessories">View synthetic preview</Link></Button>}
     {status === "loading" && <p role="status">Checking your account…</p>}</section>;
 

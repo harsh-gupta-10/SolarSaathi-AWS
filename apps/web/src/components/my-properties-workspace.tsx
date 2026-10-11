@@ -371,9 +371,9 @@ export function MyPropertiesWorkspace() {
                     </Link>
                   </Button>
                   <Button asChild variant="ghost" size="sm">
-                    <Link href={`/app/advisor?propertyId=${encodeURIComponent(item.propertyId)}`}>
+                    <Link href={`/app?propertyId=${encodeURIComponent(item.propertyId)}`}>
                       <Zap className="mr-1.5 size-3.5 text-amber-500" aria-hidden="true" />
-                      <span>AI Advisor</span>
+                      <span>Ask SolarSaathi</span>
                     </Link>
                   </Button>
                 </div>

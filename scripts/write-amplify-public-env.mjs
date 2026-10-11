@@ -3,6 +3,7 @@ import process from "node:process";
 
 const names = [
   "NEXT_PUBLIC_API_BASE_URL",
+  "NEXT_PUBLIC_CHAT_STREAM_URL",
   "NEXT_PUBLIC_GOOGLE_MAPS_KEY",
   "NEXT_PUBLIC_COGNITO_USER_POOL_ID",
   "NEXT_PUBLIC_COGNITO_CLIENT_ID",

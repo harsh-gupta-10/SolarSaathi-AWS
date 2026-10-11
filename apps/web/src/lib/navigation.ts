@@ -22,9 +22,22 @@ const items: Record<string, NavigationItem> = {
 const homeowner = ["overview", "analyze", "properties", "savings", "benefits", "international", "applications", "advisor", "designs", "accessories", "help", "settings"];
 const broker = ["overview", "customers", "properties", "analyses", "proposals", "applications", "leads", "international", "advisor", "designs", "accessories", "settings"];
 
+// Primary destinations stay short; step-level tools live under "More tools" and are also reachable from chat cards.
+const homeownerPrimary = ["overview", "properties", "applications", "help", "settings"];
+const brokerPrimary = ["overview", "customers", "properties", "analyses", "proposals", "applications", "leads", "settings"];
+
+export function navigationGroupsForRole(role: UserRole): { primary: NavigationItem[]; more: NavigationItem[] } {
+  const all = navigationForRole(role);
+  const primaryKeys = role === "BROKER" ? brokerPrimary : homeownerPrimary;
+  const primary = primaryKeys.flatMap(key => all.filter(item => item.key === key));
+  return { primary, more: all.filter(item => !primaryKeys.includes(item.key)) };
+}
+
 export function navigationForRole(role: UserRole): NavigationItem[] {
   return (role === "BROKER" ? broker : homeowner).map(key => ({
     ...items[key],
+    ...(role !== "BROKER" && key === "overview" ? { label: "Chat" } : {}),
+    ...(role !== "BROKER" && key === "properties" ? { label: "My roofs" } : {}),
     ...(role === "BROKER" && key === "properties" ? { label: "Properties" } : {}),
     ...(role === "BROKER" && key === "applications" ? { label: "Applications" } : {}),
     ...(role === "BROKER" && key === "benefits" ? { label: "Benefits" } : {}),

@@ -3,6 +3,7 @@ import { parsePublicEnv, type PublicEnv } from "@solarsaathi/config/public";
 
 const publicFields = [
   "NEXT_PUBLIC_API_BASE_URL",
+  "NEXT_PUBLIC_CHAT_STREAM_URL",
   "NEXT_PUBLIC_GOOGLE_MAPS_KEY",
   "NEXT_PUBLIC_COGNITO_USER_POOL_ID",
   "NEXT_PUBLIC_COGNITO_CLIENT_ID",
@@ -14,6 +15,7 @@ const publicFields = [
 ] as const;
 
 const configured = {
+  NEXT_PUBLIC_CHAT_STREAM_URL: "https://chat.example.lambda-url.ap-south-1.on.aws/",
   NEXT_PUBLIC_API_BASE_URL: "https://api.example.com/v1",
   NEXT_PUBLIC_GOOGLE_MAPS_KEY: "AIzaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
   NEXT_PUBLIC_COGNITO_USER_POOL_ID: "ap-south-1_Example123",

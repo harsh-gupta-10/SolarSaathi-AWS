@@ -7,6 +7,8 @@ import { BenefitsService } from "../benefits/service";
 import { documentExecutor } from "../data/client";
 import { CoreRepository } from "../data/repository";
 import { CoreService, type ServiceDependencies } from "../data/service";
+import { idempotencyHeader, runIdempotent } from "../chat/idempotency";
+import { DynamoItemTable, type ItemTable } from "../lib/item-table";
 import { jsonResponse, parseJsonObject, RequestError, withRequestLogging } from "../lib/http";
 import { DynamoPolicyPublicationRepository, type PolicyPublicationRepository } from "../policy/publication-storage";
 import { DynamoPolicyRepository, type PolicyRepository } from "../policy/storage";
@@ -19,6 +21,7 @@ export interface ApplicationsHandlerDependencies extends ServiceDependencies {
   createWorkflow?: (tableName: string, region: string) => PolicyWorkflowRepository;
   createPublication?: (tableName: string, region: string) => PolicyPublicationRepository;
   createApplications?: (coreTable: string, policyTable: string, region: string) => ApplicationRepository;
+  createItems?: (tableName: string, region: string) => ItemTable;
 }
 
 type Route = { kind: "collection" | "detail" | "step" | "details" | "documents" | "events" | "chat-update";
@@ -80,7 +83,14 @@ export function createApplicationsHandler(dependencies: ApplicationsHandlerDepen
     const common = { schemaVersion: 1 as const, source: "DYNAMODB_APPLICATION_TRACKER_V1" as const,
       requestId: context.awsRequestId };
     if (selected.kind === "collection") {
-      if (event.httpMethod === "POST") return jsonResponse(201, { ...common, application: await service.create(identity, parseJsonObject(event)) });
+      if (event.httpMethod === "POST") {
+        const body = parseJsonObject(event);
+        const key = idempotencyHeader(event.headers);
+        const create = () => service.create(identity, body);
+        const items = key === undefined ? undefined : (dependencies.createItems ?? ((name, region) => new DynamoItemTable(name, region)))(environment.CORE_TABLE_NAME, environment.AWS_REGION);
+        const application = items ? (await runIdempotent(items, identity.profile.userId, "CREATE_APPLICATION", key, create, dependencies.now)).value : await create();
+        return jsonResponse(201, { ...common, application });
+      }
       const options = query(event, true);
       return jsonResponse(200, { ...common, ...await service.list(identity, options.propertyId, options.limit, options.cursor) });
     }

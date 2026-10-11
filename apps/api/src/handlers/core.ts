@@ -4,11 +4,14 @@ import { currentIdentityResponse } from "../auth/profile";
 import { documentExecutor } from "../data/client";
 import { CoreRepository } from "../data/repository";
 import { CoreService, type ServiceDependencies } from "../data/service";
+import { idempotencyHeader, runIdempotent } from "../chat/idempotency";
+import { DynamoItemTable, type ItemTable } from "../lib/item-table";
 import { jsonResponse, parseJsonObject, RequestError, withRequestLogging } from "../lib/http";
 
 export interface CoreHandlerDependencies extends ServiceDependencies {
   resolveIdentity?: CognitoIdentityResolver;
   createRepository?: (tableName: string, region: string) => CoreRepository;
+  createItems?: (tableName: string, region: string) => ItemTable;
 }
 const routes = new Map([
   ["/v1/users/me", ["GET"]], ["/v1/users/bootstrap", ["POST"]], ["/v1/organizations/me", ["GET"]],
@@ -60,6 +63,13 @@ export function createCoreHandler(dependencies: CoreHandlerDependencies = {}) {
     if (!environment.CORE_TABLE_NAME) throw new RequestError(503, "DATABASE_NOT_CONFIGURED", "The core database is not configured.");
     const identity = currentIdentityResponse(await resolve(event, environment), context.awsRequestId);
     const service = new CoreService(createRepository(environment.CORE_TABLE_NAME, environment.AWS_REGION), dependencies);
+    const createPropertyOnce = async (request: APIGatewayProxyEvent, userId: string, env: typeof environment, core: CoreService) => {
+      const body = parseJsonObject(request);
+      const key = idempotencyHeader(request.headers);
+      if (key === undefined) return core.createProperty(identity, body);
+      const items = (dependencies.createItems ?? ((name, region) => new DynamoItemTable(name, region)))(env.CORE_TABLE_NAME!, env.AWS_REGION);
+      return (await runIdempotent(items, userId, "CREATE_PROPERTY", key, () => core.createProperty(identity, body), dependencies.now)).value;
+    };
     const response = { schemaVersion: 1 as const, source: "DYNAMODB" as const, requestId: context.awsRequestId };
     if (path === "/v1/users/me") return jsonResponse(200, { ...response, user: await service.getUser(identity) });
     if (path === "/v1/users/bootstrap") return jsonResponse(200, { ...response, ...await service.bootstrap(identity, parseJsonObject(event)) });
@@ -79,7 +89,7 @@ export function createCoreHandler(dependencies: CoreHandlerDependencies = {}) {
     }
     if (path === "/v1/properties") {
       return event.httpMethod === "GET" ? jsonResponse(200, { ...response, ...await service.listProperties(identity, pageOptions(event)) }) :
-        jsonResponse(201, { ...response, property: await service.createProperty(identity, parseJsonObject(event)) });
+        jsonResponse(201, { ...response, property: await createPropertyOnce(event, identity.profile.userId, environment, service) });
     }
     return event.httpMethod === "GET" ? jsonResponse(200, { ...response, ...await service.listLeads(identity, pageOptions(event)) }) :
       jsonResponse(201, { ...response, lead: await service.createLead(identity, parseJsonObject(event)) });

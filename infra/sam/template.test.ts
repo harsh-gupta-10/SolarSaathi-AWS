@@ -140,6 +140,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
       expect.objectContaining({ Sid: "CoreTableItems", Effect: "Allow", Action: [
         "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:ConditionCheckItem", "dynamodb:Query",
       ], Resource: "AnalysesTable.Arn" }),
+      expect.objectContaining({ Sid: "CoreIdempotencyUpdates", Action: "dynamodb:UpdateItem" }),
       expect.objectContaining({ Sid: "CorePropertyIndexes", Effect: "Allow", Action: "dynamodb:Query", Resource: [
         "${AnalysesTable.Arn}/index/GSI1", "${AnalysesTable.Arn}/index/GSI2",
       ] }),
@@ -455,7 +456,11 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(access).toContain("GuardActiveApplicationPolicy");
     expect(access).toContain("PUBLISHED_POLICY#*");
     expect(access).toContain("index/GSI5");
-    expect(access).not.toMatch(/s3:|secretsmanager|bedrock|DeleteItem|UpdateItem/);
+    // Idempotency claims are the only update/delete permission, scoped to their own key prefix.
+    const withoutIdempotency = JSON.stringify((tracker.Policies as { Statement: { Sid: string }[] }[])
+      .map(policy => ({ ...policy, Statement: policy.Statement.filter(item => item.Sid !== "ApplicationIdempotencyKeys") })));
+    expect(access).toContain("IDEMPOTENCY#*");
+    expect(withoutIdempotency).not.toMatch(/s3:|secretsmanager|bedrock|DeleteItem|UpdateItem/);
   });
 
   it("keeps the advisor read-only with optional exact-model Bedrock invocation", () => {
@@ -480,5 +485,61 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(template.Parameters.AdvisorBedrockFoundationModelArn).toMatchObject({ Default: "" });
     expect(policies).toContain("AdvisorFoundationModelConfigured");
     expect(policies).toContain("AdvisorBedrockFoundationModelArn");
+  });
+
+  it("streams the assistant through a verified-in-code Function URL with scoped Bedrock and guardrail access", () => {
+    const agent = properties("ChatAgentFunction");
+    expect(agent.Handler).toBe("handlers/chat-stream.handler");
+    expect(agent.Timeout).toBe(120);
+    expect(agent.MemorySize).toBe(512);
+    expect(agent.FunctionUrlConfig).toMatchObject({ AuthType: "NONE", InvokeMode: "RESPONSE_STREAM",
+      Cors: { AllowOrigins: ["ApplicationOrigin"], AllowMethods: ["POST"] } });
+    expect(agent.Events).toBeUndefined();
+    expect(properties("ChatAgentFunctionUrlInvoke")).toMatchObject({ Action: "lambda:InvokeFunction", InvokedViaFunctionUrl: true });
+    const env = (agent.Environment as { Variables: Record<string, unknown> }).Variables;
+    expect(Object.keys(env)).toEqual(expect.arrayContaining(["GUARDRAIL_ID", "GUARDRAIL_VERSION", "BEDROCK_MODEL_ID", "CORE_TABLE_NAME"]));
+    const policies = JSON.stringify(agent.Policies);
+    expect(policies).toContain("bedrock:InvokeModelWithResponseStream");
+    expect(policies).toContain("bedrock:ApplyGuardrail");
+    expect(policies).toContain("AdvisorBedrockModelArn");
+    expect(policies).not.toMatch(/DeleteItem|s3:|secretsmanager|"Action":"bedrock:\*"/);
+    // The agent may write chat state and price candidates only, never account, property or policy records.
+    const write = (agent.Policies as { Statement: { Sid: string; Condition: unknown }[] }[])[0]!.Statement
+      .find(item => item.Sid === "WriteChatStateAndPriceCandidates")!;
+    expect(JSON.stringify(write.Condition)).toContain("CHAT#*");
+    expect(JSON.stringify(write.Condition)).not.toMatch(/USER#|PROPERTY#|CUSTOMER#|APPLICATION#|ORG#/);
+    expect(template.Parameters.GuardrailId).toMatchObject({ Default: "" });
+    expect(template.Parameters.GuardrailVersion).toMatchObject({ Default: "" });
+    expect(template.Resources.ChatGuardrail.Type).toBe("AWS::Bedrock::Guardrail");
+    const guardrail = JSON.stringify(properties("ChatGuardrail"));
+    expect(guardrail).toContain('"Type":"PROMPT_ATTACK","InputStrength":"HIGH"');
+    expect(guardrail).toContain("PROFANITY");
+    expect(guardrail).toContain("AadhaarNumber");
+    expect(text).toMatch(/ChatStreamUrl:/);
+  });
+
+  it("routes conversation management and confirmation behind Cognito with chat-partition deletes only", () => {
+    const chats = properties("ChatsFunction");
+    expect(Object.values(chats.Events as Record<string, { Properties: { Path: string; Method: string } }>)
+      .map(event => `${event.Properties.Method} ${event.Properties.Path}`).sort()).toEqual([
+      "DELETE /chats", "DELETE /chats/{chatId}", "GET /chats", "GET /chats/{chatId}", "POST /chat/confirm"]);
+    const statements = (chats.Policies as { Statement: { Sid: string; Condition: unknown }[] }[])[0]!.Statement;
+    const remove = statements.find(item => item.Sid === "DeleteChatPartition")!;
+    expect(JSON.stringify(remove.Condition)).toContain("CHAT#*");
+    expect(JSON.stringify(remove.Condition)).not.toMatch(/USER#|PROPERTY#|CUSTOMER#|APPLICATION#/);
+    expect(JSON.stringify(chats.Policies)).not.toMatch(/bedrock|s3:|secretsmanager/);
+    const cors = properties("Api").Cors as { AllowMethods: string; AllowHeaders: string };
+    expect(cors.AllowMethods).toMatch(/DELETE/);
+    expect(cors.AllowMethods).toMatch(/PATCH/);
+    expect(cors.AllowHeaders).toContain("Idempotency-Key");
+  });
+
+  it("limits price benchmark administration to its own key prefixes", () => {
+    const admin = properties("PriceAdminFunction");
+    expect(admin.Handler).toBe("handlers/price-admin.handler");
+    const access = JSON.stringify(admin.Policies);
+    expect(access).toContain("PRICE_BENCHMARK#*");
+    expect(access).toContain("PRICE_STATUS#*");
+    expect(access).not.toMatch(/USER#|PROPERTY#|CHAT#|bedrock|s3:|secretsmanager/);
   });
 });

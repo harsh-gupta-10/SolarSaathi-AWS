@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { BarChart3, SlidersHorizontal } from "lucide-react";
-import { Button, Input, Label } from "@solarsaathi/ui";
+import { Button, ChipGroup, CurrencyInput, Field, Input } from "@solarsaathi/ui";
 import { SYSTEM_DESIGN_BASELINE_V1, type SystemDemand } from "@solarsaathi/calculations";
 import { RoofRequestError } from "../lib/roof-api";
 import { systemApi, type SystemRecommendationResponse } from "../lib/system-api";
@@ -24,12 +24,13 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
   const [submitted, setSubmitted] = useState<{ response: SystemRecommendationResponse; demand: SystemDemand; generationKwhPerKwYear: number }>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
 
   function change(update: () => void) {
     request.current?.abort(); request.current = null;
-    setSubmitted(undefined); setBusy(false); setError(undefined); update();
+    setSubmitted(undefined); setBusy(false); setError(undefined); setFieldErrors({}); update();
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -37,17 +38,24 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
     const generationKwhPerKwYear = bounded(yieldFactor, 500, 2_500);
     const load = sanctionedLoad.trim() ? bounded(sanctionedLoad, 0.25, 1_000) : undefined;
     if (generationKwhPerKwYear === undefined || (sanctionedLoad.trim() && load === undefined)) {
+      setFieldErrors({ ...(generationKwhPerKwYear === undefined ? { "system-yield": "Enter 500 to 2,500 kWh per kW." } : {}),
+        ...(sanctionedLoad.trim() && load === undefined ? { "system-sanctioned-load": "Enter 0.25 to 1,000 kW, or leave it blank." } : {}) });
       setError("Enter an annual yield of 500–2,500 kWh per kW and, if supplied, sanctioned load of 0.25–1,000 kW."); return;
     }
     let demand: SystemDemand;
     if (basis === "CONSUMPTION") {
       const monthlyConsumptionKwh = bounded(consumption, 1, 100_000);
-      if (monthlyConsumptionKwh === undefined) { setError("Enter monthly electricity use from 1 to 100,000 kWh."); return; }
+      if (monthlyConsumptionKwh === undefined) {
+        setFieldErrors({ "system-monthly-use": "Enter 1 to 1,00,000 units (kWh) per month." });
+        setError("Enter monthly electricity use from 1 to 100,000 kWh."); return;
+      }
       demand = { kind: "CONSUMPTION", monthlyConsumptionKwh, ...(load === undefined ? {} : { sanctionedLoadKw: load }) };
     } else {
       const monthlyBillRupees = bounded(bill, 1, 1_000_000);
       const tariffRupeesPerKwh = bounded(tariff, 0.1, 100);
       if (monthlyBillRupees === undefined || tariffRupeesPerKwh === undefined) {
+        setFieldErrors({ ...(monthlyBillRupees === undefined ? { "system-monthly-bill": "Enter ₹1 to ₹10,00,000." } : {}),
+          ...(tariffRupeesPerKwh === undefined ? { "system-tariff": "Enter ₹0.10 to ₹100 per unit." } : {}) });
         setError("Enter a monthly bill from ₹1 to ₹10,00,000 and an effective tariff from ₹0.10 to ₹100 per kWh."); return;
       }
       demand = { kind: "BILL", monthlyBillRupees, tariffRupeesPerKwh, ...(load === undefined ? {} : { sanctionedLoadKw: load }) };
@@ -73,13 +81,41 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
       </div>
     </div>
     <form onSubmit={submit} noValidate className="system-designer-form">
-      <fieldset className="system-demand-choice"><legend>How do you know your electricity use?</legend><label><input type="radio" name="demand-basis" checked={basis === "CONSUMPTION"} onChange={() => change(() => setBasis("CONSUMPTION"))} /> Monthly kWh</label><label><input type="radio" name="demand-basis" checked={basis === "BILL"} onChange={() => change(() => setBasis("BILL"))} /> Bill and tariff</label></fieldset>
-      <div className="system-input-grid">
-        {basis === "CONSUMPTION" ? <div><Label htmlFor="system-monthly-use">Monthly electricity use (kWh)</Label><Input id="system-monthly-use" type="number" inputMode="decimal" min="1" max="100000" step="any" required value={consumption} onChange={event => change(() => setConsumption(event.target.value))} aria-describedby="system-monthly-use-help" /><p id="system-monthly-use-help">Use the units shown on a recent electricity bill.</p></div>
-          : <><div><Label htmlFor="system-monthly-bill">Monthly electricity bill (₹)</Label><Input id="system-monthly-bill" type="number" inputMode="decimal" min="1" max="1000000" step="any" required value={bill} onChange={event => change(() => setBill(event.target.value))} /></div><div><Label htmlFor="system-tariff">Effective electricity tariff (₹/kWh)</Label><Input id="system-tariff" type="number" inputMode="decimal" min="0.1" max="100" step="any" required value={tariff} onChange={event => change(() => setTariff(event.target.value))} aria-describedby="system-tariff-help" /><p id="system-tariff-help">Enter an effective rate from your bill. Fixed charges and taxes make this method approximate.</p></div></>}
-        <div><Label htmlFor="system-yield">Expected annual generation (kWh per kW)</Label><Input id="system-yield" type="number" inputMode="decimal" min="500" max="2500" step="any" required value={yieldFactor} onChange={event => change(() => setYieldFactor(event.target.value))} aria-describedby="system-yield-help" /><p id="system-yield-help">Editable planning yield; 1,500 is an illustrative starting assumption, not a site forecast. Google panel energy is used when available.</p></div>
-        <div><Label htmlFor="system-sanctioned-load">Sanctioned load (kW, optional)</Label><Input id="system-sanctioned-load" type="number" inputMode="decimal" min="0.25" max="1000" step="any" value={sanctionedLoad} onChange={event => change(() => setSanctionedLoad(event.target.value))} aria-describedby="system-sanctioned-help" /><p id="system-sanctioned-help">For local rule review context only. It is not an automatic solar capacity limit or approval.</p></div>
+      <div className="grid gap-2">
+        <p className="text-sm font-medium">How do you know your electricity use?</p>
+        <ChipGroup label="How do you know your electricity use?" value={basis}
+          options={[{ label: "Monthly kWh", value: "CONSUMPTION" }, { label: "Bill and tariff", value: "BILL" }]}
+          onChange={value => change(() => setBasis(value as "CONSUMPTION" | "BILL"))} />
       </div>
+      <div className="mt-5 grid gap-5 md:grid-cols-2">
+        {basis === "CONSUMPTION"
+          ? <Field id="system-monthly-use" label="Monthly electricity use (kWh)" required error={fieldErrors["system-monthly-use"]} liveError={false}
+            hint="Use the units shown on a recent electricity bill.">
+            {control => <Input {...control} type="number" inputMode="decimal" min="1" max="100000" step="any" value={consumption} onChange={event => change(() => setConsumption(event.target.value))} />}
+          </Field>
+          : <>
+            <Field id="system-monthly-bill" label="Monthly electricity bill (₹)" required error={fieldErrors["system-monthly-bill"]} liveError={false}>
+              {control => <CurrencyInput {...control} value={bill} onValueChange={digits => change(() => setBill(digits))} />}
+            </Field>
+            <Field id="system-tariff" label="Effective electricity tariff (₹/kWh)" required error={fieldErrors["system-tariff"]} liveError={false}
+              hint="Your bill divided by units used. Fixed charges and taxes make this approximate.">
+              {control => <Input {...control} type="number" inputMode="decimal" min="0.1" max="100" step="any" value={tariff} onChange={event => change(() => setTariff(event.target.value))} />}
+            </Field>
+          </>}
+      </div>
+      <details className="mt-5 rounded-lg border p-4">
+        <summary className="cursor-pointer text-sm font-semibold">Advanced (generation assumption and sanctioned load)</summary>
+        <div className="mt-4 grid gap-5 md:grid-cols-2">
+          <Field id="system-yield" label="Expected annual generation (kWh per kW)" required error={fieldErrors["system-yield"]} liveError={false}
+            hint="An illustrative starting assumption of 1,500, not a forecast for your site. Google panel energy is used when available.">
+            {control => <Input {...control} type="number" inputMode="decimal" min="500" max="2500" step="any" value={yieldFactor} onChange={event => change(() => setYieldFactor(event.target.value))} />}
+          </Field>
+          <Field id="system-sanctioned-load" label="Sanctioned load (kW, optional)" error={fieldErrors["system-sanctioned-load"]} liveError={false}
+            hint="Context for rule review only. It is not a capacity limit or an approval.">
+            {control => <Input {...control} type="number" inputMode="decimal" min="0.25" max="1000" step="any" value={sanctionedLoad} onChange={event => change(() => setSanctionedLoad(event.target.value))} />}
+          </Field>
+        </div>
+      </details>
       <div className="system-form-footer"><Button type="submit" disabled={busy}>{busy ? "Comparing systems…" : "Compare system sizes"}</Button><p>Panel size, inverter ratio, modeled clearances and generation factors are shown with the result.</p></div>
       {busy && <p role="status" className="system-form-status">Checking the saved roof and planning candidates…</p>}
       {error && <p role="alert" className="form-error">{error}</p>}

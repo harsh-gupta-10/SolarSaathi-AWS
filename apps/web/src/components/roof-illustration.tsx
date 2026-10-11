@@ -4,7 +4,7 @@ export function RoofIllustration() {
       <div className="blueprint-meta-bar">
         <div className="blueprint-tag">
           <span className="blueprint-pulse" aria-hidden="true" />
-          <span>ARCHITECTURAL MODEL • 1:50</span>
+          <span>SAMPLE ROOF PLAN</span>
         </div>
         <div className="blueprint-coords" aria-hidden="true">
           <span>LAT 28.6139° N</span>

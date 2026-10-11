@@ -1,10 +1,11 @@
 "use client";
 
+import { SignInLink } from "./sign-in-link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, CalendarDays, Check, CircleAlert, ClipboardList, FileText,
   MapPin, RefreshCw, ShieldCheck } from "lucide-react";
-import { Button, Input, Label } from "@solarsaathi/ui";
+import { Button, Field, Input, Label, Select } from "@solarsaathi/ui";
 import { applicationsApi, type ApplicationStepStatus, type PropertyChoice, type SolarApplication } from "../lib/applications-api";
 import { RoofRequestError } from "../lib/roof-api";
 import { useAuth } from "../auth/auth-provider";
@@ -14,6 +15,11 @@ const when = (value: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric
 const readable = (value: string) => value.toLowerCase().replaceAll("_", " ").replace(/^./, letter => letter.toUpperCase());
 const statusLabel: Record<ApplicationStepStatus, string> = { PENDING: "To do", IN_PROGRESS: "In progress",
   COMPLETED: "Done", BLOCKED: "Blocked", NOT_APPLICABLE: "Not applicable" };
+const documentTypes: ReadonlyArray<readonly [string, string]> = [["ACKNOWLEDGEMENT", "Acknowledgement receipt"],
+  ["ELECTRICITY_BILL", "Electricity bill"], ["ID_PROOF", "Identity proof"], ["PROPERTY_PROOF", "Property proof"],
+  ["BANK_PROOF", "Cancelled cheque or passbook"], ["VENDOR_WORK_ORDER", "Vendor work order"],
+  ["COMMISSIONING_CERTIFICATE", "Commissioning certificate"], ["NET_METER_CONFIRMATION", "Net-meter confirmation"],
+  ["OTHER", "Other"]];
 const messageFor = (error: unknown) => error instanceof RoofRequestError ? error.message :
   "The application service could not complete that request. Try again.";
 
@@ -52,25 +58,34 @@ function StepCard({ application, step, busy, demo, onChange }: { application: So
             target="_blank" rel="noopener noreferrer">{citation.publisherName}<ArrowUpRight size={13} aria-hidden="true" /></a>)}</div>
       <small className="tracker-step-updated">{demo ? "Example status" : "Your status"} · updated {when(step.updatedAt)}{step.completedAt ? ` · completed ${when(step.completedAt)}` : ""}</small>
       {step.note && <blockquote>{step.note}</blockquote>}
-      {!demo && <div className="tracker-chat"><Label htmlFor={`step-message-${step.stepId}`}>Describe an update</Label>
-        <div><Input id={`step-message-${step.stepId}`} value={message} maxLength={500} disabled={busy || interpreting}
-          onChange={event => setMessage(event.target.value)} placeholder="For example, I completed this step today" />
-          <Button type="button" variant="outline" disabled={busy || interpreting || !message.trim()}
-            onClick={() => void interpret()}>{interpreting ? "Checking wording…" : "Suggest status"}</Button></div>
-        <small>Your message is not stored. The suggestion never changes your tracker until you confirm below.</small>
-        {suggestion && <p role="status">{suggestion}</p>}{chatError && <p role="alert" className="form-error">{chatError}</p>}</div>}
-      <div className="tracker-step-edit"><div><Label htmlFor={`step-status-${step.stepId}`}>Update your progress</Label>
-        <select id={`step-status-${step.stepId}`} value={next} onChange={event => setNext(event.target.value as ApplicationStepStatus)}
-          disabled={busy || demo}><option value="PENDING">To do</option><option value="IN_PROGRESS">In progress</option>
-          <option value="COMPLETED">Done</option><option value="BLOCKED">Blocked</option>
-          {!step.required && <option value="NOT_APPLICABLE">Not applicable</option>}</select></div>
-        <div><Label htmlFor={`step-note-${step.stepId}`}>Note {step.status === "COMPLETED" || step.status === "NOT_APPLICABLE" ? "(required for a correction)" : "(optional)"}</Label>
-          <Input id={`step-note-${step.stepId}`} value={note} maxLength={1_000} disabled={busy || demo}
-            onChange={event => setNote(event.target.value)} placeholder="What changed?" /></div>
+      <div className="tracker-step-edit">
+        <Field id={`step-status-${step.stepId}`} label="Update your progress">
+          {control => <Select {...control} value={next} onChange={event => setNext(event.target.value as ApplicationStepStatus)} disabled={busy || demo}>
+            <option value="PENDING">To do</option><option value="IN_PROGRESS">In progress</option>
+            <option value="COMPLETED">Done</option><option value="BLOCKED">Blocked</option>
+            {!step.required && <option value="NOT_APPLICABLE">Not applicable</option>}</Select>}
+        </Field>
         <Button type="button" size="sm" disabled={busy || demo || !changed || ((step.status === "COMPLETED" ||
           step.status === "NOT_APPLICABLE") && !note.trim())} onClick={() => {
           onChange(step.stepId, next, note.trim() || undefined); setNote("");
-        }}>Save status</Button></div>
+        }}>Save status</Button>
+      </div>
+      <details className="mt-3 rounded-lg border p-3"><summary className="cursor-pointer text-sm font-medium">Add a note{!demo ? " or describe an update in your own words" : ""}</summary>
+        <div className="mt-3 grid gap-4">
+          <Field id={`step-note-${step.stepId}`} label={`Note ${step.status === "COMPLETED" || step.status === "NOT_APPLICABLE" ? "(required for a correction)" : "(optional)"}`}>
+            {control => <Input {...control} value={note} maxLength={1_000} disabled={busy || demo} onChange={event => setNote(event.target.value)} placeholder="What changed?" />}
+          </Field>
+          {!demo && <div className="tracker-chat">
+            <Field id={`step-message-${step.stepId}`} label="Describe an update" hint="Your message is not stored. The suggestion never changes your tracker until you confirm above.">
+              {control => <div className="flex flex-wrap gap-2"><Input {...control} className="min-w-0 flex-1" value={message} maxLength={500} disabled={busy || interpreting}
+                onChange={event => setMessage(event.target.value)} placeholder="For example, I completed this step today" />
+                <Button type="button" variant="outline" disabled={busy || interpreting || !message.trim()}
+                  onClick={() => void interpret()}>{interpreting ? "Checking wording…" : "Suggest status"}</Button></div>}
+            </Field>
+            {suggestion && <p role="status">{suggestion}</p>}{chatError && <p role="alert" className="form-error">{chatError}</p>}
+          </div>}
+        </div>
+      </details>
     </div>
   </li>;
 }
@@ -115,7 +130,7 @@ export function ApplicationDetails({ initial, demo = false }: { initial: SolarAp
     event.preventDefault();
     const type = documentType.trim().toUpperCase().replaceAll(/\s+/g, "_");
     if (!/^[A-Z][A-Z0-9_]{1,63}$/.test(type) || !documentLabel.trim()) {
-      setError("Enter a document type using letters, numbers or underscores and a short label."); return;
+      setError("Choose a document type and enter a short label."); return;
     }
     void mutate(current => applicationsApi.document(current, { documentType: type, label: documentLabel.trim(),
       ...(obtainedOn ? { obtainedOn } : {}) }), "Document note added. No file was uploaded.")
@@ -154,22 +169,33 @@ export function ApplicationDetails({ initial, demo = false }: { initial: SolarAp
           void mutate(current => applicationsApi.transition(current, stepId, status, note), "Progress saved as your own report.")} />)}</ol></div>
       <aside className="tracker-sidebar"><section><h2>{demo ? "Example application details" : "Application details"}</h2>
         <p>{demo ? "Fictional reference and installer values." : "Store the reference and installer name exactly as you received them."}</p>
-        <form onSubmit={saveDetails}><Label htmlFor="tracker-reference">Application reference</Label>
-          <Input id="tracker-reference" maxLength={120} value={reference} disabled={demo} onChange={event => setReference(event.target.value)} />
-          <Label htmlFor="tracker-vendor">Vendor or installer</Label><Input id="tracker-vendor" maxLength={160} value={vendor}
-            disabled={demo} onChange={event => setVendor(event.target.value)} /><Button type="submit" disabled={busy || demo}>Save details</Button></form></section>
+        <form onSubmit={saveDetails} className="grid gap-4">
+          <Field id="tracker-reference" label="Application reference">
+            {control => <Input {...control} maxLength={120} value={reference} disabled={demo} onChange={event => setReference(event.target.value)} />}
+          </Field>
+          <Field id="tracker-vendor" label="Vendor or installer">
+            {control => <Input {...control} maxLength={160} value={vendor} disabled={demo} onChange={event => setVendor(event.target.value)} />}
+          </Field>
+          <Button type="submit" disabled={busy || demo}>Save details</Button>
+        </form></section>
         <section><h2>Document notes</h2><p>Record what you have. No file contents are uploaded from this tracker.</p>
           {application.documents.length ? <ul className="tracker-documents">{application.documents.map(document =>
             <li key={document.documentId}><FileText size={17} aria-hidden="true" /><div><strong>{document.label}</strong>
               <span>{readable(document.documentType)} · recorded {when(document.recordedAt)}</span></div></li>)}</ul> :
             <p className="tracker-empty-small">No document notes yet.</p>}
-          <form onSubmit={addDocument}><Label htmlFor="tracker-document-type">Document type</Label>
-            <Input id="tracker-document-type" value={documentType} maxLength={64} disabled={demo} onChange={event => setDocumentType(event.target.value)}
-              placeholder="For example, ACKNOWLEDGEMENT" required />
-            <Label htmlFor="tracker-document-label">Short label</Label><Input id="tracker-document-label" value={documentLabel} disabled={demo}
-              maxLength={120} onChange={event => setDocumentLabel(event.target.value)} required />
-            <Label htmlFor="tracker-obtained">Date received (optional)</Label><Input id="tracker-obtained" type="date" value={obtainedOn}
-              disabled={demo} onChange={event => setObtainedOn(event.target.value)} /><Button type="submit" variant="outline" disabled={busy || demo}>Add document note</Button></form></section>
+          <form onSubmit={addDocument} className="grid gap-4">
+            <Field id="tracker-document-type" label="Document type" required>
+              {control => <Select {...control} value={documentType} disabled={demo} onChange={event => setDocumentType(event.target.value)}>
+                <option value="">Choose a type</option>{documentTypes.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select>}
+            </Field>
+            <Field id="tracker-document-label" label="Short label" required hint="For example, Receipt dated 12 Oct.">
+              {control => <Input {...control} value={documentLabel} disabled={demo} maxLength={120} onChange={event => setDocumentLabel(event.target.value)} />}
+            </Field>
+            <Field id="tracker-obtained" label="Date received (optional)">
+              {control => <Input {...control} type="date" value={obtainedOn} disabled={demo} onChange={event => setObtainedOn(event.target.value)} />}
+            </Field>
+            <Button type="submit" variant="outline" disabled={busy || demo}>Add document note</Button>
+          </form></section>
         <section className="tracker-reminder"><CalendarDays size={19} aria-hidden="true" />
           <h2>{demo ? "Fictional reference preview" : "Keep your official reference handy"}</h2>
           <p>{demo ? "This example has no linked government portal or real application status." :
@@ -286,6 +312,6 @@ export function ApplicationsPanel() {
   if (status === "loading") return <p className="tracker-loading" role="status">Checking your session…</p>;
   if (status !== "signedIn" || !profile) return <section className="tracker-empty"><CircleAlert size={26} aria-hidden="true" />
     <h1>Sign in to view applications</h1><p>Application records are available only in your authenticated workspace.</p>
-    <Button asChild><Link href="/auth/sign-in">Sign in <ArrowRight size={15} aria-hidden="true" /></Link></Button></section>;
+    <SignInLink>Sign in <ArrowRight size={15} aria-hidden="true" /></SignInLink></section>;
   return <SignedInApplicationsPanel key={profile.userId} />;
 }

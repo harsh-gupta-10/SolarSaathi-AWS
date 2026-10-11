@@ -49,3 +49,8 @@ safety, tariff, payment date, or official application status. A local demo may
 show fictional data only when conspicuously labelled and kept separate from
 live account actions. Live Bedrock, Cognito, DynamoDB, Google Solar, and policy
 behavior require deployment and integration verification.
+
+## Chat assistant (supersedes fact-card selection for the chat UI)
+The chat-first assistant (`docs/chat-backend.md`) streams model prose from Claude on Bedrock `ConverseStream` and calls the same deterministic services as tools.
+Numbers, eligibility and prices appear only in cards built from tool output; a grounding post-check removes unsupported figures from prose. The fact-card endpoint
+`POST /v1/advisor/solar` remains available and unchanged.

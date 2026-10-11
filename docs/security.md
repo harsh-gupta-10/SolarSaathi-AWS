@@ -196,6 +196,26 @@ Do not log the question, selected fact statements, model prompt, or model
 response in application logs; keep invocation logging disabled or assess its
 private data exposure before production use.
 
+## Chat assistant (conversations and untrusted content)
+Supersedes the advisor rule that the question is never stored: the chat assistant stores conversations for the signed-in user.
+
+- Chat requires sign-in. The Function URL has no IAM auth; the handler verifies the Cognito access token on every request, checks the
+  `Origin` header against `ApplicationOrigin`, and keys all data by the verified user id.
+- Retention: conversations, messages, proposals and rate counters carry `expiresAtEpochSeconds` (90 days for chats). Users can delete one chat or all
+  chats (`DELETE /v1/chats`). Logs hold metadata only: request id, counts, token usage, stop reason, tool names. Never log message text, prompts, tool results or model output.
+- Sensitive data: Aadhaar, PAN, IFSC, card numbers, OTPs, passwords, bank account and consumer numbers are masked in code before the text is stored or sent to the model, and
+  Bedrock Guardrails apply regex and PII filters as a second layer. The consumer number is never stored. The assistant never requests these values and never contacts government portals.
+- Threat model, prompt-injection surfaces: user messages; property labels and addresses; vendor names; web search results and fetched pages; tool results; policy document text.
+  Rules: all such text is data. Web pages are parsed by deterministic regex and never forwarded to a model; model-visible tool summaries wrap user-derived labels in
+  `<untrusted_data>` and strip angle brackets; user text is escaped so it cannot forge the context markers; fetched pages cannot trigger tool calls (research is one bounded search plus at most three fetches).
+- Numbers: the model only explains. A deterministic post-check replaces any rupee, kW, percent or payback figure in model text that is absent from this conversation's tool results. Tool arguments that
+  represent user-supplied figures must appear in the user's own messages, otherwise the tool asks the user to confirm.
+- Mutations: model tools only create server-side proposals (random 128-bit id, 10 minute expiry, parameter hash, single-use conditional claim). Only `POST /v1/chat/confirm` executes them, through the
+  same services and ownership checks as the REST API, with idempotency keys derived from the proposal.
+- Fetching: price research uses an authority-tiered host allowlist, public DNS, pinned TLS socket, robots.txt, byte and time limits. Candidates are saved as `CANDIDATE` and need a different
+  policy administrator to approve. Confirm Brave's terms permit persisting extracted figures before enabling research in production (only URLs and extracted figures are stored, not snippets).
+- Cost and abuse: per-user 30 turns/hour, 200 turns/day, 400,000 tokens/day, 5 research searches/day, 8 tool iterations, bounded output tokens and turn timeout.
+
 ## Financial safety
 Do not guarantee:
 - subsidy

@@ -5,13 +5,14 @@ import Home from "../src/app/page";
 import { getPublicEnvironment } from "../src/lib/env";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("../src/auth/auth-provider", () => ({ useAuth: () => ({ status: "signedOut", profile: null }) }));
 
 describe("truthful development site", () => {
   it("labels unavailable features without displaying fabricated results", () => {
     const html = renderToStaticMarkup(<Home />);
     expect(html).toContain('id="main-content"');
-    expect(html).toContain("live integrations need cloud configuration");
-    expect(html).toContain("no verified live policy corpus");
+    expect(html).toContain("Ask SolarSaathi about solar for your home.");
+    expect(html).toContain("only once a rule has been verified against an official source");
     expect(html).toContain('href="/demo"');
     expect(html).toContain("Illustrative concept");
     expect(html).not.toContain("₹");
@@ -35,9 +36,9 @@ describe("truthful development site", () => {
     vi.stubEnv("NEXT_PUBLIC_COGNITO_CLIENT_ID", "publicclient");
     try {
       const html = renderToStaticMarkup(<Home />);
-      expect(html).toContain("Development environment — live map and account services configured");
-      expect(html).toContain("no verified live policy corpus yet");
-      expect(html).not.toContain("Local preview");
+      expect(html).toContain("Development preview");
+      expect(html).toContain("only once a rule has been verified against an official source");
+      expect(html).not.toContain("Samara");
     } finally {
       vi.unstubAllEnvs();
     }

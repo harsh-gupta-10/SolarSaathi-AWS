@@ -1,12 +1,13 @@
 "use client";
 
+import { SignInLink } from "./sign-in-link";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { ArrowUpRight, Building2, ClipboardList, FileCheck2, FileText, Globe2, HelpCircle, Home, Layers, Leaf, Menu, MessageCircle, Search, Settings, ShieldCheck, Sun, Users, Wallet, Wrench } from "lucide-react";
 import { Button, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@solarsaathi/ui";
 import type { UserRole } from "@solarsaathi/types";
-import { isSectionActive, navigationForRole, sectionPath } from "../lib/navigation";
+import { isSectionActive, navigationGroupsForRole, sectionPath } from "../lib/navigation";
 import { WorkspaceRoleProvider, useWorkspaceRole } from "./workspace-role";
 import { useAuth } from "../auth/auth-provider";
 
@@ -15,11 +16,19 @@ function WorkspaceNavigation({ onNavigate }: { onNavigate?: () => void }) {
   const { role } = useWorkspaceRole();
   const { status, profile } = useAuth();
   const pathname = usePathname();
-  return <nav aria-label="Workspace navigation"><ul className="workspace-links">{navigationForRole(role).map(item => {
+  const { primary, more } = navigationGroupsForRole(role);
+  const link = (item: { key: string; label: string }) => {
     const Icon = icons[item.key as keyof typeof icons];
-    const href = sectionPath(item.key);
-    return <li key={item.key}><Link href={href} onClick={onNavigate} aria-current={isSectionActive(pathname, item.key) ? "page" : undefined}><Icon size={19} aria-hidden="true" />{item.label}</Link></li>;
-  })}{status === "signedIn" && profile?.policyAdmin ? <li><Link href="/app/policy-admin" onClick={onNavigate} aria-current={pathname === "/app/policy-admin" ? "page" : undefined}><ShieldCheck size={19} aria-hidden="true" />Policy review</Link></li> : null}</ul></nav>;
+    return <li key={item.key}><Link href={sectionPath(item.key)} onClick={onNavigate} aria-current={isSectionActive(pathname, item.key) ? "page" : undefined}><Icon size={19} aria-hidden="true" />{item.label}</Link></li>;
+  };
+  const moreActive = more.some(item => isSectionActive(pathname, item.key));
+  return <nav aria-label="Workspace navigation">
+    <ul className="workspace-links">{primary.map(link)}
+      {status === "signedIn" && profile?.policyAdmin ? <li><Link href="/app/policy-admin" onClick={onNavigate} aria-current={pathname === "/app/policy-admin" ? "page" : undefined}><ShieldCheck size={19} aria-hidden="true" />Policy review</Link></li> : null}
+      {status === "signedIn" && profile?.policyAdmin ? <li><Link href="/app/policy-admin/prices" onClick={onNavigate} aria-current={pathname === "/app/policy-admin/prices" ? "page" : undefined}><Wallet size={19} aria-hidden="true" />Price benchmarks</Link></li> : null}
+    </ul>
+    <details className="workspace-more" open={moreActive}><summary>More tools</summary><ul className="workspace-links">{more.map(link)}</ul></details>
+  </nav>;
 }
 function Shell({ children }: { children: ReactNode }) {
   const { role, setRole, previewAllowed } = useWorkspaceRole();
@@ -47,9 +56,7 @@ function Shell({ children }: { children: ReactNode }) {
           {status === "signedIn" ? (
             <Button asChild variant="ghost"><Link href="/app/settings">Account</Link></Button>
           ) : (
-            <Button asChild size="sm" className="bg-primary text-primary-foreground font-semibold shadow-sm hover:opacity-95">
-              <Link href="/auth/sign-in">Sign in</Link>
-            </Button>
+            <SignInLink size="sm" />
           )}
           <Link href="/" className="back-to-site">Back to site<ArrowUpRight size={16} aria-hidden="true" /></Link>
         </div>

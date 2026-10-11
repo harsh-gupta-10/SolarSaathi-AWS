@@ -522,6 +522,18 @@ historical semantics with a rollback audit trail. Stale source, conflicting
 precedence, changed active pointer and insufficient reviewer separation fail
 closed.
 
+## Chat assistant (streaming) and conversations
+Wire types: `packages/types/src/chat.ts`. Details: [chat backend](chat-backend.md).
+
+- `POST {ChatStreamUrl}` (Lambda Function URL, response streaming). `Authorization: Bearer <Cognito access token>`, body `ChatStreamRequest`.
+  Auth failures, wrong method/origin/media type and oversize bodies return HTTP JSON errors. After authentication the response is
+  `text/event-stream` (one JSON `ChatStreamEvent` per `data:` line) and always ends with `done` or `error`.
+- `GET /v1/chats?limit&cursor`, `GET /v1/chats/{chatId}`, `DELETE /v1/chats/{chatId}`, `DELETE /v1/chats` (delete all).
+- `POST /v1/chat/confirm` `{ proposalId }` executes a stored single-use proposal. Responses: `EXECUTED`, `ALREADY_EXECUTED`, `EXPIRED`; a proposal id owned by another user returns 404.
+- `Idempotency-Key` (8 to 128 chars `[A-Za-z0-9_-]`) is honoured on `POST /v1/properties` and `POST /v1/applications`; a repeat replays the first result.
+- Price benchmarks (ADMIN_POLICY or ADMIN): `GET /v1/admin/pricing/benchmarks?status=`, `GET|POST .../benchmarks`, `GET .../benchmarks/{id}`,
+  `POST .../benchmarks/{id}/approve` (`{note?, expiresAt?}`; approver must differ from creator), `POST .../benchmarks/{id}/reject` (`{reason}`).
+
 ## Error principles
 
 Never hide:

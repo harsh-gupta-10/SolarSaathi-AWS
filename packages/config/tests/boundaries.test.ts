@@ -59,7 +59,7 @@ describe("environment boundaries", () => {
     });
     expect(Object.keys(result).every((field) => field.startsWith("NEXT_PUBLIC_")))
       .toBe(true);
-    expect(Object.keys(result)).toHaveLength(9);
+    expect(Object.keys(result)).toHaveLength(10);
     expect(JSON.stringify(result)).not.toContain("private-");
   });
 

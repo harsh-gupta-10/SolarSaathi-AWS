@@ -25,7 +25,7 @@ export function AnalysisStepper({ steps, active, onSelect }: {
                 <span aria-hidden="true" className={`inline-flex size-5 items-center justify-center rounded-full text-[11px] font-bold ${
                   current ? "bg-white/20 text-white" : step.reachable ? "bg-muted text-foreground" : "bg-muted/70 text-muted-foreground/80"
                 }`}>{step.number}</span>
-                <span>{step.number}. {step.label}</span>
+                <span><span className="sr-only">Step {step.number}: </span>{step.label}</span>
               </button>
             </li>
           );

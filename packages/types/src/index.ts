@@ -100,3 +100,4 @@ export type {
   RoofSegmentV1,
   SolarPanelSuggestionV1,
 } from "./roof";
+export * from "./chat";

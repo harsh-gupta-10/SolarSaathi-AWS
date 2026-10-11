@@ -1,5 +1,6 @@
 "use client";
 
+import { SignInLink } from "./sign-in-link";
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -222,7 +223,7 @@ export function RooftopIdeasWorkspace() {
     <h1>{status === "unconfigured" ? "Rooftop ideas are not connected here yet" : "Sign in to explore the space after solar"}</h1>
     <p>{status === "unconfigured" ? "Account sign-in and design APIs are not configured in this deployment. A separate synthetic preview shows the layout." :
       "This planner uses your saved, confirmed roof and a fitting solar layout."}</p>
-    {status === "signedOut" && <Button asChild><Link href="/auth/sign-in">Sign in</Link></Button>}
+    {status === "signedOut" && <SignInLink />}
     {(status === "signedOut" || status === "unconfigured") && <Button asChild variant="outline"><Link href="/demo/rooftop-ideas">View synthetic preview</Link></Button>}
     {status === "loading" && <p role="status">Checking your account…</p>}</section>;
   return <div className="design-page"><header className="design-hero"><div><span><Sun size={17} aria-hidden="true" /> Roof life after solar</span>

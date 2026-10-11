@@ -47,6 +47,7 @@ function urlOrigin(value: string): string | undefined {
 const publicEnvironmentSchema = z
   .object({
     NEXT_PUBLIC_API_BASE_URL: optionalValue(apiBaseUrlSchema),
+    NEXT_PUBLIC_CHAT_STREAM_URL: optionalValue(apiBaseUrlSchema),
     NEXT_PUBLIC_GOOGLE_MAPS_KEY: optionalValue(z.string().min(20).max(256).regex(/^[A-Za-z0-9_-]+$/)),
     NEXT_PUBLIC_COGNITO_USER_POOL_ID: optionalValue(userPoolIdSchema),
     NEXT_PUBLIC_COGNITO_CLIENT_ID: optionalValue(cognitoClientIdSchema),

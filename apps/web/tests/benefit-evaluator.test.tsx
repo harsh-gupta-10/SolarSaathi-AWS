@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BenefitEvaluator } from "../src/components/benefit-evaluator";
 
@@ -83,7 +83,7 @@ describe("benefit evaluation UI", () => {
     await screen.findByRole("heading", { name: "Verified benefit calculation unavailable" });
     expect(api.evaluate).toHaveBeenCalledWith("property-1", "analysis-1", props.demand, 1500, 3,
       12000000, expect.objectContaining({ country: "IN" }), expect.any(AbortSignal));
-    await user.selectOptions(screen.getByLabelText("Connected to the electricity grid?"), "YES");
+    await user.click(within(screen.getByRole("radiogroup", { name: "Connected to the electricity grid?" })).getByRole("radio", { name: "Yes" }));
     expect(screen.queryByRole("heading", { name: "Verified benefit calculation unavailable" })).toBeNull();
   });
 });

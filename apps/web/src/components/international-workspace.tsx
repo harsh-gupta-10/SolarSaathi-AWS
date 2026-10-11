@@ -1,5 +1,6 @@
 "use client";
 
+import { SignInLink } from "./sign-in-link";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowUpRight, Compass, Globe2, LocateFixed, Search, ShieldAlert, ShieldCheck } from "lucide-react";
@@ -138,6 +139,6 @@ export function InternationalWorkspace() {
   if (status === "signedIn" && profile) return <ConnectedResearch key={profile.userId} />;
   return <section className="international-gate" aria-labelledby="international-gate-title"><Globe2 size={29} aria-hidden="true" /><h1 id="international-gate-title">Research official sources outside India</h1>
     <p>{status === "unconfigured" ? "Sign-in and the policy research API are not configured in this deployment. The example is fictional." : "Sign in to run an on-demand authoritative source check."}</p>
-    <div>{status !== "unconfigured" && <Button asChild><Link href="/auth/sign-in">Sign in</Link></Button>}
+    <div>{status !== "unconfigured" && <SignInLink />}
       <Button asChild variant="outline"><Link href="/demo/international">View fictional demo</Link></Button></div></section>;
 }

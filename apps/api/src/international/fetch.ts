@@ -128,3 +128,52 @@ export async function fetchOfficialPage(rawUrl: string, country: SupportedCountr
     throw new Error("TOO_MANY_REDIRECTS");
   } finally { clearTimeout(timeout); }
 }
+
+export interface FetchedPageText { url: string; title: string; text: string; sourceDate: string | null; checkedAt: string }
+
+/**
+ * Same safety pipeline as fetchOfficialPage (public DNS, pinned TLS socket, robots, byte/time limits) for a host the
+ * caller has already matched against its own allowlist. Returns bounded visible text for deterministic extraction.
+ * The returned text is untrusted data and must never be sent to a model or interpreted as instructions.
+ */
+export async function fetchAllowlistedPageText(rawUrl: string, isAllowedHost: (host: string) => boolean,
+  checkedAt: string, dependencies: OfficialPageDependencies = {}): Promise<FetchedPageText> {
+  let start: URL;
+  try { start = new URL(rawUrl); } catch { throw new Error("UNREVIEWED_HOST"); }
+  const acceptable = (url: URL) => url.protocol === "https:" && !url.port && !url.username && !url.password &&
+    !url.hash && url.search.length <= 250 && isAllowedHost(url.hostname) && rawUrl.length <= 1_500;
+  if (!acceptable(start)) throw new Error("UNREVIEWED_HOST");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    let url = start;
+    let robotsHost = "";
+    let robotsText = "";
+    for (let redirect = 0; redirect < 3; redirect++) {
+      if (robotsHost !== url.hostname) {
+        const robots = await fetchPinned(`https://${url.hostname}/robots.txt`, MAX_ROBOTS_BYTES, dependencies, controller.signal);
+        if (robots.status !== 200 && robots.status !== 404 && robots.status !== 410) throw new Error("ROBOTS_UNAVAILABLE");
+        if (robots.status === 200 && !robots.headers["content-type"]?.toLowerCase().startsWith("text/plain")) throw new Error("ROBOTS_INVALID");
+        robotsText = robots.status === 200 ? new TextDecoder("utf-8", { fatal: true }).decode(robots.bytes) : "";
+        robotsHost = url.hostname;
+      }
+      const policy = evaluateOfficialRobots(robotsText, url.toString());
+      if (!policy.allowed || policy.crawlDelaySeconds > 0) throw new Error("ROBOTS_RESTRICTED");
+      const response = await fetchPinned(url.toString(), MAX_HTML_BYTES, dependencies, controller.signal);
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const next = response.headers.location ? new URL(response.headers.location, url) : undefined;
+        if (!next || !acceptable(next)) throw new Error("UNSAFE_REDIRECT");
+        url = next; continue;
+      }
+      if (response.status !== 200 || !response.headers["content-type"]?.toLowerCase().startsWith("text/html")) {
+        throw new Error("PAGE_UNAVAILABLE");
+      }
+      const html = new TextDecoder("utf-8", { fatal: true }).decode(response.bytes);
+      const document = extractHtmlDocument(html, { maxNodes: 12_000, maxParts: 1_000, maxTextCharacters: 300_000 });
+      return { url: url.toString(), title: (document.title ?? "").slice(0, 180), checkedAt,
+        text: document.parts.map(part => part.text).join("\n").slice(0, 300_000),
+        sourceDate: safeDate(response.headers["last-modified"], checkedAt) };
+    }
+    throw new Error("TOO_MANY_REDIRECTS");
+  } finally { clearTimeout(timeout); }
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { SignInLink } from "./sign-in-link";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CheckCircle2, ChevronRight, Layers, LocateFixed, MapPin, Ruler, ShieldCheck, Sun } from "lucide-react";
@@ -458,9 +459,7 @@ export function AnalyzeStart() {
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {status === "signedOut" && (
-                <Button asChild>
-                  <Link href="/auth/sign-in">Sign in</Link>
-                </Button>
+                <SignInLink />
               )}
               {(status === "signedOut" || status === "unconfigured") && (
                 <>

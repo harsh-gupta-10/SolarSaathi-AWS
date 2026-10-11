@@ -7,6 +7,8 @@ import { AddressForm } from "./address-form";
 import { useWorkspaceRole } from "./workspace-role";
 import { BrokerWorkspace } from "./broker-workspace";
 import { useAuth } from "../auth/auth-provider";
+import { chatApi } from "../lib/chat-api";
+import { ChatWorkspace } from "./chat/chat-workspace";
 
 export function WorkspaceOverview() {
   const { role } = useWorkspaceRole();
@@ -18,6 +20,8 @@ export function WorkspaceOverview() {
   const broker = role === "BROKER";
 
   if (broker) return <BrokerWorkspace section="overview" />;
+  // Chat is the home screen whenever the streaming assistant is connected; otherwise the guided overview below remains.
+  if (chatApi.configured()) return <ChatWorkspace />;
 
   return (
     <>
