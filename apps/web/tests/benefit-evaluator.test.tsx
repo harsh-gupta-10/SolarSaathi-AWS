@@ -60,6 +60,10 @@ describe("benefit evaluation UI", () => {
     expect(await screen.findByRole("heading", { name: "No verified subsidy rule is published for your area yet" })).toBeTruthy();
     expect(screen.queryByText(/78,000/)).toBeNull();
     expect(screen.queryByRole("button", { name: /sample|fill/i })).toBeNull();
+    // The step never dead-ends: concrete next steps are offered, without any subsidy amount.
+    expect(screen.getByRole("heading", { name: "What you can do next" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /pmsuryaghar\.gov\.in/ }).getAttribute("href")).toBe("https://pmsuryaghar.gov.in");
+    expect(screen.getByRole("link", { name: "View my roofs" }).getAttribute("href")).toBe("/app/properties");
   });
   it("sends declared facts and leaves eligible cost unknown until supplied", async () => {
     const user = userEvent.setup();

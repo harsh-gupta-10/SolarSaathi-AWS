@@ -1,0 +1,139 @@
+{
+  "status": "DRAFT - NOT VERIFIED - requires admin review and publication",
+  "researchedOn": "2026-10-11",
+  "kind": "STATE",
+  "state": "UP",
+  "BLOCKED_UNTIL": [
+    "effectiveFrom date: the policy text gives no issuance date ('shall come into operation from date of issuance'). Take the date from the UP Government order/gazette that issued Uttar Pradesh Solar Energy Policy 2022; the PDF metadata creation date (28 Nov 2022) is NOT an official statement and must not be used.",
+    "Confirm with UPNEDA that the subsidy scheme described is currently operating (see note on 'proposed').",
+    "Host registry/limits: see sourceRegistration.BLOCKERS_IN_REPO."
+  ],
+  "sourceRegistration": {
+    "name": "UPNEDA - Uttar Pradesh Solar Energy Policy 2022 (English PDF)",
+    "publisherName": "Government of Uttar Pradesh / Uttar Pradesh New and Renewable Energy Development Agency (UPNEDA)",
+    "jurisdiction": "IN-UP",
+    "sourceType": "RENEWABLE_AGENCY",
+    "authorityTier": 1,
+    "canonicalUrl": "https://solarcitiesportal.upneda.org.in/images/Uttar_Pradesh_Solar_Energy_Policy2022_English.pdf",
+    "allowedHosts": [
+      "solarcitiesportal.upneda.org.in"
+    ],
+    "crawlFrequency": "DAILY",
+    "freshnessWindowHours": 48,
+    "alsoHostedAt": "https://invest.up.gov.in/wp-content/uploads/2023/02/Uttar_Pradesh_Solar_Energy_Policy_2022.pdf (byte-identical, same sha256; robots.txt 200 text/plain; HTML landing page https://invest.up.gov.in/solar-energy-policy-2022/)",
+    "BLOCKERS_IN_REPO": [
+      "Neither host is in OFFICIAL_POLICY_HOSTS_V1 (only Maharashtra state hosts and the two central hosts are). Add via reviewed code change, e.g. {host:'solarcitiesportal.upneda.org.in', sourceType:'RENEWABLE_AGENCY', jurisdiction:'IN-UP'}. For invest.up.gov.in pick the source type the owner accepts (a STATE-scope rule requires STATE_ENERGY_DEPARTMENT, RENEWABLE_AGENCY, REGULATOR or OFFICIAL_NOTIFICATION).",
+      "46 pages / 975,383 bytes: within the 50-page and 2,000,000-byte limits.",
+      "solarcitiesportal.upneda.org.in/robots.txt returns 404 (accepted by the crawler); invest.up.gov.in/robots.txt returns 200 text/plain."
+    ]
+  },
+  "document": {
+    "title": "Uttar Pradesh Solar Energy Policy - 2022",
+    "publisher": "Government of Uttar Pradesh (UPNEDA nodal agency)",
+    "publishedAt": "NOT STATED IN DOCUMENT TEXT",
+    "bytes": 975383,
+    "pages": 46,
+    "sha256": "a5fbfc91aecf59c925591155ef9737efc49de8bc493c2cb857c37b9432d364d4"
+  },
+  "draftRequest": {
+    "benefitId": "BENEFIT#IN_UP_STATE_RESIDENTIAL_ROOFTOP_SUBSIDY",
+    "sourceId": "SRC#<assigned at registration>",
+    "documentId": "DOC#<assigned at crawl>",
+    "documentVersion": 1,
+    "locator": {
+      "pageNumber": 18,
+      "charStart": "FILL_FROM_ARCHIVE",
+      "charEnd": "FILL_FROM_ARCHIVE"
+    },
+    "quotedEvidence": "a) To promote installation of Grid connected Rooftop systems under NetMetering arrangement on large scale in private residential sectors, State Government will provide subsidy of Rs 15000/KW to a maximum limit of subsidy Rs 30000/- per consumer. This Subsidy will be disbursed to beneficiary on reimbursement basis after successful installation and commissioning of Rooftop solar systems with net metering and submission of all documents to the State Nodal Agency (UPNEDA).",
+    "rule": {
+      "scope": "STATE",
+      "jurisdiction": "IN-UP",
+      "effectiveFrom": "TODO_FROM_UP_GOVERNMENT_ORDER (YYYY-MM-DD)",
+      "amount": {
+        "kind": "PER_KW",
+        "ratePaisePerKw": 1500000
+      },
+      "capPaise": 3000000,
+      "eligibility": {
+        "allOf": [
+          {
+            "kind": "CUSTOMER_TYPE",
+            "oneOf": [
+              "RESIDENTIAL"
+            ]
+          },
+          {
+            "kind": "GRID_CONNECTED",
+            "required": true
+          }
+        ],
+        "anyOf": []
+      },
+      "compatibility": [
+        {
+          "withBenefitId": "BENEFIT#IN_PMSG_CENTRAL_RESIDENTIAL_CFA",
+          "mode": "ADDITIVE"
+        }
+      ]
+    },
+    "clauseEvidence": [
+      {
+        "clauseKey": "EFFECTIVE_PERIOD",
+        "locator": {
+          "pageNumber": 4,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "3.2 This policy shall come into operation from date of issuance and shall remain in operation for a period of five (5) years or till the Government notifies the new policy whichever is earlier."
+      },
+      {
+        "clauseKey": "CAP",
+        "locator": {
+          "pageNumber": 18,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "a) To promote installation of Grid connected Rooftop systems under NetMetering arrangement on large scale in private residential sectors, State Government will provide subsidy of Rs 15000/KW to a maximum limit of subsidy Rs 30000/- per consumer. This Subsidy will be disbursed to beneficiary on reimbursement basis after successful installation and commissioning of Rooftop solar systems with net metering and submission of all documents to the State Nodal Agency (UPNEDA)."
+      },
+      {
+        "clauseKey": "ELIGIBILITY_ALL_0",
+        "locator": {
+          "pageNumber": 18,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "a) To promote installation of Grid connected Rooftop systems under NetMetering arrangement on large scale in private residential sectors, State Government will provide subsidy of Rs 15000/KW to a maximum limit of subsidy Rs 30000/- per consumer. This Subsidy will be disbursed to beneficiary on reimbursement basis after successful installation and commissioning of Rooftop solar systems with net metering and submission of all documents to the State Nodal Agency (UPNEDA)."
+      },
+      {
+        "clauseKey": "ELIGIBILITY_ALL_1",
+        "locator": {
+          "pageNumber": 18,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "a) To promote installation of Grid connected Rooftop systems under NetMetering arrangement on large scale in private residential sectors, State Government will provide subsidy of Rs 15000/KW to a maximum limit of subsidy Rs 30000/- per consumer. This Subsidy will be disbursed to beneficiary on reimbursement basis after successful installation and commissioning of Rooftop solar systems with net metering and submission of all documents to the State Nodal Agency (UPNEDA)."
+      },
+      {
+        "clauseKey": "COMPATIBILITY_0",
+        "locator": {
+          "pageNumber": 18,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "b) This subsidy will be in addition to any Central Financial Assistance available from Ministry of New and Renewable Energy, Government of India which would be dispersed by State Nodal Agency."
+      }
+    ]
+  },
+  "figuresAndUnits": "Rs 15,000/kW = 1,500,000 paise per kW; maximum Rs 30,000 per consumer = 3,000,000 paise.",
+  "reviewerNotes": [
+    "Everything under draftRequest.locator / clauseEvidence[].locator needs charStart/charEnd (and the chunk's pageNumber/section/fragment) copied from the ARCHIVED derived text in the admin console. The quotes below are verbatim from the file fetched on 2026-10-11 with whitespace collapsed to single spaces; the archive's text extraction (pdf.js) can differ in spacing/line order. If a quote does not match the archive byte-for-byte, re-select the passage in the archive and replace the quote; do not edit numbers.",
+    "sourceId/documentId/documentVersion are placeholders (SRC#/DOC# values are assigned by the registry when the source is registered and the document crawled).",
+    "The server fills ruleId, policyId, policyVersion, factIds and every evidenceFactIds; do not send them.",
+    "Clause 7(b) (page 14) says 'a \"Saurya Uttar Pradesh Yojna\" is proposed to be implemented during the policy period'; clause 7.3 (page 18) says the subsidy 'will be provided'/'will be disbursed ... on reimbursement basis'. The policy is a 2022 document; no operational UPNEDA order for the current year was fetched. Confirm the scheme is live before publishing.",
+    "effectiveTo is not set: clause 3.2 says the policy remains in operation 'for a period of five (5) years or till the Government notifies the new policy whichever is earlier'. Once effectiveFrom is known, effectiveTo = effectiveFrom + 5 years is an admin computation from that clause; verify no new policy has been notified.",
+    "Not encoded: subsidy 'will be admissible only in those plants/projects which have been purchased /constructed after the date of promulgation of this policy' (page 39 of the PDF; needs the issuance date for an INSTALLATION_DATE_RANGE condition), and payment 'on reimbursement basis after successful installation and commissioning ... with net metering'.",
+    "The policy text does not say the subsidy is conditional on the consumer taking PM Surya Ghar CFA; it says it is 'in addition to any Central Financial Assistance available'. ADDITIVE is therefore drafted; reviewer should confirm against current UPNEDA guidance.",
+    "Press (not authoritative, not used as evidence) reports UP currently pays Rs 30,000 on top of central CFA, consistent with this clause."
+  ]
+}

@@ -30,8 +30,8 @@ export function HeroAsk() {
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); go(question); }
 
   return (
-    <div className="w-full max-w-2xl">
-      <form onSubmit={submit} noValidate className="rounded-[32px] bg-white p-3 focus-within:outline-2 focus-within:outline-black">
+    <div className="w-full">
+      <form onSubmit={submit} noValidate className="rounded-[28px] border border-black/15 bg-[#f7f7f7] p-3 transition focus-within:bg-white focus-within:outline-2 focus-within:outline-black">
         <label htmlFor={id} className="sr-only">Ask SolarSaathi about your roof, costs or subsidies</label>
         <div className="flex items-end gap-2">
           <textarea
@@ -40,24 +40,24 @@ export function HeroAsk() {
             onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); go(question); } }}
             placeholder="Ask about solar for your home: cost, savings, subsidy, how to apply…"
             aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined}
-            className="min-h-14 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-base font-medium text-black outline-none placeholder:text-[#979797]"
+            className="min-h-14 flex-1 resize-none rounded-xl bg-transparent px-3 py-2 text-base font-medium text-black outline-none placeholder:text-[#767676]"
           />
-          <button type="submit" aria-label="Ask SolarSaathi" className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-black text-white transition hover:bg-[#2f2f2f] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black">
+          <button type="submit" aria-label="Ask SolarSaathi" className="inline-flex size-12 shrink-0 items-center justify-center rounded-xl bg-black text-white transition hover:bg-[#2f2f2f] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black">
             <ArrowUp aria-hidden="true" className="size-5" />
           </button>
         </div>
       </form>
       {error && <p id={`${id}-error`} role="alert" className="mt-2 text-sm font-medium text-[#b42318]">{error}</p>}
-      <ul className="mt-3 flex flex-wrap gap-2" aria-label="Suggested questions">
+      <ul className="mt-4 flex flex-wrap gap-2" aria-label="Suggested questions">
         {SUGGESTIONS.map(text => (
           <li key={text}>
-            <button type="button" onClick={() => go(text)} className="min-h-11 rounded-full bg-[#f3f3f3] px-4 text-sm font-medium text-black transition hover:bg-[#d1ffca] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black">
+            <button type="button" onClick={() => go(text)} className="min-h-11 rounded-full border border-black/10 bg-[#f3f3f3] px-4 text-sm font-medium text-black transition hover:border-black/30 hover:bg-[#d1ffca] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black">
               {text}
             </button>
           </li>
         ))}
       </ul>
-      <p className="mt-3 text-sm text-[#444]">Sign in is needed to analyze your roof or save anything. Estimates are never guarantees.</p>
+      <p className="mt-4 text-sm text-[#444]">Sign in is needed to analyze your roof or save anything. Estimates are never guarantees.</p>
     </div>
   );
 }

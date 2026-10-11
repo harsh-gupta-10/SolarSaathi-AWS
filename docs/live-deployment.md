@@ -51,9 +51,8 @@ application.
 
 ## Operational limits before production
 
-- The chat assistant cannot answer until the account submits the Anthropic use-case
-  form in Bedrock (`authorizationStatus: NOT_AUTHORIZED` as of 11 October 2026). Chat
-  uses Sonnet 5.5; owner steps and the redeploy command are in
+- The chat assistant cannot answer: Bedrock refuses every model in this account
+  (`authorizationStatus: NOT_AUTHORIZED` as of 11 October 2026). Chat is planned to use GPT-6.1 Sol on Bedrock (see "Switching chat to GPT-6.1 Sol"; every Bedrock model, including Amazon Nova, is currently refused with "Operation not allowed", so the account itself needs fixing first); earlier Sonnet 5.5 owner steps and the redeploy command are in
   `docs/chat-assistant-plan.md` ("Chat model: Sonnet 5.5 and enabling access").
 - The official-source policy catalog has not been populated or independently
   approved. Do not display live subsidy amounts until that workflow is complete.

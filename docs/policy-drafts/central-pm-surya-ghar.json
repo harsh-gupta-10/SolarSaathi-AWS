@@ -1,0 +1,209 @@
+{
+  "status": "DRAFT - NOT VERIFIED - requires admin review and publication",
+  "researchedOn": "2026-10-11",
+  "kind": "CENTRAL",
+  "publishOrder": "PUBLISH LAST (after the state drafts). The stacking engine only counts a pair when BOTH rules carry a reciprocal edge of the same mode (packages/policy/src/benefit-stacking.ts pairAllowed). This rule lists an edge to every drafted state benefit; if you publish before a state rule exists, nothing is wrong, the edge is simply unused. If a state is added later, this rule needs a new version with a new edge.",
+  "sourceRegistration": {
+    "name": "MNRE - Operational Guidelines, PM Surya Ghar CFA to Residential Consumers (OM 318/17/2024-Grid Connected Rooftop, 07.06.2024)",
+    "publisherName": "Ministry of New and Renewable Energy (MNRE), Government of India",
+    "jurisdiction": "IN",
+    "sourceType": "MNRE",
+    "authorityTier": 1,
+    "canonicalUrl": "https://cdnbbsr.s3waas.gov.in/s3716e1b8c6cd17b771da77391355749f3/uploads/2024/07/202407021768035484.pdf",
+    "allowedHosts": [
+      "cdnbbsr.s3waas.gov.in"
+    ],
+    "crawlFrequency": "DAILY",
+    "freshnessWindowHours": 48,
+    "discoveryPage": "https://mnre.gov.in/?p=23648 (MNRE notice page that links the PDF)",
+    "BLOCKERS_IN_REPO": [
+      "Host cdnbbsr.s3waas.gov.in is NOT in OFFICIAL_POLICY_HOSTS_V1 (packages/policy/src/sources.ts); only mnre.gov.in and solarrooftop.pmsuryaghar.gov.in are. MNRE does not serve this PDF from mnre.gov.in. Registering it needs a reviewed code change adding {host:'cdnbbsr.s3waas.gov.in', sourceType:'MNRE', jurisdiction:'IN'}.",
+      "The PDF has 57 pages; crawler.ts (maxPages 50) and service.ts ingestDocument (Math.min(50,...)) reject documents over 50 pages with PAGE_LIMIT. Needs the limit raised (owner decision) - splitting the PDF would not be the official document.",
+      "robots.txt on cdnbbsr.s3waas.gov.in timed out (HTTP 504 / no response) on 2026-10-11; fetch-official.ts checkRobots throws ROBOTS_UNAVAILABLE on anything except 200 text/plain, 404 or 410. mnre.gov.in/robots.txt returns 200 with Content-Type text/html, which the same check also treats as ROBOTS_UNAVAILABLE.",
+      "A manual upload (POST /v1/admin/policy/documents with contentBase64, max 2,000,000 bytes: this PDF is 1,284,739 bytes) still requires the source host to be registered and documentUrl to be on that host."
+    ]
+  },
+  "document": {
+    "title": "Guidelines for PM-Surya Ghar: Muft Bijli Yojana - Central Financial Assistance to Residential Consumers (enclosure to OM No. 318/17/2024-Grid Connected Rooftop dated 07.06.2024)",
+    "publisher": "MNRE",
+    "publishedAt": "2024-06-07 (OM date); MNRE web listing start date 07/06/2024, page last updated July 02, 2024",
+    "bytes": 1284739,
+    "sha256": "2de9b3faf765c18b9ea902271c3f431a6550e7b07bd007597e435a7c87ef368d",
+    "pages": 57,
+    "currentnessCheck": "MNRE also lists 'Amendment in Guidelines ... CFA to residential consumers' dated 07/07/2025 (https://mnre.gov.in/?p=26289, PDF https://cdnbbsr.s3waas.gov.in/s3716e1b8c6cd17b771da77391355749f3/uploads/2025/07/202507081690964295.pdf, sha256 80dd0294d4a43c509bef2743a17cd6551ac588ba29c15a9cd266cdb8674a4bd1, 59 pages). Its first two pages are an image-only (no text layer) OM F.no. 318/140/2024-Grid Connected Rooftop dated 07th July 2025; the remaining 57 pages are the unamended 2024 guideline text. Read visually (not machine-quotable) the amendment changes clause 5(i) wording, Annexure 1 (Phase II claims deadline 31.12.2025) and clause 6(f); it does NOT change the CFA rates, tiers, eligibility or the 31 March 2027 implementation period. An 31 Aug 2026 OM extending Phase II claim deadlines to 30 Nov 2026 is reported only by trade press (energetica-india.net); no MNRE original was found, and it concerns Phase II claims, not the PMSG residential CFA structure. No 2026 revision of the CFA structure was found on mnre.gov.in or pmsuryaghar.gov.in (pmsuryaghar.gov.in is a JavaScript app that returns no text to a plain fetch)."
+  },
+  "draftRequest": {
+    "benefitId": "BENEFIT#IN_PMSG_CENTRAL_RESIDENTIAL_CFA",
+    "sourceId": "SRC#<assigned at registration>",
+    "documentId": "DOC#<assigned at crawl>",
+    "documentVersion": 1,
+    "locator": {
+      "pageNumber": 7,
+      "charStart": "FILL_FROM_ARCHIVE",
+      "charEnd": "FILL_FROM_ARCHIVE"
+    },
+    "quotedEvidence": "iii. If a consumer installs a capacity of 6 kW, she is eligible for a CFA of ₹ 30,000x2 + Rs18,000x1 = ₹ 78,000 iv. If an RWA installs a capacity of 100 kW, with 20 households, it will be eligible for a CFA of ₹ 18,000x60 kW (Lower of (20x3 kW), 100 kW) = ₹ 10,80,000",
+    "rule": {
+      "scope": "CENTRAL",
+      "jurisdiction": "IN",
+      "effectiveFrom": "2024-02-13",
+      "effectiveTo": "2027-03-31",
+      "amount": {
+        "kind": "TIERED_KW",
+        "tiers": [
+          {
+            "upToWatts": 2000,
+            "ratePaisePerKw": 3000000
+          },
+          {
+            "upToWatts": 3000,
+            "ratePaisePerKw": 1800000
+          }
+        ]
+      },
+      "eligibility": {
+        "allOf": [
+          {
+            "kind": "CUSTOMER_TYPE",
+            "oneOf": [
+              "RESIDENTIAL"
+            ]
+          },
+          {
+            "kind": "GRID_CONNECTED",
+            "required": true
+          },
+          {
+            "kind": "EQUIPMENT_APPROVED",
+            "required": true
+          },
+          {
+            "kind": "VENDOR_APPROVED",
+            "required": true
+          },
+          {
+            "kind": "PRIOR_SUBSIDY",
+            "received": false
+          }
+        ],
+        "anyOf": []
+      },
+      "compatibility": [
+        {
+          "withBenefitId": "BENEFIT#IN_DL_STATE_CAPITAL_SUBSIDY_RESIDENTIAL",
+          "mode": "ADDITIVE"
+        },
+        {
+          "withBenefitId": "BENEFIT#IN_UP_STATE_RESIDENTIAL_ROOFTOP_SUBSIDY",
+          "mode": "ADDITIVE"
+        },
+        {
+          "withBenefitId": "BENEFIT#IN_AS_STATE_PMSG_TOPUP_RESIDENTIAL",
+          "mode": "ADDITIVE"
+        }
+      ]
+    },
+    "clauseEvidence": [
+      {
+        "clauseKey": "EFFECTIVE_PERIOD",
+        "locator": {
+          "pageNumber": 3,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "c) These guidelines shall be applicable for all applications received on the National Portal from the date of the launch of the scheme, i.e. 13th February, 2024. d) The implementation period of the scheme shall be till 31 st March, 2027."
+      },
+      {
+        "clauseKey": "ELIGIBILITY_ALL_0",
+        "locator": {
+          "pageNumber": 5,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "d) No CFA will be provided to non-residential segments of consumers (including government segment, commercial and industrial segment etc.)"
+      },
+      {
+        "clauseKey": "ELIGIBILITY_ALL_1",
+        "locator": {
+          "pageNumber": 4,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "b) Eligibility: For the purpose of CFA, residential RTS plant would be the grid connected solar power system tagged to a particular residential power connection of the local DISCOM"
+      },
+      {
+        "clauseKey": "ELIGIBILITY_ALL_2",
+        "locator": {
+          "pageNumber": 8,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "m) Domestic Content Requirement: Solar modules used in the installation must satisfy the Domestic Content Requirement condition i.e., domestically manufactured modules manufactured from domestically manufactured cells. This is an essential condition for the installation to be eligible for the CFA. Use of non-DCR modules in any form in the installation shall render the installation ineligible for CFA."
+      },
+      {
+        "clauseKey": "ELIGIBILITY_ALL_3",
+        "locator": {
+          "pageNumber": 9,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "c) Choice of Vendor: The consumer shall then choose a vendor who is registered on the National Portal."
+      },
+      {
+        "clauseKey": "ELIGIBILITY_ALL_4",
+        "locator": {
+          "pageNumber": 8,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "o) A rooftop solar installation shall be eligible for CFA only once after installation. If an already installed rooftop solar is shifted/relocated to a new location, such a system shall not be eligible for CFA under the scheme."
+      },
+      {
+        "clauseKey": "COMPATIBILITY_0",
+        "locator": {
+          "pageNumber": 7,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "i) Additional State Subsidy: The State/UT governments may supplement the CFA provided by the central government for the residential sector with an additional subsidy for RTS; however, this shall be subject to adherence to all scheme guidelines by the State. The framework of such support by the State/UT governments shall be in alignment with the support provided under the scheme. The process for disbursement of state subsidy component shall be integrated with the National Portal."
+      },
+      {
+        "clauseKey": "COMPATIBILITY_1",
+        "locator": {
+          "pageNumber": 7,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "i) Additional State Subsidy: The State/UT governments may supplement the CFA provided by the central government for the residential sector with an additional subsidy for RTS; however, this shall be subject to adherence to all scheme guidelines by the State. The framework of such support by the State/UT governments shall be in alignment with the support provided under the scheme. The process for disbursement of state subsidy component shall be integrated with the National Portal."
+      },
+      {
+        "clauseKey": "COMPATIBILITY_2",
+        "locator": {
+          "pageNumber": 7,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "i) Additional State Subsidy: The State/UT governments may supplement the CFA provided by the central government for the residential sector with an additional subsidy for RTS; however, this shall be subject to adherence to all scheme guidelines by the State. The framework of such support by the State/UT governments shall be in alignment with the support provided under the scheme. The process for disbursement of state subsidy component shall be integrated with the National Portal."
+      }
+    ]
+  },
+  "figuresAndUnits": {
+    "tier1": "first 2 kWp: Rs 30,000/kWp = 3,000,000 paise per kW, upToWatts 2000",
+    "tier2": "additional 1 kWp (up to 3 kWp total): Rs 18,000/kWp = 1,800,000 paise per kW, upToWatts 3000",
+    "beyond3kW": "Document: 'No additional CFA' beyond 3 kWp; the TIERED_KW calculation stops at the last tier, so 6 kW gives 78,000 as the document's own example states.",
+    "numericEvidenceNote": "The rate table in clause 5(h) (page 6) extracts as scrambled columns, so the numeric quote is the worked examples iii and iv (page 7) which restate the same Rs 30,000 x 2 kW and Rs 18,000 rates and the 3 kW cap. If the archive extracts the 5(h) table cleanly, prefer a quote from the table rows 'first 2 kWp ... Rs 30,000/kWp', 'additional RTS capacity of 1 kWp ... Rs 18,000/kWp', 'beyond 3 kWp - No additional CFA' (all on page 6); it must still contain the numbers 2, 3, 30000 and 18000."
+  },
+  "reviewerNotes": [
+    "Everything under draftRequest.locator / clauseEvidence[].locator needs charStart/charEnd (and the chunk's pageNumber/section/fragment) copied from the ARCHIVED derived text in the admin console. The quotes below are verbatim from the file fetched on 2026-10-11 with whitespace collapsed to single spaces; the archive's text extraction (pdf.js) can differ in spacing/line order. If a quote does not match the archive byte-for-byte, re-select the passage in the archive and replace the quote; do not edit numbers.",
+    "sourceId/documentId/documentVersion are placeholders (SRC#/DOC# values are assigned by the registry when the source is registered and the document crawled).",
+    "The server fills ruleId, policyId, policyVersion, factIds and every evidenceFactIds; do not send them.",
+    "SPECIAL CATEGORY STATES: clause 5(h) gives Rs 33,000/kWp and Rs 19,800/kWp for 'special category States (States/UTs of Uttarakhand, Himachal Pradesh, J&K, Ladakh, States in the North East including Sikkim, UTs of A&N and Lakshadweep)'. The rule schema has no state/region eligibility condition and a CENTRAL rule must use jurisdiction IN, so this draft encodes ONLY the general rates (Rs 30,000 / Rs 18,000). For Assam and Uttarakhand homeowners it understates the central CFA. Do not add a second IN rule for special-category states: it would double count. Needs an engine change (a STATE condition) first.",
+    "GHS/RWA (row 4: Rs 18,000/kWp for common facilities, up to 500 kWp at 3 kWp per house) is NOT drafted: it depends on household count, which the evaluation context lacks.",
+    "PRIOR_SUBSIDY received=false is a conservative simplification: clause 5(n) lets a household that already took MNRE CFA claim the balance up to 3 kW overall; this rule marks such a household ineligible instead of computing the balance. Reviewer may drop ELIGIBILITY_ALL_4 and its clause if the owner prefers 'unknown' behaviour.",
+    "effectiveTo 2027-03-31 comes from clause 5(d) 'The implementation period of the scheme shall be till 31 st March, 2027.' The document does not say the CFA rates stop applying on that date; reviewer decides whether to leave effectiveTo as drafted (publish fails after it).",
+    "effectiveFrom 2024-02-13 comes from clause 5(c): 'applicable for all applications received on the National Portal from the date of the launch of the scheme, i.e. 13th February, 2024.'",
+    "No capPaise is set: the document states no explicit cap amount; Rs 78,000 appears only as a worked example, and the tiers already limit CFA to 3 kW.",
+    "Eligibility clauses 5(b) (grid connected, tagged to a residential DISCOM connection, on roof/terrace/balcony/elevated structure) and 5(c) (Capex mode only; RESCO and utility-led aggregation are out of this guideline) contain further conditions the schema cannot express; the user-facing result must still say these apply.",
+    "Compatibility edges: clause 5(i) says State/UT governments 'may supplement the CFA ... with an additional subsidy ... subject to adherence to all scheme guidelines by the State'. This supports an ADDITIVE edge only where the STATE document also states its subsidy is in addition to central assistance (Delhi, Uttar Pradesh, Assam). Remove the edge for any state you do not publish."
+  ]
+}

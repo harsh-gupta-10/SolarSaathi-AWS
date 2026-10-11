@@ -1,6 +1,6 @@
 import type { NormalizedRoofV1, RoofPoint } from "@solarsaathi/types";
 import { describe, expect, it } from "vitest";
-import { convexHull, fitRotatedRectangle, googleBuildingOutline, planRoofLayout, segmentPlanRotationDegrees, type RoofLayoutAssumptions, type RoofLayoutSegment } from "../src";
+import { convexHull, fitRotatedRectangle, googleBuildingOutline, planRoofLayout, segmentPlanRotationDegrees, type RoofLayoutAssumptions, type RoofLayoutOptions, type RoofLayoutSegment } from "../src";
 
 const METRES_PER_DEGREE = 6_371_000 * Math.PI / 180;
 const location = (eastMeters: number, northMeters: number): RoofPoint => ({
@@ -289,6 +289,142 @@ describe("deterministic roof geometry and layout", () => {
     const hull = convexHull([{ x: 0, z: 0 }, { x: 2, z: 0 }, { x: 1, z: 1 }, { x: 2, z: 2 }, { x: 0, z: 2 }, { x: 1, z: 0 }]);
     expect(hull).toEqual([{ x: 0, z: 0 }, { x: 2, z: 0 }, { x: 2, z: 2 }, { x: 0, z: 2 }]);
   });
+  describe("regular grid fill for the 3D view", () => {
+    const GRID: RoofLayoutOptions = { panelFill: "REGULAR_GRID" };
+
+    it("fills a 10 m x 8 m south plane with a whole-panel grid inside the setbacks", () => {
+      const roof = googleRoof([[0, 0]]);
+      roof.segments[0].bounds = { southwest: location(-5, -4), northeast: location(5, 4) };
+      roof.segments[0].groundAreaSquareMeters = 80; roof.segments[0].areaSquareMeters = 80; roof.roofAreaSquareMeters = 80;
+      const result = planRoofLayout(roof, { ...assumptions, servicePathWidthMeters: 0 }, GRID);
+      // Usable 9 × 7 m: portrait 1 × 2 m panels give 8 columns × 3 rows, landscape gives 4 × 6; both hold 24.
+      expect(result.panelCount).toBe(24);
+      expect(result.panels).toHaveLength(24);
+      expect(result.dcCapacityKw).toBe(12);
+      expect(result.warnings).toContain("PANELS_REGULAR_GRID");
+      expect(new Set(result.panels.map(panel => panel.center.x.toFixed(3))).size).toBe(8);
+      expect(new Set(result.panels.map(panel => panel.center.z.toFixed(3))).size).toBe(3);
+      for (const panel of result.panels) {
+        const edge = (i: number) => Math.hypot(panel.corners[(i + 1) % 4].x - panel.corners[i].x, panel.corners[(i + 1) % 4].z - panel.corners[i].z);
+        expect(edge(0)).toBeCloseTo(1, 5); expect(edge(1)).toBeCloseTo(2, 5);
+        for (const corner of panel.corners) {
+          expect(Math.abs(corner.x)).toBeLessThanOrEqual(4.5 + 1e-6);
+          expect(Math.abs(corner.z)).toBeLessThanOrEqual(3.5 + 1e-6);
+        }
+      }
+    });
+
+    it("splits the grid around the service path and reports exactly the panels it draws", () => {
+      const result = planRoofLayout(googleRoof(), assumptions, GRID);
+      // 10 × 10 m plane, 0.5 m setbacks, 1 m aisle: two 9 × 4 m bands hold 3 rows × 4 columns of 2 × 1 m panels.
+      expect(result.panelCount).toBe(24);
+      expect(result.panels).toHaveLength(result.panelCount as number);
+      expect(result.panels.every(panel => panel.corners.every(corner => corner.z <= -0.5 + 1e-6 || corner.z >= 0.5 - 1e-6))).toBe(true);
+    });
+
+    it("keeps panels on a pitched plane one mounting offset above it, without overlap", () => {
+      const roof = googleRoof([[0, 0]]);
+      roof.segments[0].pitchDegrees = 40; roof.segments[0].groundAreaSquareMeters = 100;
+      roof.segments[0].areaSquareMeters = 100 / Math.cos(40 * Math.PI / 180);
+      const result = planRoofLayout(roof, assumptions, GRID);
+      expect(result.panelCount).toBeGreaterThan(0);
+      const segment = result.segments[0];
+      for (const panel of result.panels) {
+        expect(panel.corners.every(corner => Math.abs(corner.x) <= 4.5 + 1e-6 && Math.abs(corner.z) <= 4.5 + 1e-6)).toBe(true);
+        for (const corner of panel.corners) {
+          const t = (corner.z - segment.corners[0].z) / (segment.corners[3].z - segment.corners[0].z);
+          expect(corner.y - (segment.corners[0].y + t * (segment.corners[3].y - segment.corners[0].y))).toBeCloseTo(0.1, 6);
+        }
+      }
+      const boxes = result.panels.map(panel => ({ x0: Math.min(...panel.corners.map(c => c.x)), x1: Math.max(...panel.corners.map(c => c.x)),
+        z0: Math.min(...panel.corners.map(c => c.z)), z1: Math.max(...panel.corners.map(c => c.z)) }));
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i], b = boxes[j];
+        expect(a.x1 <= b.x0 + 1e-6 || b.x1 <= a.x0 + 1e-6 || a.z1 <= b.z0 + 1e-6 || b.z1 <= a.z0 + 1e-6).toBe(true);
+      }
+    });
+
+    it("keeps a rotated plane's grid aligned to the plane and inside its setbacks", () => {
+      const angle = 30 * Math.PI / 180;
+      const width = 12 * Math.cos(angle) + 8 * Math.sin(angle), depth = 12 * Math.sin(angle) + 8 * Math.cos(angle);
+      const along = { x: Math.cos(angle), z: -Math.sin(angle) }, across = { x: Math.sin(angle), z: Math.cos(angle) };
+      const roof = googleRoof([[0, 0]]);
+      Object.assign(roof.segments[0], { azimuthDegrees: 30, groundAreaSquareMeters: 96,
+        bounds: { southwest: location(-width / 2, -depth / 2), northeast: location(width / 2, depth / 2) } });
+      const result = planRoofLayout(roof, assumptions, GRID);
+      expect(result.panelCount).toBe(20);
+      expect(result.panels).toHaveLength(20);
+      for (const panel of result.panels) {
+        const edge = { x: panel.corners[1].x - panel.corners[0].x, z: panel.corners[1].z - panel.corners[0].z };
+        const length = Math.hypot(edge.x, edge.z);
+        const alongPlane = Math.abs(edge.x * along.x + edge.z * along.z) / length;
+        const acrossPlane = Math.abs(edge.x * across.x + edge.z * across.z) / length;
+        expect(Math.max(alongPlane, acrossPlane)).toBeCloseTo(1, 5);
+        for (const corner of panel.corners) {
+          expect(Math.abs(corner.x * along.x + corner.z * along.z)).toBeLessThanOrEqual(6 - assumptions.edgeSetbackMeters + 1e-6);
+          expect(Math.abs(corner.x * across.x + corner.z * across.z)).toBeLessThanOrEqual(4 - assumptions.edgeSetbackMeters + 1e-6);
+        }
+      }
+    });
+
+    it("leaves a plane without any Google suggestion empty and puts suggested energy first", () => {
+      const plane = (id: string, east: number) => ({
+        segmentId: id, areaSquareMeters: 36, groundAreaSquareMeters: 36, pitchDegrees: 0, azimuthDegrees: 180,
+        planeHeightAtCenterMeters: 9, center: location(east, 0), bounds: { southwest: location(east - 3, -3), northeast: location(east + 3, 3) },
+      });
+      const roof: NormalizedRoofV1 = { ...googleRoof([]), segmentCount: 2, segments: [plane("a", -5), plane("b", 5)],
+        panelSuggestions: [
+          { center: location(-5.5, -1.5), orientation: "PORTRAIT", segmentIndex: 0, yearlyEnergyDcKwh: 500 },
+          { center: location(-4.2, -1.5), orientation: "PORTRAIT", segmentIndex: 0, yearlyEnergyDcKwh: 650 },
+        ] };
+      const result = planRoofLayout(roof, { ...assumptions, servicePathWidthMeters: 0 }, GRID);
+      expect(result.panels.every(panel => panel.segmentId === "a")).toBe(true);
+      expect(result.panels[0].yearlyEnergyDcKwh).toBe(650);
+      expect(result.panels[1].yearlyEnergyDcKwh).toBe(500);
+      expect(result.panels.slice(2).every(panel => panel.yearlyEnergyDcKwh === undefined)).toBe(true);
+      expect(result.panelCount).toBe(result.panels.length);
+    });
+
+    it("never lets a hand-drawn outline change the sizing (provider-suggestion) path", () => {
+      const roof = googleRoof([[0, 0]]);
+      const outline = [location(-5, -5), location(0, -5), location(0, 5), location(-5, 5)];
+      const base = planRoofLayout(roof, assumptions);
+      const withOutline = planRoofLayout(roof, assumptions, { footprintOverride: outline });
+      expect(withOutline.panelCount).toBe(base.panelCount);
+      expect(withOutline.footprint).toEqual(base.footprint);
+      expect(withOutline.warnings).not.toContain("PANELS_CLIPPED_TO_OUTLINE");
+    });
+
+    it("limits panels to a user outline and draws that outline as the footprint", () => {
+      const roof = googleRoof([[0, 0]]);
+      const flat = { ...assumptions, servicePathWidthMeters: 0 };
+      const full = planRoofLayout(roof, flat, GRID);
+      const outline = [location(-5, -5), location(0, -5), location(0, 5), location(-5, 5)];
+      const clipped = planRoofLayout(roof, flat, { ...GRID, footprintOverride: outline });
+      expect(clipped.panelCount).toBeLessThan(full.panelCount as number);
+      expect(clipped.panelCount).toBeGreaterThan(0);
+      expect(clipped.panelCount).toBe(clipped.panels.length);
+      expect(clipped.warnings).toContain("PANELS_CLIPPED_TO_OUTLINE");
+      expect(clipped.footprint).toHaveLength(4);
+      expect(Math.max(...clipped.footprint.map(point => point.x))).toBeCloseTo(0, 3);
+      for (const panel of clipped.panels) {
+        for (const corner of panel.corners) {
+          expect(corner.x).toBeLessThanOrEqual(-assumptions.edgeSetbackMeters + 1e-3);
+          expect(corner.x).toBeGreaterThanOrEqual(-5 + assumptions.edgeSetbackMeters - 1e-3);
+        }
+      }
+      // Sizing (no override, default provider fill) is unaffected when no outline is passed.
+      expect(planRoofLayout(roof, flat).panelCount).toBe(1);
+    });
+
+    it("ignores a collapsed outline with a warning instead of removing every panel", () => {
+      const roof = googleRoof([[0, 0]]);
+      const collapsed = planRoofLayout(roof, assumptions, { ...GRID, footprintOverride: [location(0, 0), location(1, 0), location(2, 0)] });
+      expect(collapsed.warnings).toContain("OUTLINE_OVERRIDE_UNUSABLE");
+      expect(collapsed.panelCount).toBe(planRoofLayout(roof, assumptions, GRID).panelCount);
+    });
+  });
+
 });
 
 type RoofSegmentV1Like = NormalizedRoofV1["segments"][number];

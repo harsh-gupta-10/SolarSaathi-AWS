@@ -50,7 +50,7 @@ describe("admin policy source health and run listing", () => {
     expect(first.hostRegistryVersion).toBe(1);
     expect(first.registerableHosts).toEqual(OFFICIAL_POLICY_HOSTS_V1.map(({ host, sourceType, jurisdiction }) =>
       ({ host, sourceType, jurisdiction })));
-    expect(first.registerableHosts).toHaveLength(6);
+    expect(first.registerableHosts).toHaveLength(10);
     await service.listSources("req-2", "1", first.nextCursor);
     expect(listSources).toHaveBeenLastCalledWith(1, sourceCursor);
     await expect(service.listSources("req", "51")).rejects.toMatchObject({ code: "INVALID_LIMIT" });

@@ -19,6 +19,8 @@ export const draftInputSchema = z.strictObject({
   design: section.optional(),
   financial: section.optional(),
   benefit: section.optional(),
+  /** `corners`: the user-traced building outline as `lat,lng;lat,lng;lat,lng;lat,lng` (3D view only, never sizing). */
+  outline: section.optional(),
 });
 export type AnalysisDraft = z.infer<typeof draftInputSchema>;
 

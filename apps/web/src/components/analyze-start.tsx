@@ -16,11 +16,13 @@ import { getStoredProperty, saveStoredProperty } from "../lib/properties-store";
 import { AddressForm } from "./address-form";
 import { SatelliteBuildingMap } from "./satellite-building-map";
 import { RoofLayoutViewer } from "./roof-layout-viewer";
+import type { RoofOutline } from "@solarsaathi/calculations";
 import { SystemDesigner, type SystemDesignOutcome } from "./system-designer";
 import { FinancialEstimator } from "./financial-estimator";
 import { BenefitEvaluator } from "./benefit-evaluator";
 import type { FinancialEstimateResponse } from "../lib/financial-api";
-import { AnalysisDraftProvider, DraftSaveIndicator, hasSavedDesignInputs } from "../lib/analysis-draft";
+import { DraftSaveIndicator, hasSavedDesignInputs } from "../lib/analysis-draft";
+import { AnalysisDraftScope, RoofOutlineDraftBridge } from "./roof-outline-draft";
 import { focusHeading, useRevealOnChange } from "../lib/reveal";
 
 type Busy = "property" | "geocode" | "insights" | "building" | "roof" | "manual";
@@ -84,6 +86,9 @@ export function AnalyzeStart() {
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [preview, setPreview] = useState<RoofPreviewResponse>();
+  // The building outline the user traced on the map (3D view only). A different building starts again from Google's box.
+  const [userOutline, setUserOutline] = useState<RoofOutline>();
+  useEffect(() => { setUserOutline(undefined); }, [preview?.previewId]);
   const [buildingConfirmed, setBuildingConfirmed] = useState(false);
   const [result, setResult] = useState<RoofConfirmationResponse>();
   const [manualMode, setManualMode] = useState(false);
@@ -842,6 +847,8 @@ export function AnalyzeStart() {
                     point={point!}
                     deviceLocation={deviceLocation}
                     roof={preview?.roof}
+                    outline={userOutline}
+                    onOutlineChange={setUserOutline}
                     onPointChange={selectHouseOnMap}
                   />
                 ) : (
@@ -1131,6 +1138,9 @@ export function AnalyzeStart() {
         </section>
       )}
 
+      {/* One draft provider covers the roof view and steps 4–6, so the traced outline saves with the other answers. */}
+      <AnalysisDraftScope scope={draftScope}>
+      <RoofOutlineDraftBridge key={draftScope?.analysisId ?? "none"} outline={userOutline} onRestore={setUserOutline} />
       {/* TAB 3: 3D Roof Model & Measurements */}
       {activeTab === 3 && (
         <section className="space-y-6" aria-label="3D Roof Model">
@@ -1164,7 +1174,7 @@ export function AnalyzeStart() {
                 </p>
               </section>
 
-              <RoofLayoutViewer key={visibleResult.analysisId} roof={visibleResult.roof} analysisId={visibleResult.analysisId} />
+              <RoofLayoutViewer key={visibleResult.analysisId} roof={visibleResult.roof} analysisId={visibleResult.analysisId} footprintOverride={userOutline} />
 
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/40 p-4">
                 <span className="text-sm text-muted-foreground">Measurements confirmed and saved to your account.</span>
@@ -1197,7 +1207,7 @@ export function AnalyzeStart() {
       {activeTab >= 4 && (
         <section className="space-y-6" aria-label="Solar system, cost and subsidies">
           {visibleResult && propertyId && draftScope ? (
-            <AnalysisDraftProvider {...draftScope}>
+            <>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
                 <div>
                   <h2 className="text-xl font-semibold">
@@ -1249,7 +1259,7 @@ export function AnalyzeStart() {
                   <Button className="mt-3" variant="outline" onClick={() => setActiveTab(activeTab === 5 ? 4 : 5)}>Go to previous step</Button>
                 </div>
               )}
-            </AnalysisDraftProvider>
+            </>
           ) : (
             <div className="rounded-xl border bg-muted/30 p-8 text-center space-y-3">
               <Sun className="mx-auto size-8 text-muted-foreground" />
@@ -1264,6 +1274,7 @@ export function AnalyzeStart() {
           )}
         </section>
       )}
+      </AnalysisDraftScope>
       </div>
     </>
   );

@@ -1,6 +1,7 @@
 export * from "./types";
 export * from "./solar";
 export * from "./roof-layout";
+export * from "./roof-outline";
 export * from "./planning-assumptions";
 export * from "./system-designer";
 export * from "./base-financials";

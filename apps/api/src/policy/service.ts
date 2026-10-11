@@ -109,7 +109,7 @@ export class PolicyService {
       ingested = await ingestPolicyDocument({ sourceId: source.sourceId, documentId,
         documentVersion: input.version, mimeType: input.mimeType, bytes },
       { maxHtmlBytes: MAX_DOCUMENT_BYTES, maxPdfBytes: MAX_DOCUMENT_BYTES,
-        maxPages: Math.min(50, DOCUMENT_INGESTION_LIMITS.maxPages) });
+        maxPages: Math.min(80, DOCUMENT_INGESTION_LIMITS.maxPages) });
     } catch (error) {
       if (error instanceof DocumentIngestionError) {
         const tooLarge = ["BYTE_LIMIT", "PAGE_LIMIT", "TEXT_LIMIT", "CHUNK_LIMIT"].includes(error.code);

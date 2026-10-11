@@ -86,6 +86,14 @@ describe("policy-backed financial result", () => {
     expect(screen.queryByText(/₹/)).toBeNull();
   });
 
+  it("says when a published record failed verification instead of calling it a service problem", () => {
+    render(<PolicyFinancialResults response={{ ...demoPolicyFinancialResponse,
+      status: "UNAVAILABLE", projection: undefined, reasonCodes: ["POLICY_RECORD_FAILED_VERIFICATION"], benefits: { ...demoPolicyFinancialResponse.benefits,
+        status: "UNAVAILABLE", result: undefined, reasonCodes: ["POLICY_RECORD_FAILED_VERIFICATION"] } }} />);
+    expect(screen.getByRole("heading", { name: "A published subsidy record failed our verification checks" })).toBeTruthy();
+    expect(screen.queryByText("The benefit check is temporarily unavailable")).toBeNull();
+  });
+
   it("uses past-tense unavailable copy for an archived proposal", () => {
     render(<PolicyFinancialResults asOfSnapshot response={{ ...demoPolicyFinancialResponse,
       status: "UNAVAILABLE", projection: undefined, benefits: { ...demoPolicyFinancialResponse.benefits,

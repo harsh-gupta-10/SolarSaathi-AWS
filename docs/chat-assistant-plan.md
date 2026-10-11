@@ -379,3 +379,34 @@ Review the change set before confirming. The advisor function shares these param
   "Reference for support" request ID that matches the log line.
 - If access is enabled but turns still fail, check the log `message` for prompt-cache or guardrail streaming errors
   (still unverified against live Bedrock); set `CHAT_PROMPT_CACHE=false` on the function to rule out caching.
+
+## Switching chat to GPT-6.1 Sol (decided 2026-10-11, not deployed)
+
+**Decision:** use OpenAI GPT-6.1 Sol on Amazon Bedrock (`global.openai.gpt-6.1-sol`, foundation model
+`openai.gpt-6.1-sol`) instead of Claude. It stays on AWS and the same Converse API, so no code change is needed: the model
+is only a deploy parameter. The advisor function shares these parameters and switches too.
+
+**Finding (checked 2026-10-11, account 944311261347, ap-south-1): this does not remove the block.** A real `converse` call
+to `global.openai.gpt-6.1-sol` fails with `ValidationException: Operation not allowed`, exactly like Claude. So do
+`openai.gpt-oss-120b-1:0`, `global.openai.gpt-6-sol`, `global.openai.gpt-5.5` and the Amazon Nova models
+(`amazon.nova-lite-v1:0`, `global.amazon.nova-2-lite-v1:0`). Because even Amazon's own models are refused, the cause is
+the **account**, not an Anthropic-only form. Likely causes to check in the console / with AWS Support: Bedrock not yet
+enabled for this account (new-account restriction), no valid payment method or an unpaid balance, an organization
+service-control policy denying `bedrock:*`, or a regional restriction. `get-foundation-model-availability` reporting
+`NOT_AUTHORIZED` is consistent with this.
+
+**Verify before redeploying** (should print a reply, not an error):
+```sh
+aws bedrock-runtime converse --region ap-south-1 --model-id global.openai.gpt-6.1-sol \
+  --messages '[{"role":"user","content":[{"text":"Say ready"}]}]' --inference-config '{"maxTokens":30}'
+```
+
+**Redeploy parameters** (same procedure as above; only the three model values change):
+```
+AdvisorBedrockModelId=global.openai.gpt-6.1-sol
+AdvisorBedrockModelArn=arn:aws:bedrock:ap-south-1:944311261347:inference-profile/global.openai.gpt-6.1-sol
+AdvisorBedrockFoundationModelArn='arn:aws:bedrock:*::foundation-model/openai.gpt-6.1-sol'
+```
+Untested with this model once access works: tool calling and the guardrail on GPT-6.1 Sol, and prompt caching (the code
+retries without cache checkpoints if the model rejects them; set `CHAT_PROMPT_CACHE=false` to skip them). The answer
+quality of the grounded, card-based replies should be spot-checked before relying on it.

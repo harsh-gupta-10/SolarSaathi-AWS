@@ -69,6 +69,22 @@ describe("policy source registry and provenance", () => {
     expect(JSON.stringify(intents)).not.toMatch(/amount|eligibility|benefitRupees|VERIFIED_POLICY/i);
   });
 
+  it("registers the central and state document hosts only for their own type and jurisdiction", () => {
+    const central = "https://cdnbbsr.s3waas.gov.in/s3716e1b8c6cd17b771da77391355749f3/uploads/2024/07/202407021768035484.pdf";
+    expect(validateOfficialSourceUrl(central, "MNRE", "IN").host).toBe("cdnbbsr.s3waas.gov.in");
+    expect(validateOfficialSourceUrl("https://solar.delhi.gov.in/page/state-subsidy", "STATE_ENERGY_DEPARTMENT", "IN-DL").host).toBe("solar.delhi.gov.in");
+    expect(validateOfficialSourceUrl("https://solarcitiesportal.upneda.org.in/images/policy.pdf", "RENEWABLE_AGENCY", "IN-UP").host)
+      .toBe("solarcitiesportal.upneda.org.in");
+    expect(validateOfficialSourceUrl("https://www.apdcl.org/website/docs/acts_and_rules/policy.pdf", "OFFICIAL_NOTIFICATION", "IN-AS").host)
+      .toBe("www.apdcl.org");
+    // Wrong owner type or jurisdiction, look-alike hosts and sibling subdomains stay rejected.
+    expect(() => validateOfficialSourceUrl(central, "MNRE", "IN-MH")).toThrow(RangeError);
+    expect(() => validateOfficialSourceUrl(central, "STATE_ENERGY_DEPARTMENT", "IN")).toThrow(RangeError);
+    expect(() => validateOfficialSourceUrl("https://other.s3waas.gov.in/x.pdf", "MNRE", "IN")).toThrow(RangeError);
+    expect(() => validateOfficialSourceUrl("https://apdcl.org/x.pdf", "OFFICIAL_NOTIFICATION", "IN-AS")).toThrow(RangeError);
+    expect(() => validateOfficialSourceUrl("https://www.apdcl.org/x.pdf", "OFFICIAL_NOTIFICATION", "IN-UP")).toThrow(RangeError);
+  });
+
   it("binds official source identity to exact verified host, type and jurisdiction", () => {
     expect(validateOfficialSourceUrl(source().canonicalUrl, "MNRE", "IN")).toMatchObject({ host: "mnre.gov.in",
       hostRegistryVersion: 1 });

@@ -35,9 +35,17 @@ export function MarketingHeaderActions() {
 export function MarketingConsultantAction() {
   const href = useWorkspaceHref();
   return (
-    <Link href={href} className={`inline-flex min-h-12 items-center gap-1 rounded-lg bg-black px-6 text-base font-medium text-white transition hover:bg-[#2f2f2f] ${FOCUS}`}>
-      Explore the workspace
-      <ArrowUpRight aria-hidden="true" className="size-4" />
+    <Link
+      href={href}
+      className={`group inline-flex min-h-14 shrink-0 items-center gap-3 whitespace-nowrap rounded-full bg-black pl-7 pr-3 py-2.5 text-base font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#1a1a1a] hover:shadow-[0_12px_28px_rgba(0,0,0,0.28)] ${FOCUS}`}
+    >
+      <span>Explore the workspace</span>
+      <span
+        aria-hidden="true"
+        className="inline-flex size-9 items-center justify-center rounded-full bg-[#fff100] text-black transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+      >
+        <ArrowUpRight className="size-4 stroke-[2.5]" />
+      </span>
     </Link>
   );
 }

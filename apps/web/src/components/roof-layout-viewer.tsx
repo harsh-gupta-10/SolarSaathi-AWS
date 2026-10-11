@@ -5,7 +5,7 @@ import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Box, Compass, Maximize2, Minus, Plus, RotateCcw, RotateCw } from "lucide-react";
 import { Button } from "@solarsaathi/ui";
 import { getRoofLayoutAssumptionsV1, planRoofLayout, type RoofLayout } from "@solarsaathi/calculations";
-import type { NormalizedRoofV1 } from "@solarsaathi/types";
+import type { NormalizedRoofV1, RoofPoint } from "@solarsaathi/types";
 import type { ViewCommand } from "./roof-layout-scene";
 import { roofLayoutWarningText } from "../lib/roof-layout-copy";
 
@@ -64,10 +64,17 @@ function PlanView({ layout }: { layout: RoofLayout }) {
   );
 }
 
-export function RoofLayoutViewer({ roof, analysisId }: { roof: NormalizedRoofV1; analysisId: string }) {
+export function RoofLayoutViewer({ roof, analysisId, footprintOverride }: {
+  roof: NormalizedRoofV1; analysisId: string;
+  /** The building outline the user traced on the map. It changes this view only, never system sizing. */
+  footprintOverride?: readonly RoofPoint[];
+}) {
   const assumptions = useMemo(() => getRoofLayoutAssumptionsV1(roof), [roof]);
-  // The planner's own fit is shown as-is: panels stay on their roof plane, inside its setbacks and service path.
-  const layout = useMemo(() => planRoofLayout(roof, assumptions), [roof, assumptions]);
+  // Each roof plane Google found panels for is filled with a regular grid of whole panels inside its setbacks and
+  // service path (and inside the user's outline, when one was traced). System sizing uses a separate, stricter fit.
+  const layout = useMemo(() => planRoofLayout(roof, assumptions, { panelFill: "REGULAR_GRID", footprintOverride }),
+    [roof, assumptions, footprintOverride]);
+  const outlineApplied = Boolean(footprintOverride) && !layout.warnings.includes("OUTLINE_OVERRIDE_UNUSABLE") && roof.source === "GOOGLE_SOLAR";
 
   const [webGl, setWebGl] = useState<"checking" | "available" | "unavailable">("checking");
   const [mode, setMode] = useState<"3d" | "plan">("plan");
@@ -100,6 +107,8 @@ export function RoofLayoutViewer({ roof, analysisId }: { roof: NormalizedRoofV1;
           <span className="roof-layout-kicker"><Box size={17} aria-hidden="true" /> Deterministic layout</span>
           <h2 id="roof-layout-title">Explore your roof in 3D</h2>
           <p>{status}. {geometryLabel} This view is a planning concept, not a site survey or structural approval.</p>
+          <p>This is an illustrative fill: whole panels that fit the usable area of each roof plane. The system sizes compared in the next step use a more cautious fit, so their panel counts can be lower.</p>
+          {outlineApplied && <p>Your traced outline sets the walls and where panels may sit in this view only. System sizing still uses Google&apos;s modeled roof or your measurements.</p>}
         </div>
         <span className="roof-layout-badge">{layout.fitStatus === "UNDETERMINED" ? "Fit undetermined" : "Planning view"}</span>
       </div>

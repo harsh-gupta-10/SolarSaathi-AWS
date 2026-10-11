@@ -24,6 +24,8 @@ export const benefitEvaluateRequestSchema = z.object({ propertyId: identifier, a
 }).strict().refine(value => value.applicantFacts.country === "IN");
 
 const coverage = { central: false, state: false, discom: false, local: false, other: false } as const;
+/** A published record failed a deterministic integrity or provenance check (as opposed to an infrastructure failure). */
+class BundleIntegrityError extends Error { constructor() { super("Published policy record failed verification."); this.name = "BundleIntegrityError"; } }
 const unavailable = () => new RequestError(503, "BENEFIT_EVALUATION_UNAVAILABLE", "Verified policy evaluation is temporarily unavailable.");
 
 export class BenefitsService {
@@ -89,16 +91,19 @@ export class BenefitsService {
         reasonCodes: ["NO_ACTIVE_VERIFIED_RULES"] };
       const evidence: PolicyEvidenceV1[] = [];
       const sourceHealth: PolicySourceHealthV1[] = [];
+      // A bundle that fails its integrity or provenance checks is excluded on its own: it can never contribute an amount,
+      // and it must not hide the other verified rules. Only the policy ID is logged (never content).
+      const failedPolicyIds: string[] = [];
       const loadBundle = async (bundle: typeof bundles[number]) => {
         if (bundle.schemaVersion !== 1 || bundle.policyId !== bundle.version.policyId ||
           bundle.rule.policyId !== bundle.policyId || bundle.rule.policyVersion !== bundle.version.version ||
           bundle.benefitId !== bundle.rule.benefitId ||
           bundle.facts.length !== bundle.rule.factIds.length ||
-          bundle.facts.some((fact, index) => fact.factId !== bundle.rule.factIds[index])) throw unavailable();
+          bundle.facts.some((fact, index) => fact.factId !== bundle.rule.factIds[index])) throw new BundleIntegrityError();
         const version = policyVersionSchema.parse(bundle.version);
         const facts = bundle.facts.map(item => policyFactSchema.parse(item));
         if (version.status !== "ACTIVE" || version.verificationStatus !== "VERIFIED" ||
-          facts.some(fact => fact.verificationStatus !== "VERIFIED")) throw unavailable();
+          facts.some(fact => fact.verificationStatus !== "VERIFIED")) throw new BundleIntegrityError();
         // Every fact is backed by its own citation; load each distinct source/document once so a multi-source
         // rule is checked against all of its sources instead of only the first fact's.
         const citations = new Map<string, typeof facts[number]["citation"]>();
@@ -116,7 +121,7 @@ export class BenefitsService {
             this.workflow.getCrawlState(citation.sourceId),
           ]);
           if (!sourceVersion || !currentSource || !document || document.sha256 !== citation.documentSha256) {
-            throw unavailable();
+            throw new BundleIntegrityError();
           }
           const source = validateOfficialSourceRecord(policySourceSchema.parse(sourceVersion));
           const archived = policyDocumentSchema.parse(document);
@@ -140,9 +145,25 @@ export class BenefitsService {
         });
         return { bundleEvidence, healths: [...loadedCitations.values()].map(value => value.health) };
       };
+      const usable: typeof bundles = [];
       for (let offset = 0; offset < bundles.length; offset += 4) {
-        const loaded = await Promise.all(bundles.slice(offset, offset + 4).map(loadBundle));
-        for (const item of loaded) {
+        const slice = bundles.slice(offset, offset + 4);
+        const loaded = await Promise.all(slice.map(async bundle => {
+          try { return { bundle, loaded: await loadBundle(bundle) }; }
+          catch (error) {
+            // Only deterministic verification failures exclude a record. Infrastructure errors (DynamoDB/S3 throttling,
+            // timeouts) must still surface as a retryable 503 rather than be reported as a bad record.
+            if (!(error instanceof BundleIntegrityError || error instanceof z.ZodError || error instanceof RangeError)) throw error;
+            failedPolicyIds.push(String(bundle.policyId));
+            console.error(JSON.stringify({ event: "POLICY_BUNDLE_FAILED_VERIFICATION", policyId: bundle.policyId,
+              policyVersion: bundle.rule?.policyVersion, reason: error instanceof Error ? error.name : "unknown" }));
+            return undefined;
+          }
+        }));
+        for (const entry of loaded) {
+          if (!entry) continue;
+          usable.push(entry.bundle);
+          const item = entry.loaded;
           evidence.push(...item.bundleEvidence);
           for (const health of item.healths) {
             const existingHealth = sourceHealth.find(value => value.sourceId === health.sourceId);
@@ -153,6 +174,10 @@ export class BenefitsService {
           }
         }
       }
+      // If any applicable rule failed verification, no amount is returned: a dropped rule could be a competitor of, or
+      // exclusive with, a rule that passed, so a partial total could be wrong rather than merely lower. Fail closed.
+      if (failedPolicyIds.length) return { ...common, status: "UNAVAILABLE" as const,
+        reasonCodes: ["POLICY_RECORD_FAILED_VERIFICATION"] };
       if (sourceHealth.every(item => item.status !== "HEALTHY")) return { ...common,
         status: "UNAVAILABLE" as const, reasonCodes: ["NO_CURRENT_VERIFIED_RULES",
           ...(sourceHealth.some(item => item.status === "FAILED" || item.status === "DEGRADED") ?
@@ -161,7 +186,7 @@ export class BenefitsService {
         context: benefitEvaluationContextSchema.parse({ ...input.applicantFacts,
           systemWatts: Math.round(system.actualDcKw * 1_000),
           ...(input.eligibleQuotedCostPaise !== undefined ? { eligibleQuotedCostPaise: input.eligibleQuotedCostPaise } : {}) }),
-        rules: bundles.map(bundle => bundle.rule), evidence, sourceHealth, coverage });
+        rules: usable.map(bundle => bundle.rule), evidence, sourceHealth, coverage });
       return { ...common, status: "AVAILABLE" as const, result };
     } catch (error) {
       if (error instanceof RequestError) throw error;

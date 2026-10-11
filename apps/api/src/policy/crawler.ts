@@ -222,7 +222,7 @@ export class PolicyCrawler {
       const documentVersion = (previousDocument?.version ?? 0) + 1;
       const ingested = await ingestPolicyDocument({ sourceId: source.sourceId, documentId,
         documentVersion, mimeType: result.mimeType, bytes: result.bytes }, { maxHtmlBytes: 2_000_000,
-        maxPdfBytes: 2_000_000, maxPages: 50 });
+        maxPdfBytes: 2_000_000, maxPages: 80 });
       const provisional = policyDocumentSchema.parse({ schemaVersion: 1, documentId, sourceId: source.sourceId,
         sourceRegistryVersion: source.registryVersion, version: documentVersion, title: ingested.title ??
           new URL(result.finalUrl).pathname.split("/").filter(Boolean).at(-1)?.slice(0, 300) ?? "Official source document",

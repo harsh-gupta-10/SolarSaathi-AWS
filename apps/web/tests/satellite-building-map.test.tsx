@@ -62,13 +62,78 @@ describe("satellite building map", () => {
     expect(polygons[0]?.fillOpacity).toBe(0.16);
     expect(polygons[0]?.paths).toHaveLength(4);
     expect(screen.getByText(/approximate building outline/)).toBeTruthy();
-    expect(screen.getByText(/modeled from Google Solar roof planes \(imagery 2025-06-14, medium quality\)/)).toBeTruthy();
+    expect(screen.getByText("Automatic outline (approximate)")).toBeTruthy();
+    expect(screen.getByText(/imagery 2025-06-14, medium quality/)).toBeTruthy();
+    expect(screen.getByText(/system sizing still uses Google's modeled roof or your measurements/)).toBeTruthy();
     expect(screen.queryByText(/from where you tapped/)).toBeNull();
 
     const far = { latitude: 19.0764, longitude: 72.8777 };
     view.rerender(<SatelliteBuildingMap apiKey="public-map-key" center={current} point={far} roof={roof}
       onPointChange={onPointChange} />);
     expect(screen.getByText(/about 4\d m from where you tapped/)).toBeTruthy();
+  });
+
+  it("starts from Google's building box and lets the user drag, nudge and reset the outline", async () => {
+    const polygons: { paths: unknown[]; setPath: ReturnType<typeof vi.fn> }[] = [];
+    const markers: { options: Record<string, unknown>; listeners: Record<string, (event: { latLng?: { lat(): number; lng(): number } }) => void>; setPosition: ReturnType<typeof vi.fn> }[] = [];
+    class PolygonStub {
+      setMap = vi.fn(); setPath = vi.fn();
+      constructor(options: { paths: unknown[] }) { polygons.push(Object.assign(this, { paths: options.paths })); }
+    }
+    class MarkerStub {
+      listeners: Record<string, (event: { latLng?: { lat(): number; lng(): number } }) => void> = {};
+      setPosition = vi.fn(); setMap = vi.fn();
+      options: Record<string, unknown>;
+      constructor(options: Record<string, unknown>) { this.options = options; markers.push(this); }
+      addListener(name: string, callback: (event: { latLng?: { lat(): number; lng(): number } }) => void) { this.listeners[name] = callback; return { remove: vi.fn() }; }
+    }
+    Object.defineProperty(window, "google", { configurable: true, value: { maps: {
+      Map: class { setCenter() {} addListener() { return { remove() {} }; } },
+      Circle: class { setCenter() {} setMap() {} }, Polygon: PolygonStub, Marker: MarkerStub,
+    } } });
+    const selected = { latitude: 19.076, longitude: 72.8777 };
+    const onOutlineChange = vi.fn();
+    const view = render(<SatelliteBuildingMap apiKey="public-map-key" center={selected} point={selected} roof={roof}
+      onOutlineChange={onOutlineChange} onPointChange={vi.fn()} />);
+    await waitFor(() => expect(markers).toHaveLength(4));
+    expect(markers.map(marker => marker.options.draggable)).toEqual([true, true, true, true]);
+    expect(polygons.at(-1)?.paths).toHaveLength(4);
+    expect(screen.getByText("Automatic outline (approximate)")).toBeTruthy();
+    expect(screen.getByText(/about \d+ m² on the ground/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Reset to automatic outline" }) as HTMLButtonElement).disabled).toBe(true);
+
+    // Dragging corner 3 inward commits an adjusted outline.
+    markers[2].listeners.dragend({ latLng: { lat: () => 19.076025, lng: () => 72.877725 } });
+    expect(onOutlineChange).toHaveBeenCalledTimes(1);
+    const adjusted = onOutlineChange.mock.calls[0][0] as { latitude: number; longitude: number }[];
+    expect(adjusted[2]).toEqual({ latitude: 19.076025, longitude: 72.877725 });
+    expect(adjusted[0]).toEqual({ latitude: 19.076, longitude: 72.8777 });
+    // A move that flattens the outline is refused and the handle snaps back.
+    markers[2].listeners.dragend({ latLng: { lat: () => 19.076, lng: () => 72.8777 } });
+    expect(onOutlineChange).toHaveBeenCalledTimes(2);
+
+    view.rerender(<SatelliteBuildingMap apiKey="public-map-key" center={selected} point={selected} roof={roof}
+      outline={adjusted as never} onOutlineChange={onOutlineChange} onPointChange={vi.fn()} />);
+    expect(screen.getByText("Outline adjusted by you")).toBeTruthy();
+    // Keyboard nudge for corner 2, then reset.
+    await userEvent.selectOptions(screen.getByLabelText("Corner to move"), "1");
+    await userEvent.click(screen.getByRole("button", { name: "North 1 m" }));
+    const nudged = onOutlineChange.mock.calls.at(-1)?.[0] as { latitude: number }[];
+    expect(nudged[1].latitude).toBeGreaterThan(adjusted[1].latitude);
+    expect(screen.getByRole("status", { hidden: true }).textContent).toMatch(/Corner 2 moved/);
+    await userEvent.click(screen.getByRole("button", { name: "Reset to automatic outline" }));
+    expect(onOutlineChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("shows no editing controls without an outline change handler", async () => {
+    Object.defineProperty(window, "google", { configurable: true, value: { maps: {
+      Map: class { setCenter() {} addListener() { return { remove() {} }; } },
+      Circle: class { setCenter() {} setMap() {} }, Polygon: class { setMap() {} },
+    } } });
+    const selected = { latitude: 19.076, longitude: 72.8777 };
+    render(<SatelliteBuildingMap apiKey="public-map-key" center={selected} point={selected} roof={roof} onPointChange={vi.fn()} />);
+    await screen.findByText("Automatic outline (approximate)");
+    expect(screen.queryByLabelText("Corner to move")).toBeNull();
   });
   it("offers a retry after the map script fails without losing coordinate selection", async () => {
     const selected = { latitude: 19.076, longitude: 72.8777 };

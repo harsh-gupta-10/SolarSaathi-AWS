@@ -13,6 +13,9 @@ export type RoofLayoutWarning =
   | "PANEL_DIMENSIONS_DIFFER_FROM_GOOGLE_MODEL"
   | "PANEL_SPECS_DIFFER_FROM_GOOGLE_MODEL"
   | "PANELS_FILTERED_FOR_CLEARANCE"
+  | "PANELS_REGULAR_GRID"
+  | "PANELS_CLIPPED_TO_OUTLINE"
+  | "OUTLINE_OVERRIDE_UNUSABLE"
   | "PITCH_ASSUMED_FLAT"
   | "AREA_ONLY_MANUAL_ROOF"
   | "MANUAL_AREA_DIFFERS_FROM_DIMENSIONS"
@@ -64,6 +67,18 @@ export interface RoofLayoutPanel {
   yearlyEnergyDcKwh?: number;
 }
 
+/** Optional user-adjusted building outline. It changes the drawn footprint and where panels may sit, nothing else. */
+export interface RoofLayoutOptions {
+  /** At least three latitude/longitude corners; only used for Google roofs, which are georeferenced. */
+  footprintOverride?: readonly RoofPoint[];
+  /**
+   * How Google roofs receive panels. `PROVIDER_SUGGESTIONS` (default, used for sizing) keeps Google's own panel
+   * positions that survive the setbacks, so capacity never exceeds what Google judged viable. `REGULAR_GRID`
+   * (used for the 3D view) fills each roof plane that has suggestions with an aligned grid of whole panels.
+   */
+  panelFill?: "PROVIDER_SUGGESTIONS" | "REGULAR_GRID";
+}
+
 export interface RoofLayout {
   schemaVersion: 1;
   coordinateSystem: "LOCAL_EAST_UP_NORTH_METERS";
@@ -102,6 +117,19 @@ interface WorkingSegment {
 const EARTH_RADIUS_METERS = 6_371_000;
 const DEG_TO_RAD = Math.PI / 180;
 const METRE_EPSILON = 1e-9;
+/** An outline smaller than this is treated as collapsed (for example, all corners dragged onto one line). */
+/** An outline smaller than this has collapsed onto a line and is not usable. Shared with roof-outline.ts. */
+export const MIN_OUTLINE_AREA_SQUARE_METERS = 4;
+
+/** Area of a simple polygon, m² (shoelace). */
+export function polygonArea(points: readonly RoofLayoutPlanPoint[]): number {
+  let twice = 0;
+  for (let index = 0; index < points.length; index++) {
+    const a = points[index], b = points[(index + 1) % points.length];
+    twice += a.x * b.z - b.x * a.z;
+  }
+  return Math.abs(twice) / 2;
+}
 
 function finite(value: number, label: string, minimum = -Infinity, maximum = Infinity): void {
   if (!Number.isFinite(value) || value < minimum || value > maximum) throw new RangeError(`Invalid ${label}.`);
@@ -435,25 +463,28 @@ function manualPanels(segment: WorkingSegment, assumptions: RoofLayoutAssumption
   return { panels: selected.panels, truncated: selected.potentialCount > assumptions.maxPanels };
 }
 
-function googlePanels(roof: NormalizedRoofV1, segments: Map<number, WorkingSegment>, origin: RoofPoint,
-  assumptions: RoofLayoutAssumptions, warnings: Set<RoofLayoutWarning>): { panels: RoofLayoutPanel[]; evaluable: boolean } {
-  if (!roof.panelSuggestions) { warnings.add("PANEL_SUGGESTIONS_MISSING"); return { panels: [], evaluable: false }; }
-  if (roof.panelWidthMeters !== undefined && roof.panelHeightMeters !== undefined &&
-    (Math.abs(roof.panelWidthMeters - assumptions.panelWidthMeters) > METRE_EPSILON ||
-      Math.abs(roof.panelHeightMeters - assumptions.panelHeightMeters) > METRE_EPSILON)) {
-    warnings.add("PANEL_DIMENSIONS_DIFFER_FROM_GOOGLE_MODEL");
+/** True when `point` lies inside the counter-clockwise convex `polygon`, at least `margin` metres from every edge. */
+function insideConvex(polygon: readonly Point2[], point: Point2, margin: number): boolean {
+  for (let index = 0; index < polygon.length; index++) {
+    const a = polygon[index], b = polygon[(index + 1) % polygon.length];
+    const length = Math.hypot(b.x - a.x, b.z - a.z);
+    if (length <= METRE_EPSILON) continue;
+    if (((b.x - a.x) * (point.z - a.z) - (b.z - a.z) * (point.x - a.x)) / length < margin - METRE_EPSILON) return false;
   }
-  const sameGooglePanelSpec = roof.panelWidthMeters !== undefined && roof.panelHeightMeters !== undefined &&
-    roof.panelCapacityWatts !== undefined &&
-    Math.abs(roof.panelWidthMeters - assumptions.panelWidthMeters) <= METRE_EPSILON &&
-    Math.abs(roof.panelHeightMeters - assumptions.panelHeightMeters) <= METRE_EPSILON &&
-    Math.abs(roof.panelCapacityWatts - assumptions.panelCapacityWatts) <= METRE_EPSILON;
-  if (!sameGooglePanelSpec) warnings.add("PANEL_SPECS_DIFFER_FROM_GOOGLE_MODEL");
+  return true;
+}
+
+/** Google's own suggested positions, kept where they respect the modeled setbacks, aisle and each other. */
+function providerPanels(roof: NormalizedRoofV1, segments: Map<number, WorkingSegment>, origin: RoofPoint,
+  assumptions: RoofLayoutAssumptions, warnings: Set<RoofLayoutWarning>, outline: readonly Point2[] | undefined):
+  { panels: RoofLayoutPanel[]; evaluable: boolean } {
+  const sameGooglePanelSpec = googleSpecChecks(roof, assumptions, warnings);
+  if (sameGooglePanelSpec === undefined) return { panels: [], evaluable: false };
   const panels: RoofLayoutPanel[] = [];
-  let evaluable = false;
-  let filtered = false;
-  for (let index = 0; index < roof.panelSuggestions.length; index++) {
-    const suggestion = roof.panelSuggestions[index];
+  let evaluable = false, filtered = false, clipped = false;
+  const suggestions = roof.panelSuggestions ?? [];
+  for (let index = 0; index < suggestions.length; index++) {
+    const suggestion = suggestions[index];
     const segment = segments.get(suggestion.segmentIndex);
     if (!segment || !validPoint(suggestion.center)) { filtered = true; continue; }
     evaluable = true;
@@ -462,8 +493,12 @@ function googlePanels(roof: NormalizedRoofV1, segments: Map<number, WorkingSegme
     const panel = panelFor(segment, project(suggestion.center, origin), suggestion.orientation,
       assumptions, `google-${index + 1}`, sameGooglePanelSpec ? suggestion.yearlyEnergyDcKwh : undefined);
     const polygon = footprint(panel);
-    if (!insideBands(polygon.map(point => toLocal(segment.frame, point)), bands) || panels.some(existing => existing.segmentId === panel.segmentId &&
-      !separatedByGap(footprint(existing), polygon, assumptions.panelGapMeters))) {
+    if (outline && !polygon.every(corner => insideConvex(outline, corner, assumptions.edgeSetbackMeters))) {
+      clipped = true; continue;
+    }
+    if (!insideBands(polygon.map(point => toLocal(segment.frame, point)), bands) ||
+      panels.some(existing => existing.segmentId === panel.segmentId &&
+        !separatedByGap(footprint(existing), polygon, assumptions.panelGapMeters))) {
       filtered = true;
       continue;
     }
@@ -471,6 +506,132 @@ function googlePanels(roof: NormalizedRoofV1, segments: Map<number, WorkingSegme
     panels.push(panel);
   }
   if (filtered) warnings.add("PANELS_FILTERED_FOR_CLEARANCE");
+  if (clipped) warnings.add("PANELS_CLIPPED_TO_OUTLINE");
+  return { panels, evaluable };
+}
+
+/**
+ * Returns whether Google's panel spec equals the layout assumptions (true/false), or undefined when Google gave no
+ * suggestions at all. Adds the spec warnings.
+ */
+function googleSpecChecks(roof: NormalizedRoofV1, assumptions: RoofLayoutAssumptions,
+  warnings: Set<RoofLayoutWarning>): boolean | undefined {
+  if (!roof.panelSuggestions) { warnings.add("PANEL_SUGGESTIONS_MISSING"); return undefined; }
+  if (roof.panelWidthMeters !== undefined && roof.panelHeightMeters !== undefined &&
+    (Math.abs(roof.panelWidthMeters - assumptions.panelWidthMeters) > METRE_EPSILON ||
+      Math.abs(roof.panelHeightMeters - assumptions.panelHeightMeters) > METRE_EPSILON)) {
+    warnings.add("PANEL_DIMENSIONS_DIFFER_FROM_GOOGLE_MODEL");
+  }
+  const same = roof.panelWidthMeters !== undefined && roof.panelHeightMeters !== undefined &&
+    roof.panelCapacityWatts !== undefined &&
+    Math.abs(roof.panelWidthMeters - assumptions.panelWidthMeters) <= METRE_EPSILON &&
+    Math.abs(roof.panelHeightMeters - assumptions.panelHeightMeters) <= METRE_EPSILON &&
+    Math.abs(roof.panelCapacityWatts - assumptions.panelCapacityWatts) <= METRE_EPSILON;
+  if (!same) warnings.add("PANEL_SPECS_DIFFER_FROM_GOOGLE_MODEL");
+  return same;
+}
+
+/** Whether the roof plane's downhill direction runs along the frame's local z axis (true) or its x axis (false). */
+function downhillAlongLocalZ(segment: WorkingSegment): boolean {
+  const downhill = { x: Math.sin(segment.azimuthRadians), z: Math.cos(segment.azimuthRadians) };
+  return Math.abs(downhill.x * segment.frame.axisV.x + downhill.z * segment.frame.axisV.z) >= 0.5;
+}
+
+/**
+ * A regular grid of whole panels filling the segment's usable area (edge setbacks and service path respected),
+ * aligned to the roof plane. Panels are centred in each band so the leftover space is shared equally.
+ */
+function gridPanels(segment: WorkingSegment, assumptions: RoofLayoutAssumptions, idPrefix: string): RoofLayoutPanel[] {
+  const usable = inset(segment.rectangle, assumptions.edgeSetbackMeters);
+  if (!usable) return [];
+  const bands = serviceBands(usable, assumptions.servicePathWidthMeters);
+  const alongZ = downhillAlongLocalZ(segment);
+  const generate = (orientation: RoofLayoutPanel["orientation"]) => {
+    const lateral = orientation === "PORTRAIT" ? assumptions.panelWidthMeters : assumptions.panelHeightMeters;
+    const slope = (orientation === "PORTRAIT" ? assumptions.panelHeightMeters : assumptions.panelWidthMeters) *
+      Math.cos(segment.pitchRadians);
+    const sizeU = alongZ ? lateral : slope, sizeZ = alongZ ? slope : lateral;
+    const centers: Point2[] = [];
+    for (const band of bands) {
+      const columns = Math.max(0, Math.floor((band.maxX - band.minX + assumptions.panelGapMeters + METRE_EPSILON) /
+        (sizeU + assumptions.panelGapMeters)));
+      const rows = Math.max(0, Math.floor((band.maxZ - band.minZ + assumptions.panelGapMeters + METRE_EPSILON) /
+        (sizeZ + assumptions.panelGapMeters)));
+      const slackU = (band.maxX - band.minX) - (columns * sizeU + Math.max(0, columns - 1) * assumptions.panelGapMeters);
+      const slackZ = (band.maxZ - band.minZ) - (rows * sizeZ + Math.max(0, rows - 1) * assumptions.panelGapMeters);
+      for (let row = 0; row < rows; row++) {
+        for (let column = 0; column < columns; column++) {
+          centers.push(toWorld(segment.frame, {
+            x: band.minX + slackU / 2 + sizeU / 2 + column * (sizeU + assumptions.panelGapMeters),
+            z: band.minZ + slackZ / 2 + sizeZ / 2 + row * (sizeZ + assumptions.panelGapMeters),
+          }));
+        }
+      }
+    }
+    return { orientation, centers };
+  };
+  const portrait = generate("PORTRAIT"), landscape = generate("LANDSCAPE");
+  const chosen = landscape.centers.length > portrait.centers.length ? landscape : portrait;
+  return chosen.centers.map((center, index) =>
+    panelFor(segment, center, chosen.orientation, assumptions, `${idPrefix}-${index + 1}`));
+}
+
+/**
+ * Google roof planes are filled with a regular grid of whole panels inside each plane's setbacks. Google's own
+ * suggestions decide which planes receive panels (a plane with none is left empty) and supply per-panel yearly
+ * energy where a suggestion falls on a grid position; they are not used as panel positions, because Google's
+ * positions are scattered by shading and use a different panel size.
+ */
+function gridPanelsForRoof(roof: NormalizedRoofV1, segments: Map<number, WorkingSegment>, origin: RoofPoint,
+  assumptions: RoofLayoutAssumptions, warnings: Set<RoofLayoutWarning>, outline: readonly Point2[] | undefined):
+  { panels: RoofLayoutPanel[]; evaluable: boolean } {
+  const sameGooglePanelSpec = googleSpecChecks(roof, assumptions, warnings);
+  if (sameGooglePanelSpec === undefined) return { panels: [], evaluable: false };
+  let evaluable = false, skipped = false, clipped = false;
+  const suggestionsBySegment = new Map<number, { point: Point2; energy?: number }[]>();
+  for (const suggestion of roof.panelSuggestions ?? []) {
+    if (!segments.has(suggestion.segmentIndex) || !validPoint(suggestion.center)) { skipped = true; continue; }
+    evaluable = true;
+    const list = suggestionsBySegment.get(suggestion.segmentIndex) ?? [];
+    list.push({ point: project(suggestion.center, origin), energy: sameGooglePanelSpec ? suggestion.yearlyEnergyDcKwh : undefined });
+    suggestionsBySegment.set(suggestion.segmentIndex, list);
+  }
+  const withEnergy: RoofLayoutPanel[] = [], withoutEnergy: RoofLayoutPanel[] = [];
+  let limitReached = false;
+  for (const [index, segment] of segments) {
+    const suggestions = suggestionsBySegment.get(index);
+    if (!suggestions) continue;
+    const candidates = gridPanels(segment, assumptions, `grid-${index + 1}`).filter(panel => {
+      if (!outline) return true;
+      const inside = footprint(panel).every(corner => insideConvex(outline, corner, assumptions.edgeSetbackMeters));
+      if (!inside) clipped = true;
+      return inside;
+    });
+    const matched = new Map<RoofLayoutPanel, number>();
+    const reach = Math.hypot(assumptions.panelWidthMeters, assumptions.panelHeightMeters) / 2;
+    for (const suggestion of [...suggestions].sort((a, b) => (b.energy ?? -1) - (a.energy ?? -1))) {
+      if (suggestion.energy === undefined) continue;
+      let best: RoofLayoutPanel | undefined, bestDistance = reach;
+      for (const panel of candidates) {
+        if (matched.has(panel)) continue;
+        const distance = Math.hypot(panel.center.x - suggestion.point.x, panel.center.z - suggestion.point.z);
+        if (distance <= bestDistance) { best = panel; bestDistance = distance; }
+      }
+      if (best) matched.set(best, suggestion.energy);
+    }
+    for (const panel of candidates) {
+      const energy = matched.get(panel);
+      if (energy !== undefined) withEnergy.push({ ...panel, yearlyEnergyDcKwh: energy });
+      else withoutEnergy.push(panel);
+    }
+  }
+  withEnergy.sort((a, b) => (b.yearlyEnergyDcKwh ?? 0) - (a.yearlyEnergyDcKwh ?? 0));
+  let panels = [...withEnergy, ...withoutEnergy];
+  if (panels.length > assumptions.maxPanels) { panels = panels.slice(0, assumptions.maxPanels); limitReached = true; }
+  if (limitReached) warnings.add("PANEL_LIMIT_REACHED");
+  if (skipped) warnings.add("PANELS_FILTERED_FOR_CLEARANCE");
+  if (clipped) warnings.add("PANELS_CLIPPED_TO_OUTLINE");
+  if (evaluable) warnings.add("PANELS_REGULAR_GRID");
   return { panels, evaluable };
 }
 
@@ -524,8 +685,10 @@ export function googleBuildingOutline(roof: NormalizedRoofV1, assumptions: RoofL
   return outline.length >= 3 ? outline.map(point => unproject(point, origin)) : null;
 }
 
-export function planRoofLayout(roof: NormalizedRoofV1, assumptions: RoofLayoutAssumptions): RoofLayout {
+export function planRoofLayout(roof: NormalizedRoofV1, assumptions: RoofLayoutAssumptions,
+  options: RoofLayoutOptions = {}): RoofLayout {
   validate(roof, assumptions);
+  let outline: Point2[] | undefined;
   const warnings = new Set<RoofLayoutWarning>();
   let segmentModels = new Map<number, WorkingSegment>();
   let panels: RoofLayoutPanel[] = [];
@@ -536,7 +699,16 @@ export function planRoofLayout(roof: NormalizedRoofV1, assumptions: RoofLayoutAs
     const origin = layoutOrigin(roof);
     if (origin) {
       segmentModels = googleSegmentModels(roof, origin, assumptions, warnings);
-      const selected = googlePanels(roof, segmentModels, origin, assumptions, warnings);
+      // A hand-traced outline only shapes the illustrative regular-grid view. The provider-suggestion path is the sizing
+      // path and must never depend on an unverified drawing, so the override is ignored there.
+      if (options.footprintOverride && options.panelFill === "REGULAR_GRID") {
+        const corners = options.footprintOverride.filter(validPoint).map(point => project(point, origin));
+        const hull = corners.length >= 3 ? convexHull(corners) : [];
+        if (hull.length >= 3 && polygonArea(hull) >= MIN_OUTLINE_AREA_SQUARE_METERS) outline = hull;
+        else warnings.add("OUTLINE_OVERRIDE_UNUSABLE");
+      }
+      const fill = options.panelFill === "REGULAR_GRID" ? gridPanelsForRoof : providerPanels;
+      const selected = fill(roof, segmentModels, origin, assumptions, warnings, outline);
       panels = selected.panels;
       if (selected.evaluable || (roof.panelSuggestions?.length === 0 && segmentModels.size > 0)) {
         fitStatus = "MODELED_APPROXIMATE";
@@ -564,7 +736,7 @@ export function planRoofLayout(roof: NormalizedRoofV1, assumptions: RoofLayoutAs
   if (!segments.length) warnings.add("NO_USABLE_GEOMETRY");
   return {
     schemaVersion: 1, coordinateSystem: "LOCAL_EAST_UP_NORTH_METERS", source: roof.source,
-    fitStatus, bounds: layoutBounds(segments, panels), footprint: footprintOf(segments), segments, panels, panelCount,
+    fitStatus, bounds: layoutBounds(segments, panels), footprint: outline ?? footprintOf(segments), segments, panels, panelCount,
     dcCapacityKw: panelCount === null ? null : panelCount * assumptions.panelCapacityWatts / 1_000,
     clearances: { edgeSetbackMeters: assumptions.edgeSetbackMeters, panelGapMeters: assumptions.panelGapMeters,
       servicePathWidthMeters: assumptions.servicePathWidthMeters },

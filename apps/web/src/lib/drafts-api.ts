@@ -4,9 +4,9 @@ import { getAuthenticated, putAuthenticated } from "./roof-api";
 /** Raw answers typed into the sizing, cost and benefit steps. Never a result: everything is recomputed by the backend. */
 const section = z.record(z.string(), z.string());
 const draftSchema = z.object({ schemaVersion: z.literal(1), step: z.number().int().optional(),
-  design: section.optional(), financial: section.optional(), benefit: section.optional() });
+  design: section.optional(), financial: section.optional(), benefit: section.optional(), outline: section.optional() });
 export type AnalysisDraft = z.infer<typeof draftSchema>;
-export type DraftSection = "design" | "financial" | "benefit";
+export type DraftSection = "design" | "financial" | "benefit" | "outline";
 
 const envelope = { schemaVersion: z.literal(1), requestId: z.string().min(1), analysisId: z.string().min(1) };
 const readResponse = z.object({ ...envelope, draft: draftSchema.nullable(), updatedAt: z.string().optional() });

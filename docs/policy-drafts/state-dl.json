@@ -1,0 +1,134 @@
+{
+  "status": "DRAFT - NOT VERIFIED - requires admin review and publication",
+  "researchedOn": "2026-10-11",
+  "kind": "STATE",
+  "state": "DL",
+  "BLOCKED_UNTIL": [
+    "The official Gazette notification of the '2nd Amendment to Delhi Solar Energy Policy 2023' is located, archived and quoted. It was NOT found on any fetched official page; the Department of Power flyer points to it ('For detailed guidelines, please refer Gazette notification of 2nd amendment of Delhi Solar Energy Policy 2023'). The page used below states no effective date, so effectiveFrom cannot be set from it.",
+    "Press (not authoritative) reports notification on 17 September 2026 (File No. DOP-EE/21/2026-EE) after Cabinet approval on 1 September 2026; an admin must confirm the date in the Gazette itself.",
+    "Host solar.delhi.gov.in is not in OFFICIAL_POLICY_HOSTS_V1."
+  ],
+  "sourceRegistration": {
+    "name": "Delhi Solar Portal - Delhi Solar Policy: State Capital Subsidy",
+    "publisherName": "Energy Efficiency and Renewable Energy Management Centre, Department of Power, Govt. of NCT of Delhi",
+    "jurisdiction": "IN-DL",
+    "sourceType": "STATE_ENERGY_DEPARTMENT",
+    "authorityTier": 1,
+    "canonicalUrl": "https://solar.delhi.gov.in/page/state-subsidy",
+    "allowedHosts": [
+      "solar.delhi.gov.in"
+    ],
+    "crawlFrequency": "DAILY",
+    "freshnessWindowHours": 48,
+    "preferredReplacement": "The Gazette PDF of the 2nd Amendment (if it carries the 26,000/kW table). A dynamic HTML portal page changes bytes often (footer 'Updated on' date, visitor counter), which would trip the raw-sha freshness check in apps/api/src/benefits/service.ts.",
+    "supportingOfficialDocuments": {
+      "https://solar.delhi.gov.in/public/assets/solar/for-more-information.pdf": "Dept of Power flyer '2nd Amendment to Delhi Solar Energy Policy, 2023' (376,128 bytes, sha256 97bc324402aeb22cc969f8c5e2d6f844322b33665b4bac905abce44b8515e562): 'Delhi Government enhanced subsidy up to ₹78,000/- is available for all solar installations under residential sector. For Group Housing Societies, it is @₹11,000/ kW.' and 'consumers will have to pay net of solar plant cost after adjusting PM Surya Ghar subsidy up to ₹78,000/- and Delhi state capital subsidy up to ₹78,000/-'. Also 'up to 1.10 lakh rooftop solar installations will be under PM Surya Ghar- Utility Led Aggregation (ULA) framework, on a first-come, first-serve basis, up to 28 February 2027'.",
+      "https://solar.delhi.gov.in/public/assets/solar/overview-of-delhi-solar-scheme.pdf": "Flyer: 'This subsidy is in addition to the subsidy of up to ₹78,000/- being provided under the PM Surya Ghar Yojana.'",
+      "https://solar.delhi.gov.in/public/assets/solar/SOP_CAPITAL_SUBSIDY.pdf": "SOP dated 11-10-2024 (scanned, poor OCR) under the ORIGINAL 2023 policy; superseded for amounts, do not use."
+    },
+    "BLOCKERS_IN_REPO": [
+      "solar.delhi.gov.in not in OFFICIAL_POLICY_HOSTS_V1; add reviewed entry {host:'solar.delhi.gov.in', sourceType:'STATE_ENERGY_DEPARTMENT', jurisdiction:'IN-DL'}.",
+      "robots.txt returns 404 (accepted)."
+    ]
+  },
+  "document": {
+    "title": "Delhi Solar Policy - State Capital Subsidy (HTML page)",
+    "publisher": "Department of Power, GNCTD",
+    "publishedAt": "NOT STATED (page footer 'Updated on: 11-10-2026' is a site timestamp, not an effective date)",
+    "sha256OfFetchedHtml": "f917a9b401d8301c9718ac7d1dee8e3ebcd0de8772f52b488837506e3cffeeb8"
+  },
+  "draftRequest": {
+    "benefitId": "BENEFIT#IN_DL_STATE_CAPITAL_SUBSIDY_RESIDENTIAL",
+    "sourceId": "SRC#<assigned at registration>",
+    "documentId": "DOC#<assigned at crawl>",
+    "documentVersion": 1,
+    "locator": {
+      "section": "Delhi Solar Policy - State Capital Subsidy (page body)",
+      "charStart": "FILL_FROM_ARCHIVE",
+      "charEnd": "FILL_FROM_ARCHIVE"
+    },
+    "quotedEvidence": "(1) Residential Consumers Plant Capacity Total Delhi Capital Subsidy maximum upto (₹/kW) * ≤ 2 kW ₹26,000 > 2 kW but ≤ 3 kW ₹26,000 > 3 kW up to 10 kW No additional subsidy * Solar installations will also be undertaken under Discom trusteeship model through bidding. State Subsidy shall be equal to (the cost arrived at through bidding under the Discom Trusteeship Model minus the PM Surya Ghar subsidy) or ₹26,000 × Plant Capacity (in kW), whichever is lower, subject to a maximum limit of ₹78,000.",
+    "rule": {
+      "scope": "STATE",
+      "jurisdiction": "IN-DL",
+      "effectiveFrom": "TODO_FROM_GAZETTE (YYYY-MM-DD)",
+      "effectiveTo": "TODO_IF_GAZETTE_STATES_ONE (omit otherwise)",
+      "amount": {
+        "kind": "TIERED_KW",
+        "tiers": [
+          {
+            "upToWatts": 3000,
+            "ratePaisePerKw": 2600000
+          }
+        ]
+      },
+      "capPaise": 7800000,
+      "eligibility": {
+        "allOf": [
+          {
+            "kind": "CUSTOMER_TYPE",
+            "oneOf": [
+              "RESIDENTIAL"
+            ]
+          }
+        ],
+        "anyOf": []
+      },
+      "compatibility": [
+        {
+          "withBenefitId": "BENEFIT#IN_PMSG_CENTRAL_RESIDENTIAL_CFA",
+          "mode": "ADDITIVE"
+        }
+      ]
+    },
+    "clauseEvidence": [
+      {
+        "clauseKey": "EFFECTIVE_PERIOD",
+        "locator": {
+          "section": "TODO - Gazette notification of the 2nd Amendment to Delhi Solar Energy Policy 2023",
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "TODO - the solar.delhi.gov.in state-subsidy page states no effective date; quote the effective-date sentence from the Gazette notification once it is archived (the same document must also back the numeric and clause quotes, so the Gazette must contain them)."
+      },
+      {
+        "clauseKey": "CAP",
+        "locator": {
+          "section": "Delhi Solar Policy - State Capital Subsidy (page body)",
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "State Subsidy shall be equal to (the cost arrived at through bidding under the Discom Trusteeship Model minus the PM Surya Ghar subsidy) or ₹26,000 × Plant Capacity (in kW), whichever is lower, subject to a maximum limit of ₹78,000."
+      },
+      {
+        "clauseKey": "ELIGIBILITY_ALL_0",
+        "locator": {
+          "section": "Delhi Solar Policy - State Capital Subsidy (page body)",
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "Capital subsidy for all solar projects for residential & GHS/RWA customers GNCTD will provide a subsidy for all solar projects as given below: (1) Residential Consumers"
+      },
+      {
+        "clauseKey": "COMPATIBILITY_0",
+        "locator": {
+          "section": "Delhi Solar Policy - State Capital Subsidy (page body)",
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "State Subsidy shall be equal to (the cost arrived at through bidding under the Discom Trusteeship Model minus the PM Surya Ghar subsidy) or ₹26,000 × Plant Capacity (in kW), whichever is lower, subject to a maximum limit of ₹78,000."
+      }
+    ]
+  },
+  "figuresAndUnits": "Rs 26,000/kW (<=2 kW and >2 to <=3 kW) = 2,600,000 paise per kW up to 3,000 W; maximum Rs 78,000 = 7,800,000 paise. '> 3 kW up to 10 kW: No additional subsidy'.",
+  "reviewerNotes": [
+    "Everything under draftRequest.locator / clauseEvidence[].locator needs charStart/charEnd (and the chunk's pageNumber/section/fragment) copied from the ARCHIVED derived text in the admin console. The quotes below are verbatim from the file fetched on 2026-10-11 with whitespace collapsed to single spaces; the archive's text extraction (pdf.js) can differ in spacing/line order. If a quote does not match the archive byte-for-byte, re-select the passage in the archive and replace the quote; do not edit numbers.",
+    "sourceId/documentId/documentVersion are placeholders (SRC#/DOC# values are assigned by the registry when the source is registered and the document crawled).",
+    "The server fills ruleId, policyId, policyVersion, factIds and every evidenceFactIds; do not send them.",
+    "CONFLICT between official Delhi pages: https://eerem.delhi.gov.in/eerem/about-delhi-solar-energy-policy still states 'Capital subsidy ... at the rate of Rs. 2,000/- per KW upto a maximum of Rs. 10,000/- per consumer' (original March 2024 notification). The solar.delhi.gov.in state-subsidy page and the Dept of Power 2nd-amendment flyer state Rs 26,000/kW up to Rs 78,000. The later amendment governs; the Gazette must settle it before publishing. Do not publish the Rs 2,000 figure.",
+    "ADDITIVE is a judgment call. The page says the State Subsidy is 'the lower of (bid cost minus the PM Surya Ghar subsidy) or Rs 26,000 x capacity, max Rs 78,000', i.e. combined central + Delhi support cannot exceed the discovered project cost. The engine cannot model a cost-linked cap, so the draft states the upper bound (Rs 78,000 at 3 kW). The UI must say 'up to'. A reviewer may prefer CONDITIONAL/CAPPED_COMBINED if the Gazette supports it; that needs a reciprocal change in the central rule.",
+    "Delivery model matters and is not encoded: the subsidy is routed through Utility-Led Aggregation / Discom Trusteeship tenders (IPGCL), first-come-first-served for the first 1.10 lakh installations up to 28 February 2027 (flyer), plus a free-installation scheme for households averaging up to 400 units/month. Confirm in the Gazette whether homeowners who install with their own vendor receive the Rs 26,000/kW.",
+    "Group Housing Societies / RWAs: Rs 11,000 per kWp (capped to the difference between plant cost and PM Surya Ghar subsidy) - not drafted (needs household count).",
+    "Generation-based incentive (Rs 3/kWh up to 3 kW etc., SOP dated 11-10-2024) is a separate benefit and is not drafted."
+  ]
+}

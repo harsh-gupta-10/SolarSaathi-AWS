@@ -45,23 +45,30 @@ export default function Home() {
       </header>
 
       <main id="main-content">
-        <section className="mx-auto grid w-full max-w-[1200px] items-center gap-8 px-5 pb-20 pt-6 lg:grid-cols-[1.1fr_1fr]" aria-labelledby="hero-title">
+        <section className="mx-auto grid w-full max-w-[1200px] items-start gap-8 px-5 pb-10 pt-4 lg:grid-cols-[1.1fr_1fr] lg:items-center" aria-labelledby="hero-title">
           <div>
             <p className={`${MONO} mb-6 inline-block rounded-[64px] bg-[#d1ffca] px-4 py-2`}>Rooftop solar for Indian homes</p>
             <h1 id="hero-title" className={`${DISPLAY} text-[clamp(3.25rem,8vw,7.5rem)]`}>
               Ask SolarSaathi about solar for your home.
             </h1>
-            <p className="mb-8 mt-6 max-w-xl text-lg font-medium text-[#444]">
+            <p className="mt-6 max-w-xl text-lg font-medium text-[#444]">
               Find out what fits on your roof, what it could cost, which subsidies you may qualify for, and what to do next, step by step.
             </p>
+          </div>
+          <div className="lg:-mt-6">
+            <HeroHouse />
+          </div>
+        </section>
+
+        <section id="ask" className="mx-auto w-full max-w-[1200px] px-5 pb-20" aria-label="Ask SolarSaathi">
+          <div className="rounded-[40px] bg-white p-6 shadow-xs ring-1 ring-black/5 md:p-10">
             <HeroAsk />
-            <p className="mt-6 text-sm">
-              <Link href="/demo" className={`inline-flex min-h-11 items-center gap-1 font-medium underline-offset-4 hover:underline ${LINK}`}>
+            <p className="mt-5 text-sm">
+              <Link href="/demo" className={`inline-flex min-h-11 items-center gap-1.5 font-semibold text-black underline-offset-4 hover:underline ${LINK}`}>
                 See a sample analysis <ArrowRight aria-hidden="true" className="size-4" />
               </Link>
             </p>
           </div>
-          <HeroHouse />
         </section>
 
         <section id="how-it-works" className="mx-auto w-full max-w-[1200px] px-5 pb-20" aria-labelledby="how-title">
@@ -105,11 +112,13 @@ export default function Home() {
         </section>
 
         <section id="installers" className="bg-black px-5 pb-20" aria-labelledby="installers-title">
-          <div className="mx-auto flex w-full max-w-[1200px] flex-col items-start justify-between gap-8 rounded-[64px] bg-white p-8 md:flex-row md:items-center md:p-12">
-            <div>
-              <p className={`${MONO} mb-4 inline-block rounded-[64px] bg-[#d1ffca] px-4 py-2`}>For installers and consultants</p>
-              <h2 id="installers-title" className={`${DISPLAY} text-[clamp(2.5rem,5vw,4rem)]`}>One workspace for every customer roof</h2>
-              <p className="mt-4 max-w-xl text-base font-medium text-[#444]">Manage customers, roofs, benefit checks and proposals in one workspace, with the same sourced numbers your customers see.</p>
+          <div className="mx-auto flex w-full max-w-[1200px] flex-col items-start justify-between gap-8 rounded-[48px] border border-white/15 bg-gradient-to-br from-[#d1ffca] via-[#e3ffde] to-[#f6ff9e] p-8 text-black shadow-[0_24px_60px_rgba(209,255,202,0.12)] md:flex-row md:items-center md:p-12">
+            <div className="max-w-2xl">
+              <p className={`${MONO} mb-4 inline-block rounded-[64px] bg-black px-4 py-2 text-[#d1ffca]`}>For installers and consultants</p>
+              <h2 id="installers-title" className={`${DISPLAY} text-[clamp(2.5rem,5vw,4rem)] text-black`}>One workspace for every customer roof</h2>
+              <p className="mt-4 max-w-xl text-base font-medium text-[#1f2e1d]">
+                Manage customers, roofs, benefit checks and proposals in one workspace, with the same sourced numbers your customers see.
+              </p>
             </div>
             <MarketingConsultantAction />
           </div>
@@ -118,7 +127,21 @@ export default function Home() {
 
       <footer className="bg-black text-[#979797]">
         <div className="mx-auto flex w-full max-w-[1200px] flex-wrap items-center justify-between gap-4 border-t border-[#2f2f2f] px-5 py-8 text-sm">
-          <p className="m-0">SolarSaathi: rooftop solar for India, built on checked facts.</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="m-0">SolarSaathi: rooftop solar for India, built on checked facts.</p>
+            <span aria-hidden="true" className="text-[#444]">•</span>
+            <p className="m-0">
+              Made by{" "}
+              <a
+                href="https://github.com/harsh-gupta-10"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-[#d1ffca] underline underline-offset-4 transition hover:text-[#fff100]"
+              >
+                Harsh Gupta
+              </a>
+            </p>
+          </div>
           <nav aria-label="Footer" className="flex items-center gap-5 text-white">
             <Link href="/demo" className="hover:underline">Guided demo</Link>
             <MarketingFooterDashboardLink />

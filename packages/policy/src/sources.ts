@@ -5,7 +5,7 @@ export interface OfficialPolicyHostV1 {
   host: string;
   sourceType: PolicySourceType;
   jurisdiction: string;
-  verifiedAt: "2026-10-08";
+  verifiedAt: "2026-10-08" | "2026-10-11";
 }
 
 /** Official starter domains verified from their owning sites on 2026-10-08.
@@ -17,6 +17,17 @@ export const OFFICIAL_POLICY_HOSTS_V1: readonly OfficialPolicyHostV1[] = Object.
   { host: "portal.mahadiscom.in", sourceType: "DISCOM", jurisdiction: "IN-MH", verifiedAt: "2026-10-08" },
   { host: "new.merc.gov.in", sourceType: "REGULATOR", jurisdiction: "IN-MH", verifiedAt: "2026-10-08" },
   { host: "www.mahaurja.maharashtra.gov.in", sourceType: "RENEWABLE_AGENCY", jurisdiction: "IN-MH", verifiedAt: "2026-10-08" },
+  // Added 2026-10-11 for the central and state policy drafts in docs/policy-drafts. Each host was fetched and the
+  // document it serves checked against its owner's own pages; none proves a fact or a benefit amount by itself.
+  // National NIC "S3WaaS" document CDN that mnre.gov.in links to for its notices (the CFA operational guidelines PDF).
+  { host: "cdnbbsr.s3waas.gov.in", sourceType: "MNRE", jurisdiction: "IN", verifiedAt: "2026-10-11" },
+  // Delhi Department of Power's solar portal (state capital subsidy page).
+  { host: "solar.delhi.gov.in", sourceType: "STATE_ENERGY_DEPARTMENT", jurisdiction: "IN-DL", verifiedAt: "2026-10-11" },
+  // UPNEDA, the Uttar Pradesh nodal renewable-energy agency (Solar Energy Policy 2022).
+  { host: "solarcitiesportal.upneda.org.in", sourceType: "RENEWABLE_AGENCY", jurisdiction: "IN-UP", verifiedAt: "2026-10-11" },
+  // APDCL hosts the Assam Power Department's notification of the Integrated Clean Energy Policy 2025. The original
+  // publisher is the Power Department, so this is a copy; replace it with the department's own file when one is found.
+  { host: "www.apdcl.org", sourceType: "OFFICIAL_NOTIFICATION", jurisdiction: "IN-AS", verifiedAt: "2026-10-11" },
 ]);
 
 /** Canonicalization is intentionally narrow; fetchers must also recheck every redirect target. */

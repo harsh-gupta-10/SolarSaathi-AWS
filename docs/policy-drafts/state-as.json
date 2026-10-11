@@ -1,0 +1,132 @@
+{
+  "status": "DRAFT - NOT VERIFIED - requires admin review and publication",
+  "researchedOn": "2026-10-11",
+  "kind": "STATE",
+  "state": "AS",
+  "sourceRegistration": {
+    "name": "Assam Integrated Clean Energy Policy 2025 (Power Department Notification No. PEL.19/2025/13 dated 24 Feb 2025)",
+    "publisherName": "Power Department, Government of Assam (copy hosted by Assam Power Distribution Company Ltd.)",
+    "jurisdiction": "IN-AS",
+    "sourceType": "OFFICIAL_NOTIFICATION",
+    "authorityTier": 1,
+    "canonicalUrl": "https://www.apdcl.org/website/docs/acts_and_rules/Assam_%20ICEP_2025.pdf",
+    "allowedHosts": [
+      "www.apdcl.org"
+    ],
+    "crawlFrequency": "DAILY",
+    "freshnessWindowHours": 48,
+    "originalPublisherSite": "https://power.assam.gov.in (home page fetched; the notification PDF was not found there, only the APDCL-hosted copy)",
+    "BLOCKERS_IN_REPO": [
+      "www.apdcl.org is not in OFFICIAL_POLICY_HOSTS_V1; needs a reviewed code change. APDCL is a DISCOM hosting the Power Department's notification, so the owner must decide the registry sourceType (OFFICIAL_NOTIFICATION is the type that passes the STATE-scope check; DISCOM would fail it).",
+      "The PDF has 52 pages; the crawler and ingestDocument cap at 50 pages (PAGE_LIMIT). Needs the cap raised.",
+      "www.apdcl.org/robots.txt returns 404 (accepted by the crawler). Size 1,457,931 bytes is within 2,000,000."
+    ]
+  },
+  "document": {
+    "title": "Assam Integrated Clean Energy Policy - 2025 (Notification No. PEL. 19/2025/13)",
+    "publisher": "Power Department, Government of Assam",
+    "publishedAt": "2025-02-24 (Dated Dispur, the 24th February, 2025)",
+    "bytes": 1457931,
+    "pages": 52,
+    "sha256": "78ae0c9205fe7b7eabd5e2f9602a695d19e52b0f9047b29a8b575d716d4e4183"
+  },
+  "draftRequest": {
+    "benefitId": "BENEFIT#IN_AS_STATE_PMSG_TOPUP_RESIDENTIAL",
+    "sourceId": "SRC#<assigned at registration>",
+    "documentId": "DOC#<assigned at crawl>",
+    "documentVersion": 1,
+    "locator": {
+      "pageNumber": 17,
+      "charStart": "FILL_FROM_ARCHIVE",
+      "charEnd": "FILL_FROM_ARCHIVE"
+    },
+    "quotedEvidence": "State Subsidy for SRTPVS under PM Surya Ghar scheme: To promote large scale installation of SRTPVS in residential sectors under PM Surya Ghar scheme, in addition to Central Financial Assistance from Govt. of India, State Government will provide subsidy of Rs. 15,000 /- for 1 kW, Rs. 30,000 /- for 2 kW and Rs. 45,000 /- for 3 kW. This additional subsidy will provide 1 (one) Lakh households initially.",
+    "rule": {
+      "scope": "STATE",
+      "jurisdiction": "IN-AS",
+      "effectiveFrom": "2025-02-24",
+      "effectiveTo": "2030-03-31",
+      "amount": {
+        "kind": "TIERED_KW",
+        "tiers": [
+          {
+            "upToWatts": 3000,
+            "ratePaisePerKw": 1500000
+          }
+        ]
+      },
+      "eligibility": {
+        "allOf": [
+          {
+            "kind": "CUSTOMER_TYPE",
+            "oneOf": [
+              "RESIDENTIAL"
+            ]
+          },
+          {
+            "kind": "SCHEME_PARTICIPATION",
+            "schemeId": "PM_SURYA_GHAR",
+            "required": true
+          }
+        ],
+        "anyOf": []
+      },
+      "compatibility": [
+        {
+          "withBenefitId": "BENEFIT#IN_PMSG_CENTRAL_RESIDENTIAL_CFA",
+          "mode": "ADDITIVE"
+        }
+      ]
+    },
+    "clauseEvidence": [
+      {
+        "clauseKey": "EFFECTIVE_PERIOD",
+        "locator": {
+          "pageNumber": 1,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "Dated Dispur, the 24th February, 2025 No. PEL. 19/2025/13 : In order to promote renewable energy and its integration with grid, the State Government hereby notifies the following Assam Integrated Clean Energy Policy - 2025 for the State of Assam. This policy shall come into effect from the date of Notification and will remain in force till 31 March 2030 or till it is superseded by another Policy whichever is earlier."
+      },
+      {
+        "clauseKey": "ELIGIBILITY_ALL_0",
+        "locator": {
+          "pageNumber": 17,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "State Subsidy for SRTPVS under PM Surya Ghar scheme: To promote large scale installation of SRTPVS in residential sectors under PM Surya Ghar scheme, in addition to Central Financial Assistance from Govt. of India, State Government will provide subsidy of Rs. 15,000 /- for 1 kW, Rs. 30,000 /- for 2 kW and Rs. 45,000 /- for 3 kW. This additional subsidy will provide 1 (one) Lakh households initially."
+      },
+      {
+        "clauseKey": "ELIGIBILITY_ALL_1",
+        "locator": {
+          "pageNumber": 17,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "State Subsidy for SRTPVS under PM Surya Ghar scheme: To promote large scale installation of SRTPVS in residential sectors under PM Surya Ghar scheme, in addition to Central Financial Assistance from Govt. of India, State Government will provide subsidy of Rs. 15,000 /- for 1 kW, Rs. 30,000 /- for 2 kW and Rs. 45,000 /- for 3 kW. This additional subsidy will provide 1 (one) Lakh households initially."
+      },
+      {
+        "clauseKey": "COMPATIBILITY_0",
+        "locator": {
+          "pageNumber": 17,
+          "charStart": "FILL_FROM_ARCHIVE",
+          "charEnd": "FILL_FROM_ARCHIVE"
+        },
+        "quotedEvidence": "State Subsidy for SRTPVS under PM Surya Ghar scheme: To promote large scale installation of SRTPVS in residential sectors under PM Surya Ghar scheme, in addition to Central Financial Assistance from Govt. of India, State Government will provide subsidy of Rs. 15,000 /- for 1 kW, Rs. 30,000 /- for 2 kW and Rs. 45,000 /- for 3 kW. This additional subsidy will provide 1 (one) Lakh households initially."
+      }
+    ]
+  },
+  "figuresAndUnits": "Rs 15,000 for 1 kW, Rs 30,000 for 2 kW, Rs 45,000 for 3 kW = Rs 15,000/kW up to 3 kW = 1,500,000 paise per kW, upToWatts 3000.",
+  "reviewerNotes": [
+    "Everything under draftRequest.locator / clauseEvidence[].locator needs charStart/charEnd (and the chunk's pageNumber/section/fragment) copied from the ARCHIVED derived text in the admin console. The quotes below are verbatim from the file fetched on 2026-10-11 with whitespace collapsed to single spaces; the archive's text extraction (pdf.js) can differ in spacing/line order. If a quote does not match the archive byte-for-byte, re-select the passage in the archive and replace the quote; do not edit numbers.",
+    "sourceId/documentId/documentVersion are placeholders (SRC#/DOC# values are assigned by the registry when the source is registered and the document crawled).",
+    "The server fills ruleId, policyId, policyVersion, factIds and every evidenceFactIds; do not send them.",
+    "effectiveFrom/To: the notification says 'This policy shall come into effect from the date of Notification and will remain in force till 31 March 2030 or till it is superseded by another Policy whichever is earlier' and is 'Dated Dispur, the 24th February, 2025'.",
+    "The clause ends 'This additional subsidy will provide 1 (one) Lakh households initially.' That is a household-count limit (availability) the schema cannot encode; the UI must not promise the subsidy without saying it may be limited. Check APDCL for how many were already sanctioned.",
+    "The policy states amounts only up to 3 kW. Nothing is stated for larger systems; the draft stops at 3 kW (45,000), it does not extrapolate.",
+    "SCHEME_PARTICIPATION schemeId PM_SURYA_GHAR is a modelling choice: the clause says the state subsidy is 'in addition to Central Financial Assistance from Govt. of India' for installations 'under PM Surya Ghar scheme'. The homeowner flow must supply participatingSchemeIds containing PM_SURYA_GHAR or the rule stays UNKNOWN. Drop this condition if the owner prefers to rely on the central rule's own eligibility.",
+    "The APDCL notice 'Notification_Annex A_Annex_B_PM_surya.pdf' found alongside is a 2022 Phase-II vendor empanelment notice and is NOT a source for this rule.",
+    "Assam is a North-East special category State in the MNRE guideline: its central CFA is Rs 33,000/Rs 19,800 per kWp, which the central draft does not encode (see central file note)."
+  ]
+}

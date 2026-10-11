@@ -22,6 +22,10 @@ const REASONS: Record<string, { title: string; text: string; action?: string }> 
     text: "This is a service problem, not a finding about your eligibility.",
     action: "Try again in a few minutes.",
   },
+  POLICY_RECORD_FAILED_VERIFICATION: {
+    title: "A published subsidy record failed our verification checks",
+    text: "A subsidy rule on file did not pass our integrity and source checks, so it was left out. We never show an amount from a record we cannot verify. This needs a policy administrator to re-publish it from the official source.",
+  },
   RULE_CATALOG_LIMIT: {
     title: "Too many rules apply to evaluate at once",
     text: "This needs a review on our side. No amount is inferred.",

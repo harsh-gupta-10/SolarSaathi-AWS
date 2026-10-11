@@ -70,4 +70,30 @@ describe("deterministic roof viewer", () => {
       for (const corner of panel.corners) expect(corner.y - plane.heightAt(corner.x, corner.z)).toBeCloseTo(0.1, 6);
     }
   });
+
+  it("fills a Google plane with whole panels, shows a count equal to the panels drawn, and honours a traced outline", () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => null);
+    const metres = 6_371_000 * Math.PI / 180;
+    const at = (east: number, north: number) => ({ latitude: 19 + north / metres, longitude: 72.8 + east / (metres * Math.cos(19 * Math.PI / 180)) });
+    const googleRoof: NormalizedRoofV1 = {
+      schemaVersion: 1, source: "GOOGLE_SOLAR", measuredAt: "2026-01-01T00:00:00.000Z", roofAreaSquareMeters: 80, groundAreaSquareMeters: 80,
+      segmentCount: 1, center: at(0, 0), panelWidthMeters: 1.045, panelHeightMeters: 1.879, panelCapacityWatts: 400,
+      segments: [{ segmentId: "g0", areaSquareMeters: 80, groundAreaSquareMeters: 80, pitchDegrees: 0, azimuthDegrees: 180,
+        planeHeightAtCenterMeters: 20, center: at(0, 0), bounds: { southwest: at(-5, -4), northeast: at(5, 4) } }],
+      panelSuggestions: [{ center: at(0, 0), orientation: "PORTRAIT", segmentIndex: 0, yearlyEnergyDcKwh: 600 }],
+    };
+    const assumptions = getRoofLayoutAssumptionsV1(googleRoof);
+    const grid = planRoofLayout(googleRoof, assumptions, { panelFill: "REGULAR_GRID" });
+    const sized = planRoofLayout(googleRoof, assumptions);
+    expect(grid.panelCount).toBeGreaterThan(sized.panelCount as number);
+    const { container, rerender } = render(<RoofLayoutViewer roof={googleRoof} analysisId="g" />);
+    expect(container.querySelectorAll("svg.roof-plan-svg polygon[fill='#17475b']")).toHaveLength(grid.panelCount as number);
+    expect(screen.getByText(String(grid.panelCount))).toBeTruthy();
+    const outline = [at(-5, -4), at(0, -4), at(0, 4), at(-5, 4)];
+    rerender(<RoofLayoutViewer roof={googleRoof} analysisId="g" footprintOverride={outline} />);
+    const clipped = container.querySelectorAll("svg.roof-plan-svg polygon[fill='#17475b']").length;
+    expect(clipped).toBeGreaterThan(0);
+    expect(clipped).toBeLessThan(grid.panelCount as number);
+    expect(screen.getByText(/Your traced outline sets the walls and where panels may sit in this view only/)).toBeTruthy();
+  });
 });

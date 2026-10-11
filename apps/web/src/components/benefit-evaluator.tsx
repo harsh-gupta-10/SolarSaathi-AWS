@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { ArrowUpRight, BadgeCheck, CircleHelp, Landmark, ShieldAlert } from "lucide-react";
 import { Button, ChipGroup, CurrencyInput, Field, Input, Select } from "@solarsaathi/ui";
 import type { SystemDemand } from "@solarsaathi/calculations";
@@ -52,6 +53,28 @@ function YesNo({ label, value, onChange }: { label: string; value: string; onCha
     <ChipGroup label={label} value={value} onChange={next => onChange(next === value ? "" : next)}
       options={[{ label: "Yes", value: "YES" }, { label: "No", value: "NO" }]} />
   </div>;
+}
+
+/**
+ * Shown when no subsidy amount can be presented, so the step never dead-ends. Nothing here is an amount or a
+ * claim of eligibility; it only points to what the user can do now.
+ */
+function SubsidyNextSteps({ gross }: { gross: number }) {
+  return <section className="mt-6 rounded-xl border bg-background p-5" aria-labelledby="subsidy-next-title">
+    <h4 id="subsidy-next-title" className="text-lg font-semibold">What you can do next</h4>
+    <ol className="mt-3 grid gap-3 text-sm">
+      <li><strong>Keep going with your savings estimate.</strong> Your {rupees.format(gross)} quote and its 25-year savings above do not depend on any subsidy.</li>
+      <li><strong>Check the official scheme page yourself.</strong> Current central support, eligibility and the approved-vendor list are published on the national portal:{" "}
+        <a className="font-medium underline underline-offset-2" href="https://pmsuryaghar.gov.in" target="_blank" rel="noopener noreferrer">pmsuryaghar.gov.in<ArrowUpRight size={13} aria-hidden="true" className="ml-0.5 inline" /></a>.
+        Your state electricity company or state energy department may add its own incentive.</li>
+      <li><strong>Ask installers for an itemised quote</strong> that separates equipment, installation and any subsidy-eligible part. You can enter the eligible part under &ldquo;More eligibility details&rdquo; and check again.</li>
+      <li><strong>Check again later.</strong> We show a subsidy only after its rule is published from the official document and reviewed by two administrators.</li>
+    </ol>
+    <div className="mt-4 flex flex-wrap gap-3">
+      <Button asChild size="sm"><Link href="/app/properties">View my roofs</Link></Button>
+      <Button asChild size="sm" variant="outline"><Link href="/app/help">How subsidies are checked</Link></Button>
+    </div>
+  </section>;
 }
 
 function BenefitResults({ response }: { response: BenefitEvaluationResponse }) {
@@ -255,12 +278,14 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
     </form>
     <div ref={resultsRef} tabIndex={-1} className="outline-none">
     {response && <BenefitResults response={response} />}
+    {response && !response.result?.decisions.some(decision => decision.status === "SELECTED") && <SubsidyNextSteps gross={grossSystemCostRupees} />}
     {response && evaluatedInput && <ApplicationStart key={response.requestId} response={response} input={evaluatedInput} />}
     {policyResponse && <><PolicyFinancialResults response={policyResponse} />
       {policyResponse.benefits.result && (policyResponse.projection
         ? <details className="policy-financial-decisions"><summary>View rule decisions and source details</summary>
           <BenefitResults response={policyResponse.benefits} /></details>
         : <BenefitResults response={policyResponse.benefits} />)}
+      {!policyResponse.projection && <SubsidyNextSteps gross={grossSystemCostRupees} />}
       {evaluatedInput && <ApplicationStart key={policyResponse.requestId} response={policyResponse.benefits} input={evaluatedInput} />}</>}
     </div>
   </section>;

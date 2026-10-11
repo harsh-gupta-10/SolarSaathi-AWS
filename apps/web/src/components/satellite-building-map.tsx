@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getRoofLayoutAssumptionsV1, googleBuildingOutline } from "@solarsaathi/calculations";
+import { autoBuildingOutline, moveOutlineCorner, nudgeOutlineCorner, outlineAreaSquareMeters, outlineHull, type RoofOutline } from "@solarsaathi/calculations";
 import type { NormalizedRoofV1, RoofPoint } from "@solarsaathi/types";
 
 interface MapsPoint { lat(): number; lng(): number }
@@ -11,8 +11,14 @@ interface MapsMap {
   setCenter(point: { lat: number; lng: number }): void;
 }
 interface MapsCircle { setCenter(point: { lat: number; lng: number }): void; setMap(map: MapsMap | null): void }
-interface MapsPolygon { setMap(map: MapsMap | null): void }
+interface MapsPolygon { setMap(map: MapsMap | null): void; setPath?(path: { lat: number; lng: number }[]): void }
+interface MapsMarker {
+  addListener(name: string, callback: (event: { latLng?: MapsPoint }) => void): MapsListener;
+  setPosition(point: { lat: number; lng: number }): void;
+  setMap(map: MapsMap | null): void;
+}
 interface MapsApi {
+  Marker?: new (options: Record<string, unknown>) => MapsMarker;
   Map: new (element: HTMLElement, options: Record<string, unknown>) => MapsMap;
   Circle: new (options: Record<string, unknown>) => MapsCircle;
   Polygon: new (options: Record<string, unknown>) => MapsPolygon;
@@ -63,30 +69,37 @@ function distanceMeters(a: RoofPoint, b: RoofPoint): number {
   return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-/** The modeled outline from Google roof planes, or Google's whole-building box when no plane can be modeled. */
-function buildingOutline(roof: NormalizedRoofV1): { path: RoofPoint[]; kind: "OUTLINE" | "BOUNDS" } | undefined {
-  try {
-    const outline = googleBuildingOutline(roof, getRoofLayoutAssumptionsV1(roof));
-    if (outline) return { path: outline, kind: "OUTLINE" };
-  } catch { /* Unsupported geometry falls back to the provider bounds below. */ }
-  if (!roof.bounds) return undefined;
-  const { southwest, northeast } = roof.bounds;
-  return { kind: "BOUNDS", path: [southwest, { latitude: southwest.latitude, longitude: northeast.longitude }, northeast,
-    { latitude: northeast.latitude, longitude: southwest.longitude }] };
-}
-
 const QUALITY_LABEL: Record<NonNullable<NormalizedRoofV1["imageryQuality"]>, string> = {
   HIGH: "high", MEDIUM: "medium", BASE: "basic",
 };
 
-export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, roof, onPointChange }: {
+const NUDGE_METERS = 1;
+const CORNER_NAMES = ["Corner 1 (starts south-west)", "Corner 2 (starts south-east)", "Corner 3 (starts north-east)", "Corner 4 (starts north-west)"];
+
+export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, roof, outline: userOutline, onOutlineChange, onPointChange }: {
   apiKey: string; center: RoofPoint; point: RoofPoint; deviceLocation?: { point: RoofPoint; accuracyMeters: number };
-  /** The returned Google Solar building preview, drawn as an approximate outline. */
+  /** The returned Google Solar building preview. Its bounding box is the automatic starting outline. */
   roof?: NormalizedRoofV1;
+  /** The outline the user adjusted, if any. Without it the automatic outline is shown. */
+  outline?: RoofOutline;
+  /** Called with the adjusted outline, or undefined when the user resets to the automatic one. Omit to hide editing. */
+  onOutlineChange?: (outline: RoofOutline | undefined) => void;
   onPointChange: (point: RoofPoint) => void;
 }) {
   const roofCenter = roof?.center;
-  const outline = useMemo(() => roof ? buildingOutline(roof) : undefined, [roof]);
+  const automatic = useMemo(() => roof ? autoBuildingOutline(roof) : undefined, [roof]);
+  const outline = userOutline ?? automatic;
+  const adjusted = Boolean(userOutline);
+  const editable = Boolean(onOutlineChange && outline);
+  const outlineChangeRef = useRef(onOutlineChange);
+  useEffect(() => { outlineChangeRef.current = onOutlineChange; }, [onOutlineChange]);
+  const [corner, setCorner] = useState(0);
+  const [announcement, setAnnouncement] = useState("");
+  const outlineArea = outline ? Math.round(outlineAreaSquareMeters(outline)) : undefined;
+  const commit = (next: RoofOutline, index: number) => {
+    outlineChangeRef.current?.(next);
+    setAnnouncement(`${CORNER_NAMES[index].split(" (")[0]} moved. Outline area is about ${Math.round(outlineAreaSquareMeters(next))} square metres.`);
+  };
   const tapDistance = roofCenter ? distanceMeters(point, roofCenter) : undefined;
   const elementRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapsMap | null>(null);
@@ -95,6 +108,7 @@ export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, ro
   const deviceCircleRef = useRef<MapsCircle | null>(null);
   const accuracyCircleRef = useRef<MapsCircle | null>(null);
   const boundsRef = useRef<MapsPolygon | null>(null);
+  const markersRef = useRef<MapsMarker[]>([]);
   const changeRef = useRef(onPointChange);
   const centerRef = useRef(center);
   const pointRef = useRef(point);
@@ -125,6 +139,7 @@ export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, ro
     }).catch(() => { if (active) setStatus("error"); });
     return () => { active = false; listener?.remove(); circleRef.current?.setMap(null); roofCircleRef.current?.setMap(null);
       deviceCircleRef.current?.setMap(null); accuracyCircleRef.current?.setMap(null); boundsRef.current?.setMap(null);
+      markersRef.current.forEach(marker => marker.setMap(null)); markersRef.current = [];
       circleRef.current = null; roofCircleRef.current = null; deviceCircleRef.current = null;
       accuracyCircleRef.current = null; boundsRef.current = null; mapRef.current = null; };
     // The map instance persists while the selected candidate changes.
@@ -144,8 +159,8 @@ export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, ro
     return () => { deviceCircleRef.current?.setMap(null); accuracyCircleRef.current?.setMap(null); };
   }, [deviceLocation, status]);
   useEffect(() => {
-    roofCircleRef.current?.setMap(null); boundsRef.current?.setMap(null);
-    roofCircleRef.current = null; boundsRef.current = null;
+    roofCircleRef.current?.setMap(null);
+    roofCircleRef.current = null;
     const map = mapRef.current;
     const maps = window.google?.maps;
     if (!map || !maps || !elementRef.current || status !== "ready") return;
@@ -157,10 +172,41 @@ export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, ro
         (map as unknown as { panTo: (point: { lat: number; lng: number }) => void }).panTo(toMapPoint(roofCenter));
       }
     }
-    if (outline) boundsRef.current = new maps.Polygon({ map, paths: outline.path.map(toMapPoint), strokeColor: primary,
+    return () => { roofCircleRef.current?.setMap(null); };
+  }, [roofCenter, status]);
+  // The outline polygon (its convex hull, so a crossed quad still draws cleanly) with a draggable handle per corner.
+  useEffect(() => {
+    boundsRef.current?.setMap(null); boundsRef.current = null;
+    markersRef.current.forEach(marker => marker.setMap(null)); markersRef.current = [];
+    const map = mapRef.current;
+    const maps = window.google?.maps;
+    if (!map || !maps || !elementRef.current || status !== "ready" || !outline) return;
+    const primary = getComputedStyle(elementRef.current).getPropertyValue("--primary").trim() || "#12633f";
+    const hullPath = (corners: readonly RoofPoint[]) => outlineHull(corners).map(toMapPoint);
+    const polygon = new maps.Polygon({ map, paths: hullPath(outline), strokeColor: primary,
       strokeWeight: 3, strokeOpacity: 1, fillColor: primary, fillOpacity: 0.16, clickable: false });
-    return () => { roofCircleRef.current?.setMap(null); boundsRef.current?.setMap(null); };
-  }, [roofCenter, outline, status]);
+    boundsRef.current = polygon;
+    if (editable && maps.Marker) {
+      markersRef.current = outline.map((corner, index) => {
+        const marker = new maps.Marker!({ map, position: toMapPoint(corner), draggable: true, title: `${CORNER_NAMES[index]}: drag to adjust the outline`,
+          label: String(index + 1) });
+        const preview = (event: { latLng?: MapsPoint }) => {
+          if (!event.latLng) return;
+          const moved = moveOutlineCorner(outline, index, { latitude: event.latLng.lat(), longitude: event.latLng.lng() }, roofCenter);
+          polygon.setPath?.(hullPath(moved));
+        };
+        marker.addListener("drag", preview);
+        marker.addListener("dragend", event => {
+          if (!event.latLng) return;
+          const moved = moveOutlineCorner(outline, index, { latitude: event.latLng.lat(), longitude: event.latLng.lng() }, roofCenter);
+          if (moved === outline) { marker.setPosition(toMapPoint(corner)); polygon.setPath?.(hullPath(outline)); return; }
+          commit(moved, index);
+        });
+        return marker;
+      });
+    }
+    return () => { polygon.setMap(null); markersRef.current.forEach(marker => marker.setMap(null)); markersRef.current = []; boundsRef.current = null; };
+  }, [outline, editable, status, roofCenter]);
   return <div>
   <div className="relative min-h-72 overflow-hidden rounded-xl border bg-muted">
     <div ref={elementRef} className="absolute inset-0" role="region" aria-label="Satellite map for selecting your building" />
@@ -170,16 +216,44 @@ export function SatelliteBuildingMap({ apiKey, center, point, deviceLocation, ro
       <button type="button" className="rounded-md border border-current px-4 py-2 font-medium underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" onClick={() => setLoadAttempt(value => value + 1)}>Retry satellite map</button>
     </div>}
     {status === "ready" && <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-background/95 px-3 py-2 text-xs font-medium shadow-sm" aria-hidden="true">
-      <span>● Amber: selected house</span>{roofCenter && <span>● Green dot: detected building center</span>}{deviceLocation && <span>● Blue: device location</span>}{outline && <span>▱ Green: approximate building outline</span>}
+      <span>● Amber: selected house</span>{roofCenter && <span>● Green dot: detected building center</span>}{deviceLocation && <span>● Blue: device location</span>}{outline && <span>▱ Green: approximate building outline{editable ? ", numbered corners can be dragged" : ""}</span>}
     </div>}
   </div>
-  {roof && outline && <p className="mt-2 text-sm text-muted-foreground">
-    {outline.kind === "OUTLINE"
-      ? "The green outline is modeled from Google Solar roof planes"
-      : "The green box is Google's approximate building bounds"}
-    {roof.imageryDate || roof.imageryQuality ? ` (imagery ${[roof.imageryDate, roof.imageryQuality && `${QUALITY_LABEL[roof.imageryQuality]} quality`].filter(Boolean).join(", ")})` : ""}.
-    {" "}It is approximate and may sit a few metres off the satellite photo, which can be from a different date. It is not a survey.
-  </p>}
+  {roof && outline && <div className="mt-2 space-y-2 text-sm text-muted-foreground">
+    <p>
+      <strong className="text-foreground">{adjusted ? "Outline adjusted by you" : "Automatic outline (approximate)"}</strong>
+      {outlineArea !== undefined && <> · about {outlineArea} m² on the ground</>}
+      {roof.imageryDate || roof.imageryQuality ? ` · imagery ${[roof.imageryDate, roof.imageryQuality && `${QUALITY_LABEL[roof.imageryQuality]} quality`].filter(Boolean).join(", ")}` : ""}
+    </p>
+    <p>
+      {adjusted
+        ? "You moved the corners to match the house on the photo."
+        : "The automatic outline is Google's building box, which always contains the building but can be larger than the house."}
+      {" "}It may sit a few metres off the satellite photo, which can be from a different date. It is not a survey.
+      {editable && " Drag the numbered corners, or use the controls below, to trace your house."}
+      {" "}Your outline changes the 3D view only; system sizing still uses Google&apos;s modeled roof or your measurements.
+    </p>
+    {editable && outline && <fieldset className="flex flex-wrap items-end gap-3 rounded-lg border p-3">
+      <legend className="px-1 text-xs font-medium text-foreground">Adjust the outline without dragging</legend>
+      <label className="grid gap-1 text-xs font-medium text-foreground">Corner to move
+        <select className="h-11 rounded-md border bg-background px-2 text-sm font-normal" value={corner} onChange={event => setCorner(Number(event.target.value))}>
+          {CORNER_NAMES.map((name, index) => <option key={name} value={index}>{name}</option>)}
+        </select>
+      </label>
+      <div className="flex flex-wrap gap-2" role="group" aria-label={`Move ${CORNER_NAMES[corner].split(" (")[0]}`}>
+        {([["North", 0, NUDGE_METERS], ["South", 0, -NUDGE_METERS], ["West", -NUDGE_METERS, 0], ["East", NUDGE_METERS, 0]] as const).map(([label, east, north]) =>
+          <button key={label} type="button" className="min-h-11 rounded-md border px-3 text-sm font-medium hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            onClick={() => { const moved = nudgeOutlineCorner(outline, corner, east, north, roofCenter); if (moved !== outline) commit(moved, corner); else setAnnouncement("That move would make the outline too small or too large, so it was not applied."); }}>
+            {label} {NUDGE_METERS} m
+          </button>)}
+      </div>
+      <button type="button" disabled={!adjusted} className="min-h-11 rounded-md border px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        onClick={() => { outlineChangeRef.current?.(undefined); setAnnouncement("Outline reset to the automatic outline."); }}>
+        Reset to automatic outline
+      </button>
+    </fieldset>}
+    <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
+  </div>}
   {tapDistance !== undefined && tapDistance > FAR_FROM_TAP_METERS && <p className="mt-2 text-sm font-medium" role="status">
     The building Google found is about {Math.round(tapDistance)} m from where you tapped. Check that it is your house before confirming, or tap closer to the middle of your roof.
   </p>}

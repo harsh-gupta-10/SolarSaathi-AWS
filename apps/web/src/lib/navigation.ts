@@ -19,8 +19,10 @@ const items: Record<string, NavigationItem> = {
   leads: { key: "leads", label: "Leads", description: "Track opportunities and next steps for your organization.", phase: 16 },
   proposals: { key: "proposals", label: "Proposals", description: "Prepare policy-backed, customer-scoped planning snapshots.", phase: 16 },
 };
-const homeowner = ["overview", "analyze", "properties", "savings", "benefits", "international", "applications", "advisor", "designs", "accessories", "help", "settings"];
-const broker = ["overview", "customers", "properties", "analyses", "proposals", "applications", "leads", "international", "advisor", "designs", "accessories", "settings"];
+// Savings, Government Benefits and Outside India are not in the sidebar. Their pages and routes remain, because chat cards
+// and saved links point to them; they are simply not offered as navigation.
+const homeowner = ["overview", "analyze", "properties", "applications", "advisor", "designs", "accessories", "help", "settings"];
+const broker = ["overview", "customers", "properties", "analyses", "proposals", "applications", "leads", "advisor", "designs", "accessories", "settings"];
 
 // Primary destinations stay short; step-level tools live under "More tools" and are also reachable from chat cards.
 const homeownerPrimary = ["overview", "properties", "applications", "help", "settings"];

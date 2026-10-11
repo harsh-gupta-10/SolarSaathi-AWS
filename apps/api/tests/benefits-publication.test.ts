@@ -308,6 +308,34 @@ describe("verified benefit publication and owner-scoped evaluation", () => {
       status: "UNAVAILABLE", reasonCodes: ["NO_CURRENT_VERIFIED_RULES"] });
   });
 
+  it("fails closed when any published record fails verification, and never turns an outage into a bad-record verdict", async () => {
+    const test = await setup();
+    const created = await test.publicationService.createDraft(test.draftRequest, author, "req");
+    await test.publicationService.transition(created.draft.draftId, "submit", { expectedRevision: 1 }, author, "req");
+    await test.publicationService.transition(created.draft.draftId, "publish",
+      { expectedRevision: 2, reason: "Checked the official notice." }, reviewer, "req");
+    const good = test.getActive()!;
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // A good rule plus a broken one: no partial total (a dropped rule could be exclusive with a passing one).
+    test.setActive({ ...good, policyId: "POLICY#BROKEN", benefitId: "BENEFIT#POLICY#BROKEN",
+      version: { ...good.version, policyId: "POLICY#BROKEN", verificationStatus: "UNVERIFIED" },
+      rule: { ...good.rule, policyId: "POLICY#BROKEN", benefitId: "BENEFIT#POLICY#BROKEN" } } as unknown as typeof good);
+    expect(await test.benefits.evaluate(identity(), test.evaluate, "req")).toMatchObject({
+      status: "UNAVAILABLE", reasonCodes: ["POLICY_RECORD_FAILED_VERIFICATION"] });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("POLICY_BUNDLE_FAILED_VERIFICATION"));
+    expect(log.mock.calls.every(call => !String(call[0]).includes("quotedEvidence"))).toBe(true);
+    // Only a broken rule: a specific reason, not a 503.
+    const only = await setup();
+    const seed = await only.publicationService.createDraft(only.draftRequest, author, "req");
+    await only.publicationService.transition(seed.draft.draftId, "submit", { expectedRevision: 1 }, author, "req");
+    await only.publicationService.transition(seed.draft.draftId, "publish",
+      { expectedRevision: 2, reason: "Checked the official notice." }, reviewer, "req");
+    const onlyGood = only.getActive()!;
+    only.setActive({ ...onlyGood, version: { ...onlyGood.version, verificationStatus: "UNVERIFIED" } } as unknown as typeof onlyGood);
+    expect(await only.benefits.evaluate(identity(), only.evaluate, "req")).toMatchObject({
+      status: "UNAVAILABLE", reasonCodes: ["POLICY_RECORD_FAILED_VERIFICATION"] });
+  });
+
   it("rejects forged citation locations, old archives, unhealthy source and unsupported authority scope", async () => {
     const test = await setup();
     await expect(test.publicationService.createDraft({ ...test.draftRequest,
