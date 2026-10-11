@@ -67,5 +67,11 @@ application.
 - No custom domain is connected. Add DNS and update Google referrer restrictions,
   SAM `ApplicationOrigin`, Cognito redirects and Amplify branch variables
   together when adopting one.
-- Chat provider: code for an OpenAI provider (`ChatProvider=openai`, key in Secrets Manager) exists but is not deployed or
-  configured. Owner steps are in `docs/chat-assistant-plan.md` ("OpenAI as the chat provider").
+- **Chat provider (11 Oct 2026): OpenAI, deployed.** `solarsaathi-dev` runs `ChatProvider=openai`,
+  `OpenAiChatModelId=gpt-6-luna`, `ChatModelRequestFields={"reasoning_effort":"none"}` (reasoning models refuse function tools
+  otherwise; the adapter also recovers on its own). The key is in Secrets Manager secret `solarsaathi/dev/openai-api-key`,
+  read at request time by `ChatAgentFunction` only (one `GetSecretValue` statement); it is not in the function environment.
+  Verified: function config, role policy, and the adapter against the live OpenAI API (tool call and plain text).
+  Not verified: a signed-in chat turn through the Function URL. The key was pasted into an assistant conversation, so rotate
+  it: create a new key at OpenAI, then `aws secretsmanager put-secret-value --secret-id solarsaathi/dev/openai-api-key
+  --secret-string '{"apiKey":"<new key>"}'`, and revoke the old one. Bedrock is still refused for this account (see above).
