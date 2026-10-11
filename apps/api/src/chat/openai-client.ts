@@ -144,9 +144,14 @@ export async function* toConverseEvents(chunks: AsyncIterable<string>): AsyncGen
   if (usage) yield { metadata: { usage: { ...usage, totalTokens: usage.inputTokens + usage.outputTokens }, metrics: { latencyMs: 0 } } } as ConverseStreamOutput;
 }
 
+/** Reasoning models refuse function tools on Chat Completions unless reasoning_effort is "none". */
+const NEEDS_NO_REASONING = /reasoning_effort to ['"]none['"]/i;
+
 export class OpenAiConverseClient {
   private readonly fetcher: typeof fetch;
   private readonly baseUrl: string;
+  /** Learned from the provider's own error so later turns on this instance do not repeat the failed attempt. */
+  private forceNoReasoning = false;
   constructor(private readonly options: OpenAiClientOptions) {
     this.fetcher = options.fetcher ?? fetch;
     this.baseUrl = (options.baseUrl ?? BASE_URL).replace(/\/+$/, "");
@@ -155,9 +160,10 @@ export class OpenAiConverseClient {
   async send(command: ConverseStreamCommand, options: { abortSignal: AbortSignal }): Promise<Pick<ConverseStreamCommandOutput, "stream">> {
     const input = command.input;
     const tools = toOpenAiTools(input.toolConfig as { tools?: readonly unknown[] } | undefined);
-    const body = {
+    const body: Record<string, unknown> = {
       // Deployment-specific passthrough (e.g. reasoning effort) can never override the fields below.
       ...((input.additionalModelRequestFields ?? {}) as Record<string, unknown>),
+      ...(this.forceNoReasoning && tools.length ? { reasoning_effort: "none" } : {}),
       model: input.modelId,
       messages: toOpenAiMessages(input.system as { text?: string }[] | undefined, input.messages),
       stream: true, stream_options: { include_usage: true },
@@ -165,10 +171,18 @@ export class OpenAiConverseClient {
       ...(tools.length ? { tools, tool_choice: "auto" } : {}),
     };
     const apiKey = await this.options.getApiKey();
-    const response = await this.fetcher(`${this.baseUrl}/chat/completions`, { method: "POST", signal: options.abortSignal, redirect: "error",
-      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", accept: "text/event-stream" }, body: JSON.stringify(body) });
+    const post = (payload: Record<string, unknown>) => this.fetcher(`${this.baseUrl}/chat/completions`, { method: "POST", signal: options.abortSignal, redirect: "error",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", accept: "text/event-stream" }, body: JSON.stringify(payload) });
+    let response = await post(body);
+    if (!response.ok) {
+      const detail = await readError(response);
+      if (response.status === 400 && tools.length && !("reasoning_effort" in body) && NEEDS_NO_REASONING.test(detail.message ?? "")) {
+        this.forceNoReasoning = true;
+        response = await post({ ...body, reasoning_effort: "none" });
+        if (!response.ok) throw failure(response.status, await readError(response), response.headers.get("x-request-id") ?? undefined);
+      } else throw failure(response.status, detail, response.headers.get("x-request-id") ?? undefined);
+    }
     const requestId = response.headers.get("x-request-id") ?? undefined;
-    if (!response.ok) throw failure(response.status, await readError(response), requestId);
     if (!response.body) throw new OpenAiError("ServiceUnavailableException", "NO_STREAM", 502, requestId);
     return { stream: toConverseEvents(sseData(response.body)) };
   }

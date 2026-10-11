@@ -76,6 +76,11 @@ Parameters:
     Default: ""
     AllowedPattern: '^$|^[A-Za-z0-9._:-]{1,100}$'
     Description: OpenAI model ID for chat when ChatProvider is openai. Check it with the OpenAI models list; a wrong ID answers 404.
+  ChatModelRequestFields:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^\{.{0,500}\}$'
+    Description: Optional JSON object merged into every chat model request (for example {"reasoning_effort":"none"} for OpenAI reasoning models that must use function tools).
   OpenAiApiKeySecretArn:
     Type: String
     Default: ""
@@ -1543,6 +1548,7 @@ Resources:
           BEDROCK_REGION: !Ref AdvisorBedrockRegion
           CHAT_PROVIDER: !Ref ChatProvider
           OPENAI_CHAT_MODEL_ID: !Ref OpenAiChatModelId
+          CHAT_MODEL_REQUEST_FIELDS: !Ref ChatModelRequestFields
           OPENAI_API_KEY_SECRET_ARN: !Ref OpenAiApiKeySecretArn
           GUARDRAIL_ID: !If [ExternalGuardrail, !Ref GuardrailId, !GetAtt ChatGuardrail.GuardrailId]
           GUARDRAIL_VERSION: !If [ExternalGuardrail, !Ref GuardrailVersion, !GetAtt ChatGuardrailVersion.Version]

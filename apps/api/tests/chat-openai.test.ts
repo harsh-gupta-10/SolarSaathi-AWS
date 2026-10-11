@@ -71,6 +71,35 @@ describe("OpenAI request conversion", () => {
   });
 });
 
+describe("OpenAI reasoning models", () => {
+  const toolCommand = () => command({ toolConfig: { tools: [{ toolSpec: { name: "t", inputSchema: { json: { type: "object" } } } }] } });
+  const refusal = () => errorResponse(400, { message: "Function tools with reasoning_effort are not supported for m in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.", type: "invalid_request_error" });
+
+  it("retries once with reasoning_effort none when the provider requires it, then remembers", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(refusal())
+      .mockImplementation(async () => sse(delta("ok"), finish("stop")));
+    const openAi = client(fetcher as unknown as typeof fetch);
+    await drain((await openAi.send(toolCommand(), { abortSignal: new AbortController().signal })).stream);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body))).not.toHaveProperty("reasoning_effort");
+    expect(JSON.parse(String((fetcher.mock.calls[1] as unknown as [string, RequestInit])[1].body))).toMatchObject({ reasoning_effort: "none" });
+    await drain((await openAi.send(toolCommand(), { abortSignal: new AbortController().signal })).stream);
+    expect(fetcher).toHaveBeenCalledTimes(3); // learned: no repeat of the refused attempt
+    expect(JSON.parse(String((fetcher.mock.calls[2] as unknown as [string, RequestInit])[1].body))).toMatchObject({ reasoning_effort: "none" });
+  });
+
+  it("does not retry other 400s and honours an explicit passthrough setting", async () => {
+    const other = vi.fn(async () => errorResponse(400, { code: "invalid_request_error", message: "Unsupported parameter." }));
+    await expect(client(other as unknown as typeof fetch).send(toolCommand(), { abortSignal: new AbortController().signal })).rejects.toMatchObject({ name: "OpenAiBadRequest" });
+    expect(other).toHaveBeenCalledTimes(1);
+    const explicit = vi.fn(async () => sse(delta("ok"), finish("stop")));
+    await client(explicit as unknown as typeof fetch).send(command({ additionalModelRequestFields: { reasoning_effort: "none" } as never,
+      toolConfig: { tools: [{ toolSpec: { name: "t", inputSchema: { json: { type: "object" } } } }] } }), { abortSignal: new AbortController().signal });
+    expect(JSON.parse(String((explicit.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toMatchObject({ reasoning_effort: "none" });
+  });
+});
+
 describe("OpenAI stream conversion", () => {
   it("emits text deltas, the stop reason and usage", async () => {
     const events = await drain(toConverseEvents((async function* () { yield JSON.stringify(delta("Hel")); yield JSON.stringify(delta("lo")); yield JSON.stringify(finish("stop")); yield JSON.stringify(usage); yield "[DONE]"; })()));
