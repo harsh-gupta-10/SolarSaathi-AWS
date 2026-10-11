@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowUpRight, BadgeCheck, CircleHelp, Landmark, ShieldAlert } from "lucide-react";
 import { Button, Input, Label } from "@solarsaathi/ui";
-import { calculatePolicyFinancialsV1, type SystemDemand } from "@solarsaathi/calculations";
-import { evaluateBaselineBenefitsV1 } from "@solarsaathi/policy/baseline";
+import type { SystemDemand } from "@solarsaathi/calculations";
 import { benefitsApi, type BenefitApplicantFacts, type BenefitEvaluationResponse } from "../lib/benefits-api";
 import { policyFinancialApi, type PolicyFinancialEstimateResponse } from "../lib/policy-financial-api";
 import type { FinancialInputs } from "../lib/financial-api";
@@ -173,102 +172,12 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
       .then(result => { if (!controller.signal.aborted) {
         setEvaluatedInput({ propertyId, analysisId, demand, generationKwhPerKwYear, nominalKw,
           ...(eligibleQuotedCostPaise === undefined ? {} : { eligibleQuotedCostPaise }), applicantFacts });
-        if ("benefits" in result) {
-          let finalPolicyResult: PolicyFinancialEstimateResponse = result;
-          if (result.status === "UNAVAILABLE" && (result.reasonCodes?.includes("NO_ACTIVE_VERIFIED_RULES") || result.benefits?.status === "UNAVAILABLE")) {
-            try {
-              const baselineResult = evaluateBaselineBenefitsV1({
-                context: {
-                  ...applicantFacts,
-                  systemWatts: Math.round(nominalKw * 1000),
-                  ...(eligibleQuotedCostPaise !== undefined ? { eligibleQuotedCostPaise } : {}),
-                },
-              });
-              if (baselineResult.totalEligibleBenefitPaise > 0) {
-                const projection = calculatePolicyFinancialsV1({
-                  base: result.base,
-                  benefits: baselineResult,
-                });
-                finalPolicyResult = {
-                  ...result,
-                  status: "AVAILABLE",
-                  benefits: {
-                    ...result.benefits,
-                    status: "AVAILABLE",
-                    result: baselineResult,
-                    coverage: {
-                      central: true,
-                      state: Boolean(applicantFacts.state),
-                      discom: false,
-                      local: false,
-                      other: false,
-                    },
-                    evaluatedAt: baselineResult.evaluatedAt,
-                    reasonCodes: undefined,
-                  },
-                  projection,
-                  reasonCodes: undefined,
-                };
-              }
-            } catch {
-              // Keep original result if baseline fails
-            }
-          }
-          setPolicyResponse(finalPolicyResult);
-        } else {
-          let finalBenefitResult: BenefitEvaluationResponse = result;
-          if (result.status === "UNAVAILABLE" && result.reasonCodes?.includes("NO_ACTIVE_VERIFIED_RULES")) {
-            try {
-              const baselineResult = evaluateBaselineBenefitsV1({
-                context: {
-                  ...applicantFacts,
-                  systemWatts: Math.round(nominalKw * 1000),
-                  ...(eligibleQuotedCostPaise !== undefined ? { eligibleQuotedCostPaise } : {}),
-                },
-              });
-              if (baselineResult.totalEligibleBenefitPaise > 0) {
-                finalBenefitResult = {
-                  ...result,
-                  status: "AVAILABLE",
-                  result: baselineResult,
-                  coverage: {
-                    central: true,
-                    state: Boolean(applicantFacts.state),
-                    discom: false,
-                    local: false,
-                    other: false,
-                  },
-                  evaluatedAt: baselineResult.evaluatedAt,
-                  reasonCodes: undefined,
-                };
-              }
-            } catch {
-              // Keep original result
-            }
-          }
-          setResponse(finalBenefitResult);
-        }
+        if ("benefits" in result) setPolicyResponse(result);
+        else setResponse(result);
       } })
       .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof RoofRequestError ? cause.message :
         "The benefit service could not complete this evaluation. Try again."); })
       .finally(() => { if (request.current === controller) { request.current = null; setBusy(false); } });
-  }
-
-  function fillSamplePolicyProfile() {
-    setFields({
-      ...initialFields,
-      state: "MH",
-      customerType: "RESIDENTIAL",
-      discom: "MSEDCL",
-      propertyType: "INDIVIDUAL_HOUSE",
-      sanctionedLoadKw: demand.sanctionedLoadKw === undefined ? "5" : String(demand.sanctionedLoadKw),
-      ownership: "OWNED",
-      gridConnected: "YES",
-      priorSubsidyReceived: "NO",
-      vendorApproved: "YES",
-      equipmentApproved: "YES",
-      eligibleCostRupees: String(grossSystemCostRupees),
-    });
   }
 
   return <section className="benefit-evaluator" aria-labelledby="benefit-evaluator-title">
@@ -278,15 +187,6 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
           <span><Landmark size={17} aria-hidden="true" /> Policy checked benefits</span>
           <h3 id="benefit-evaluator-title">Check eligibility and compatible incentives</h3>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="w-fit text-xs font-semibold text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
-          onClick={fillSamplePolicyProfile}
-        >
-          ⚡ Fill Maharashtra Residential Profile
-        </Button>
       </div>
       <p>Use the {nominalKw} kW planning system and your {rupees.format(grossSystemCostRupees)} gross quote. The service checks active, verified rules against the saved roof and your self-reported details. Missing answers remain unknown.</p>
     </div>

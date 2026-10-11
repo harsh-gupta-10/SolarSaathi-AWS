@@ -14,6 +14,9 @@ import {
 export interface RecordGuard { key: EntityKey; revision: number }
 export interface StoredPage<T> { items: T[]; nextCursor?: string }
 
+const PURGE_MAX_PAGES = 200;
+const PROPERTY_CHILD_PREFIXES = ["ANALYSIS#", "ROOF_PREVIEW#", "BUILDING_CONFIRMATION#", "APPLICATION#", "DESIGN#", "DESIGN_CLAIM#"];
+
 export class CoreRepository {
   constructor(private readonly tableName: string, private readonly execute: CoreExecutor) {
     if (!tableName?.trim()) throw new RequestError(503, "DATABASE_NOT_CONFIGURED", "The core database is not configured.");
@@ -70,6 +73,58 @@ export class CoreRepository {
       } })),
     ];
     await this.send(new TransactWriteCommand({ TransactItems: items }));
+  }
+
+  // Removes records only if each is still at the revision the caller authorized against.
+  async transactDelete(records: RecordGuard[], guards: RecordGuard[] = []): Promise<void> {
+    if (records.length === 0 || records.length + guards.length > 25) throw databaseUnavailable();
+    const revision = (guard: RecordGuard) => ({
+      TableName: this.tableName, Key: guard.key, ConditionExpression: "#revision = :revision",
+      ExpressionAttributeNames: { "#revision": "revision" }, ExpressionAttributeValues: { ":revision": guard.revision },
+    });
+    await this.send(new TransactWriteCommand({ TransactItems: [
+      ...guards.map(guard => ({ ConditionCheck: revision(guard) })),
+      ...records.map(record => ({ Delete: revision(record) })),
+    ] }));
+  }
+
+  // Deletes every record under one partition/prefix by key. Callers only pass partitions that are unreachable once
+  // the property locator is gone, so no entity parsing is needed. Returns the keys it removed.
+  private async purgePrefix(pk: string, prefix: string): Promise<EntityKey[]> {
+    const removed: EntityKey[] = [];
+    for (let page = 0; page < PURGE_MAX_PAGES; page++) {
+      const { Items } = await this.send(new QueryCommand({ TableName: this.tableName,
+        KeyConditionExpression: "#pk = :pk AND begins_with(#sk, :prefix)",
+        ExpressionAttributeNames: { "#pk": "PK", "#sk": "SK" },
+        ExpressionAttributeValues: { ":pk": pk, ":prefix": prefix },
+        Limit: 25, ConsistentRead: true,
+      }));
+      if (Items !== undefined && !Array.isArray(Items)) throw databaseUnavailable();
+      const keysFound = (Items ?? []).map(raw => {
+        const item = raw as Record<string, unknown>;
+        if (item.PK !== pk || typeof item.SK !== "string") throw databaseUnavailable();
+        return { PK: pk, SK: item.SK };
+      });
+      if (keysFound.length === 0) return removed;
+      await this.send(new TransactWriteCommand({ TransactItems: keysFound.map(Key => ({ Delete: {
+        TableName: this.tableName, Key, ConditionExpression: "#pk = :pk",
+        ExpressionAttributeNames: { "#pk": "PK" }, ExpressionAttributeValues: { ":pk": pk },
+      } })) }));
+      removed.push(...keysFound);
+    }
+    throw databaseUnavailable();
+  }
+
+  // Property-scoped child records owned by every module: analyses, roof previews, building confirmations,
+  // applications (and their event partitions), and design records. Cache items expire by TTL.
+  async purgePropertyChildren(propertyId: string): Promise<void> {
+    const pk = `PROPERTY#${propertyId}`;
+    for (const prefix of PROPERTY_CHILD_PREFIXES) {
+      const removed = await this.purgePrefix(pk, prefix);
+      if (prefix === "APPLICATION#") {
+        for (const key of removed) await this.purgePrefix(`APPLICATION#${key.SK.slice(prefix.length)}`, "EVENT#");
+      }
+    }
   }
 
   organizationGuard(organization: StoredOrganization): RecordGuard {

@@ -7,13 +7,3 @@ export type SolarAssumptions = {
   startingTariffPerKwh: number;
   systemLifeYears: number;
 };
-
-export type FinancialResult = {
-  grossCost: number;
-  subsidy: number;
-  netCost: number;
-  annualGenerationKwh: number;
-  annualSavings: number;
-  paybackYears: number;
-  twentyFiveYearSavings: number;
-};

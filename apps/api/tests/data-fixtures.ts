@@ -43,7 +43,7 @@ export class MemoryExecutor {
       const items = command.input.TransactItems ?? [];
       const seen = new Set<string>();
       const reasons = items.map(item => {
-        const key = (item.Put?.Item ?? item.ConditionCheck?.Key) as EntityKey;
+        const key = (item.Put?.Item ?? item.Delete?.Key ?? item.ConditionCheck?.Key) as EntityKey;
         if (seen.has(recordKey(key))) throw new Error("Duplicate transaction key");
         seen.add(recordKey(key));
         if (item.Put) {
@@ -57,6 +57,15 @@ export class MemoryExecutor {
               previous.orgId === values[":org"] ? "None" : "ConditionalCheckFailed" };
           }
           throw new Error("Unsafe unconditional transaction put");
+        }
+        if (item.Delete) {
+          const expression = item.Delete.ConditionExpression;
+          if (!expression || !/^#[A-Za-z]+ = :[A-Za-z]+( AND #[A-Za-z]+ = :[A-Za-z]+)*$/.test(expression)) throw new Error("Unsafe unconditional transaction delete");
+          const stored = this.read(key);
+          const names = item.Delete.ExpressionAttributeNames ?? {};
+          const values = item.Delete.ExpressionAttributeValues ?? {};
+          return { Code: stored && [...expression.matchAll(/(#[A-Za-z]+) = (:[A-Za-z]+)/g)].every(([, name, token]) =>
+            stored[names[name!]!] === values[token!]) ? "None" : "ConditionalCheckFailed" };
         }
         if (!item.ConditionCheck || !item.ConditionCheck.ConditionExpression?.startsWith("#revision = :revision")) throw new Error("Unsupported transaction condition");
         const check = item.ConditionCheck;
@@ -74,7 +83,10 @@ export class MemoryExecutor {
       if (reasons.some(reason => reason.Code !== "None")) {
         throw Object.assign(new Error("private transaction marker"), { name: "TransactionCanceledException", CancellationReasons: reasons });
       }
-      for (const item of items) if (item.Put) this.seed(item.Put.Item as EntityKey & Record<string, unknown>);
+      for (const item of items) {
+        if (item.Put) this.seed(item.Put.Item as EntityKey & Record<string, unknown>);
+        if (item.Delete) this.delete(item.Delete.Key as EntityKey);
+      }
       return {};
     }
     if (command instanceof QueryCommand) {

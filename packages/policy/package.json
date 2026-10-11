@@ -3,8 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "exports": {
-    ".": "./src/index.ts",
-    "./baseline": "./src/baseline-catalog.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

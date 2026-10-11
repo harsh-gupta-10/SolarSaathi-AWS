@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
   Building2, ChevronRight, FileCheck2,
-  MapPin, Plus, Sparkles, Trash2, Zap,
+  MapPin, Plus, Trash2, Zap,
 } from "lucide-react";
 import { Button, Input, Label } from "@solarsaathi/ui";
+import { signInHref } from "../lib/return-to";
 import { useAuth } from "../auth/auth-provider";
 import { applicationsApi } from "../lib/applications-api";
-import { roofApi } from "../lib/roof-api";
+import { roofApi, RoofRequestError } from "../lib/roof-api";
 import {
-  deleteStoredProperty, ensureDefaultProperties,
-  saveStoredProperty, seedSampleProperties, syncBackendProperties,
+  deleteStoredProperty, getStoredProperties,
+  saveStoredProperty, syncBackendProperties,
   type StoredProperty,
 } from "../lib/properties-store";
 
@@ -25,6 +26,17 @@ export function MyPropertiesWorkspace() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [error, setError] = useState<string>();
+  const [deleteError, setDeleteError] = useState<string>();
+  const [deletingId, setDeletingId] = useState<string>();
+  const [syncError, setSyncError] = useState<string>();
+  const [loadingList, setLoadingList] = useState(false);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(noticeTimer.current), []);
+  function showNotice(message: string) {
+    clearTimeout(noticeTimer.current);
+    setNotice(message);
+    noticeTimer.current = setTimeout(() => setNotice(undefined), 6000);
+  }
 
   // Form states
   const [label, setLabel] = useState("");
@@ -32,45 +44,30 @@ export function MyPropertiesWorkspace() {
   const [propertyType, setPropertyType] = useState<StoredProperty["propertyType"]>("RESIDENTIAL_BUNGALOW");
   const [monthlyBill, setMonthlyBill] = useState("");
   const [monthlyKwh, setMonthlyKwh] = useState("");
-  const [consumerNumber, setConsumerNumber] = useState("");
 
   useEffect(() => {
-    // Load local stored properties or ensure defaults
-    const list = ensureDefaultProperties(userId);
-    setProperties(list);
-
-    // If authenticated, sync with backend DynamoDB
-    if (status === "signedIn") {
-      const controller = new AbortController();
-      void applicationsApi.properties(undefined, controller.signal)
-        .then(page => {
-          if (!controller.signal.aborted && page.properties?.length) {
-            const synced = syncBackendProperties(page.properties, userId);
-            setProperties(synced);
-          }
-        })
-        .catch(() => {
-          // Fall back gracefully to local store
-        });
-      return () => controller.abort();
-    }
+    // The backend is the source of truth. Cached analysis details are shown only until it answers.
+    setSyncError(undefined);
+    if (status !== "signedIn" || !userId) { setProperties([]); return; }
+    setProperties(getStoredProperties(userId));
+    const controller = new AbortController();
+    setLoadingList(true);
+    void (async () => {
+      const all: Array<{ propertyId: string; label?: string; address: string }> = [];
+      let cursor: string | undefined;
+      for (let pages = 0; pages < 20; pages++) {
+        const page = await applicationsApi.properties(cursor, controller.signal);
+        all.push(...page.properties);
+        cursor = page.nextCursor;
+        if (!cursor) break;
+      }
+      // Never prune the cache from a truncated list.
+      if (!controller.signal.aborted && !cursor) setProperties(syncBackendProperties(all, userId));
+    })().catch(() => {
+      if (!controller.signal.aborted) setSyncError("Your saved properties could not be refreshed. Showing the last known list.");
+    }).finally(() => { if (!controller.signal.aborted) setLoadingList(false); });
+    return () => controller.abort();
   }, [status, userId]);
-
-  function fillSampleFormData() {
-    setLabel("Shivaji Nagar Residence");
-    setAddress("45 F.C. Road, Shivaji Nagar, Pune, Maharashtra 411005");
-    setPropertyType("RESIDENTIAL_BUNGALOW");
-    setMonthlyBill("5200");
-    setMonthlyKwh("410");
-    setConsumerNumber("029481720491");
-  }
-
-  function handleAddSampleProperties() {
-    const list = seedSampleProperties(userId);
-    setProperties(list);
-    setNotice("Added 2 sample Indian properties (Mumbai 3 BHK Bungalow & Pune Villa) with complete roof and subsidy estimates!");
-    setTimeout(() => setNotice(undefined), 6000);
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -82,17 +79,15 @@ export function MyPropertiesWorkspace() {
     setSaving(true);
     setError(undefined);
 
-    let backendId: string | undefined;
-    if (status === "signedIn") {
-      try {
-        await roofApi.bootstrap();
-        backendId = await roofApi.createProperty(address.trim());
-      } catch {
-        // If backend creation fails, continue with local ID so user is never blocked
-      }
+    let newPropertyId: string;
+    try {
+      await roofApi.bootstrap();
+      newPropertyId = await roofApi.createProperty(address.trim());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The property could not be saved to your account. Try again.");
+      setSaving(false);
+      return;
     }
-
-    const newPropertyId = backendId || `prop-${Date.now()}`;
     const newProp: StoredProperty = {
       propertyId: newPropertyId,
       label: label.trim() || "My Rooftop Property",
@@ -100,13 +95,8 @@ export function MyPropertiesWorkspace() {
       propertyType,
       monthlyBillRupees: monthlyBill ? Number(monthlyBill) : undefined,
       monthlyConsumptionKwh: monthlyKwh ? Number(monthlyKwh) : undefined,
-      consumerNumber: consumerNumber.trim() || undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      roofAreaSquareMeters: 100,
-      segmentCount: 2,
-      recommendedSystemKw: monthlyKwh ? Math.round(Number(monthlyKwh) / 120 * 10) / 10 : 3.0,
-      estimatedSubsidyRupees: 78000,
     };
 
     const updated = saveStoredProperty(newProp, userId);
@@ -117,19 +107,45 @@ export function MyPropertiesWorkspace() {
     setAddress("");
     setMonthlyBill("");
     setMonthlyKwh("");
-    setConsumerNumber("");
-    setNotice(`Property "${newProp.label}" added to your account!`);
-    setTimeout(() => setNotice(undefined), 5000);
+    showNotice(`Property "${newProp.label}" saved to your account.`);
   }
 
-  function handleDelete(propertyId: string) {
-    const updated = deleteStoredProperty(propertyId, userId);
-    setProperties(updated);
+  async function handleDelete(item: StoredProperty) {
+    if (!window.confirm(`Delete "${item.label}" and its saved roof analyses? This cannot be undone.`)) return;
+    setDeleteError(undefined);
+    setDeletingId(item.propertyId);
+    try {
+      await roofApi.deleteProperty(item.propertyId);
+    } catch (cause) {
+      // Already gone on the server: still remove the stale local copy.
+      if (!(cause instanceof RoofRequestError && cause.code === "NOT_FOUND")) {
+        setDeleteError(cause instanceof Error ? cause.message : "The property could not be deleted. Try again.");
+        setDeletingId(undefined);
+        return;
+      }
+    }
+    setDeletingId(undefined);
+    setProperties(deleteStoredProperty(item.propertyId, userId));
   }
 
   const totalRoofArea = properties.reduce((sum, p) => sum + (p.roofAreaSquareMeters || 0), 0);
   const totalPotentialKw = properties.reduce((sum, p) => sum + (p.recommendedSystemKw || 0), 0);
-  const totalSubsidy = properties.reduce((sum, p) => sum + (p.estimatedSubsidyRupees || 0), 0);
+
+  if (status === "loading") {
+    return <p role="status" aria-live="polite">Checking your session…</p>;
+  }
+  if (status !== "signedIn") {
+    return (
+      <div className="flex flex-col items-center rounded-2xl border border-dashed p-12 text-center">
+        <Building2 className="size-12 text-muted-foreground/60" aria-hidden="true" />
+        <h1 className="mt-4 text-2xl font-bold">Sign in to manage your properties</h1>
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+          Properties are saved to your account, not to this browser. Sign in to add a home and analyze its roof.
+        </p>
+        <Button asChild className="mt-6"><Link href={signInHref("/app/properties")}>Sign in</Link></Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -138,19 +154,10 @@ export function MyPropertiesWorkspace() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">My Properties</h1>
           <p className="mt-1 text-muted-foreground">
-            Manage your registered homes, rooftop solar measurements, and government subsidy eligibility.
+            Manage your registered homes and their rooftop solar analysis. Subsidy eligibility is checked per property from verified policy rules.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex items-center gap-2 text-xs font-semibold"
-            onClick={handleAddSampleProperties}
-          >
-            <Sparkles className="size-3.5 text-amber-500" aria-hidden="true" />
-            <span>Load 2 Sample Properties</span>
-          </Button>
           <Button
             type="button"
             className="flex items-center gap-2 font-semibold shadow-sm"
@@ -163,13 +170,22 @@ export function MyPropertiesWorkspace() {
       </div>
 
       {notice && (
-        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-sm font-medium text-emerald-800 dark:text-emerald-300">
-          ✓ {notice}
+        <div role="status" className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-sm font-medium text-emerald-800 dark:text-emerald-300">
+          {notice}
+        </div>
+      )}
+
+      {syncError && <p role="status" className="text-sm text-muted-foreground">{syncError}</p>}
+      {loadingList && properties.length === 0 && <p role="status" aria-live="polite">Loading your properties…</p>}
+
+      {deleteError && (
+        <div role="alert" className="rounded-xl border border-destructive/25 bg-destructive/10 p-4 text-sm font-medium text-destructive">
+          {deleteError}
         </div>
       )}
 
       {/* Quick Metrics Bar */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-xl border bg-card p-4">
           <p className="text-xs font-medium text-muted-foreground">Properties Saved</p>
           <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">{properties.length}</p>
@@ -182,10 +198,6 @@ export function MyPropertiesWorkspace() {
           <p className="text-xs font-medium text-muted-foreground">Solar Capacity Fit</p>
           <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">{totalPotentialKw.toFixed(1)} kW</p>
         </div>
-        <div className="rounded-xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Potential Subsidies</p>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-primary">₹{(totalSubsidy / 1000).toFixed(0)}k</p>
-        </div>
       </div>
 
       {/* Add Property Form / Drawer */}
@@ -196,15 +208,6 @@ export function MyPropertiesWorkspace() {
               <h2 id="add-property-title" className="text-xl font-bold">Add a New Property</h2>
               <p className="text-xs text-muted-foreground">Enter property address and consumer details to plan your rooftop solar.</p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={fillSampleFormData}
-            >
-              ⚡ Fill Sample Pune Address
-            </Button>
           </div>
 
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
@@ -248,7 +251,7 @@ export function MyPropertiesWorkspace() {
               />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="prop-bill">Avg. Monthly Electricity Bill (₹)</Label>
                 <Input
@@ -271,15 +274,6 @@ export function MyPropertiesWorkspace() {
                 />
               </div>
 
-              <div>
-                <Label htmlFor="prop-consumer">Consumer / CA Number (Optional)</Label>
-                <Input
-                  id="prop-consumer"
-                  placeholder="From DISCOM power bill"
-                  value={consumerNumber}
-                  onChange={e => setConsumerNumber(e.target.value)}
-                />
-              </div>
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-3">
@@ -296,7 +290,7 @@ export function MyPropertiesWorkspace() {
 
       {/* Properties List */}
       <div className="space-y-4">
-        {properties.length === 0 ? (
+        {properties.length === 0 && !loadingList ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed p-12 text-center">
             <Building2 className="size-12 text-muted-foreground/60" aria-hidden="true" />
             <h3 className="mt-4 text-lg font-semibold">No properties registered yet</h3>
@@ -305,7 +299,6 @@ export function MyPropertiesWorkspace() {
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Button onClick={() => setShowAddForm(true)}>Add Your Property</Button>
-              <Button variant="outline" onClick={handleAddSampleProperties}>Load 2 Sample Properties</Button>
             </div>
           </div>
         ) : (
@@ -326,8 +319,9 @@ export function MyPropertiesWorkspace() {
                     <button
                       type="button"
                       aria-label={`Delete ${item.label}`}
-                      onClick={() => handleDelete(item.propertyId)}
-                      className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition"
+                      disabled={deletingId === item.propertyId}
+                      onClick={() => void handleDelete(item)}
+                      className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition disabled:opacity-50"
                     >
                       <Trash2 className="size-4" />
                     </button>
@@ -339,23 +333,17 @@ export function MyPropertiesWorkspace() {
                   </p>
 
                   {/* Property Solar Highlights */}
-                  <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-muted/60 p-3 text-center text-xs">
+                  <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-muted/60 p-3 text-center text-xs">
                     <div>
                       <p className="text-muted-foreground">Roof Area</p>
                       <p className="mt-0.5 font-bold text-foreground">
-                        {item.roofAreaSquareMeters ? `${item.roofAreaSquareMeters.toFixed(0)} m²` : "Pending"}
+                        {item.roofAreaSquareMeters ? `${item.roofAreaSquareMeters.toFixed(0)} m²` : "Not measured yet"}
                       </p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Solar System</p>
                       <p className="mt-0.5 font-bold text-foreground">
-                        {item.recommendedSystemKw ? `${item.recommendedSystemKw.toFixed(1)} kW` : "3.0 kW"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Max Subsidy</p>
-                      <p className="mt-0.5 font-bold text-emerald-600 dark:text-emerald-400">
-                        {item.estimatedSubsidyRupees ? `₹${item.estimatedSubsidyRupees.toLocaleString("en-IN")}` : "₹78,000"}
+                        {item.recommendedSystemKw ? `${item.recommendedSystemKw.toFixed(1)} kW` : "Not designed yet"}
                       </p>
                     </div>
                   </div>
@@ -383,7 +371,7 @@ export function MyPropertiesWorkspace() {
                     </Link>
                   </Button>
                   <Button asChild variant="ghost" size="sm">
-                    <Link href="/app/advisor">
+                    <Link href={`/app/advisor?propertyId=${encodeURIComponent(item.propertyId)}`}>
                       <Zap className="mr-1.5 size-3.5 text-amber-500" aria-hidden="true" />
                       <span>AI Advisor</span>
                     </Link>

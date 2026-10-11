@@ -25,30 +25,13 @@ const provenance: Record<AdvisorResponse["cards"][number]["provenance"], string>
 };
 const cardName = { ROOF: "Roof", SYSTEM: "System", FINANCIAL: "Financial", BENEFIT: "Benefit",
   APPLICATION: "Application" };
-interface SuggestedQuestionItem {
-  q: string;
-  scenario?: ScenarioFields;
-}
-const suggestedQuestions: SuggestedQuestionItem[] = [
-  {
-    q: "How much subsidy will I get in Maharashtra under PM Surya Ghar?",
-    scenario: {
-      monthlyKwh: "350", yieldPerKw: "1500", nominalKw: "3", grossCost: "180000",
-      selfUsePercent: "80", importTariff: "8.5", exportRate: "3.5", annualMaintenance: "1500",
-      eligibleCost: "180000", state: "MH", customerType: "RESIDENTIAL",
-    },
-  },
-  {
-    q: "What is my modeled payback period and net cost after subsidy?",
-    scenario: {
-      monthlyKwh: "350", yieldPerKw: "1500", nominalKw: "3", grossCost: "180000",
-      selfUsePercent: "80", importTariff: "8.5", exportRate: "3.5", annualMaintenance: "1500",
-      eligibleCost: "180000", state: "MH", customerType: "RESIDENTIAL",
-    },
-  },
-  { q: "What does my roof assessment tell me?" },
-  { q: "What should I check before applying for an official benefit?" },
-  { q: "What should I do next with my application record?" },
+// Questions only: a scenario (consumption, cost, tariff, state) must come from the user, never from a preset.
+const suggestedQuestions: string[] = [
+  "How much subsidy could I get for my state under the verified rules?",
+  "What is my modeled payback period and net cost after benefits?",
+  "What does my roof assessment tell me?",
+  "What should I check before applying for an official benefit?",
+  "What should I do next with my application record?",
 ];
 
 interface ScenarioFields {
@@ -194,7 +177,9 @@ export function AdvisorWorkspace() {
     void applicationsApi.properties(undefined, controller.signal).then(page => {
       if (controller.signal.aborted) return;
       setProperties(page.properties); setPropertyCursor(page.nextCursor);
-      setPropertyId(page.properties[0]?.propertyId ?? "");
+      const linked = new URLSearchParams(window.location.search).get("propertyId");
+      setPropertyId(page.properties.find(item => item.propertyId === linked)?.propertyId ??
+        page.properties[0]?.propertyId ?? "");
     }).catch(failure => { if (!controller.signal.aborted) setError(errorText(failure)); })
       .finally(() => { if (!controller.signal.aborted) setLoadingProperties(false); });
     return () => controller.abort();
@@ -303,15 +288,11 @@ export function AdvisorWorkspace() {
     </aside>
     <div className="advisor-main"><form onSubmit={ask} className="advisor-compose" noValidate><span className="advisor-section-index">02 / Question</span>
       <h2>What would you like to understand?</h2><p>Choose a starting question or write your own. Answers stay tied to the saved records you select.</p>
-      <div className="advisor-suggestions">{suggestedQuestions.map(item => <button key={item.q} type="button" onClick={() => {
+      <div className="advisor-suggestions">{suggestedQuestions.map(item => <button key={item} type="button" onClick={() => {
         clearAnswer();
-        setQuestion(item.q);
-        if (item.scenario) {
-          setIncludeScenario(true);
-          setScenarioFields(item.scenario);
-        }
+        setQuestion(item);
       }}>
-        {item.q}<ArrowRight size={14} aria-hidden="true" /></button>)}</div>
+        {item}<ArrowRight size={14} aria-hidden="true" /></button>)}</div>
       <Label htmlFor="advisor-question">Your question</Label><textarea id="advisor-question" value={question} maxLength={500} rows={4}
         onChange={event => { clearAnswer(); setQuestion(event.target.value); }} placeholder="For example, what should I verify before I apply?" />
       <p className="advisor-character-count">{question.length} / 500 characters</p>

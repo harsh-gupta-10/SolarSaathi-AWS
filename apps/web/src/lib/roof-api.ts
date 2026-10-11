@@ -32,6 +32,7 @@ const geocodeResponse = z.object({ ...envelope, source: z.literal("GOOGLE_GEOCOD
 const previewResponse = z.object({ ...envelope, source: z.literal("GOOGLE_SOLAR"), previewId: z.string().min(1), roof });
 const confirmationResponse = z.object({ ...envelope, source: z.enum(["GOOGLE_SOLAR", "MANUAL"]), analysisId: z.string().min(1), roof });
 const propertyResponse = z.object({ ...envelope, source: z.literal("DYNAMODB"), property: z.object({ propertyId: z.string().min(1) }).passthrough() });
+const deletedPropertyResponse = z.object({ ...envelope, source: z.literal("DYNAMODB"), deleted: z.object({ propertyId: z.string().min(1) }) });
 const customerResponse = z.object({ ...envelope, source: z.literal("DYNAMODB"), customer: z.object({ customerId: z.string().min(1) }).passthrough() });
 
 export class RoofRequestError extends Error {
@@ -63,7 +64,7 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
-async function authenticatedRequest<T>(method: "GET" | "POST" | "PATCH", path: string, body: unknown,
+async function authenticatedRequest<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body: unknown,
   schema: z.ZodType<T>, signal?: AbortSignal, timeoutMs = 12_000): Promise<T> {
   const url = endpoint(path);
   const controller = new AbortController();
@@ -84,8 +85,8 @@ async function authenticatedRequest<T>(method: "GET" | "POST" | "PATCH", path: s
     const token = session.tokens?.accessToken?.toString();
     if (!token) throw new RoofRequestError("SESSION_UNAVAILABLE", "Sign in to analyze this property.");
     const response = await fetch(url, { method, headers: { authorization: `Bearer ${token}`,
-      ...(method !== "GET" ? { "content-type": "application/json" } : {}), accept: "application/json" },
-      ...(method !== "GET" ? { body: JSON.stringify(body) } : {}),
+      ...(body !== undefined ? { "content-type": "application/json" } : {}), accept: "application/json" },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       credentials: "omit", cache: "no-store", redirect: "error", signal: controller.signal });
     let payload: unknown;
     try { payload = await abortable(response.json(), controller.signal); } catch { throw new RoofRequestError("INVALID_RESPONSE", "The analysis service returned an unreadable response. Try again."); }
@@ -124,12 +125,21 @@ export function patchAuthenticated<T>(path: string, body: unknown, schema: z.Zod
   return authenticatedRequest("PATCH", path, body, schema, signal, timeoutMs);
 }
 
+export function deleteAuthenticated<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal,
+  timeoutMs = 12_000): Promise<T> {
+  return authenticatedRequest("DELETE", path, undefined, schema, signal, timeoutMs);
+}
+
 export const roofApi = {
   bootstrap: (signal?: AbortSignal) => postAuthenticated("/users/bootstrap", {}, z.object({ ...envelope, source: z.literal("DYNAMODB") }).passthrough(), signal),
   createCustomer: async (name: string, signal?: AbortSignal): Promise<string> =>
     (await postAuthenticated("/customers", { name }, customerResponse, signal)).customer.customerId,
   createProperty: async (address: string, customerId?: string, signal?: AbortSignal): Promise<string> =>
     (await postAuthenticated("/properties", { label: "Rooftop solar property", address, ...(customerId ? { customerId } : {}) }, propertyResponse, signal)).property.propertyId,
+  deleteProperty: async (propertyId: string, signal?: AbortSignal): Promise<void> => {
+    const result = await deleteAuthenticated(`/properties/${encodeURIComponent(propertyId)}`, deletedPropertyResponse, signal);
+    if (result.deleted.propertyId !== propertyId) throw new RoofRequestError("INVALID_RESPONSE", "The service deleted a different property.");
+  },
   geocode: (propertyId: string, signal?: AbortSignal): Promise<RoofGeocodeResponse> =>
     postAuthenticated("/solar/geocode", { propertyId }, geocodeResponse, signal) as Promise<RoofGeocodeResponse>,
   insights: (propertyId: string, selected: GeocodeCandidate, location: RoofPoint, signal?: AbortSignal): Promise<RoofPreviewResponse> =>

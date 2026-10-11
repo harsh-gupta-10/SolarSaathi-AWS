@@ -16,7 +16,6 @@
     "test:infra": "vitest run --config infra/sam/vitest.config.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "auth:check": "esbuild scripts/auth-check.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/auth-check.cjs --log-level=warning && node --env-file-if-exists=apps/web/.env.local dist/auth-check.cjs",
-    "policy:seed": "esbuild scripts/seed-policy-storage.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/seed-policy.cjs --log-level=warning && node dist/seed-policy.cjs",
     "sam:validate": "sam validate --lint --template-file infra/sam/template.yaml --region ap-south-1",
     "sam:build": "pnpm --filter @solarsaathi/api build && sam build --template-file infra/sam/template.yaml",
     "sam:local": "sam local start-api --template-file .aws-sam/build/template.yaml",

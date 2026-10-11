@@ -96,6 +96,18 @@ describe("core HTTP source routes", () => {
     expect(parsed(await core(list, context)).properties).toHaveLength(1);
   });
 
+  it("deletes an owned property through DELETE /v1/properties/{propertyId}", async () => {
+    const { invoke } = setup();
+    await invoke("/v1/users/bootstrap", "POST", {});
+    const property = parsed(await invoke("/v1/properties", "POST", { label: "Home", address: "123 Test Road Mumbai" })).property;
+    const deleted = await invoke(`/v1/properties/${property.propertyId}`, "DELETE");
+    expect(deleted.statusCode).toBe(200);
+    expect(parsed(deleted)).toMatchObject({ schemaVersion: 1, source: "DYNAMODB", deleted: { propertyId: property.propertyId } });
+    expect(parsed(await invoke("/v1/properties")).properties).toEqual([]);
+    expect((await invoke(`/v1/properties/${property.propertyId}`, "DELETE")).statusCode).toBe(404);
+    expect((await invoke("/v1/properties", "DELETE")).statusCode).toBe(405);
+  });
+
   it("does not add arbitrary analysis/cache endpoints or generic updates", async () => {
     const { invoke } = setup();
     expect((await invoke("/v1/analyses", "POST", { subsidy: 999 })).statusCode).toBe(404);

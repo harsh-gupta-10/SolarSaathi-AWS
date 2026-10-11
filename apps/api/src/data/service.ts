@@ -229,6 +229,22 @@ export class CoreService {
     return propertyDto(record);
   }
 
+  async deleteProperty(identity: CurrentIdentityResponse, propertyId: string) {
+    const { account, property, locator } = await this.ownedProperty(identity, propertyId);
+    // The property and its locator disappear atomically; every property-scoped route resolves through the locator.
+    await this.repository.transactDelete([
+      { key: keys.property(property.customerId, property.propertyId), revision: property.revision },
+      { key: keys.locator(property.propertyId), revision: locator.revision },
+    ], [this.repository.organizationGuard(account.organization)]);
+    try { await this.repository.purgePropertyChildren(property.propertyId); }
+    catch (cause) {
+      // Children are unreachable once the locator is gone, but they hold personal data: make the leak visible to alarms.
+      console.error(JSON.stringify({ event: "PROPERTY_PURGE_INCOMPLETE", propertyId: property.propertyId,
+        reason: cause instanceof Error ? cause.name : "unknown" }));
+    }
+    return { deleted: { propertyId: property.propertyId } };
+  }
+
   async listProperties(identity: CurrentIdentityResponse, options: unknown = {}) {
     const { user } = await this.account(identity);
     const page = parseInput(pageInputSchema, options);
@@ -267,20 +283,32 @@ export class CoreService {
   async listAnalyses(identity: CurrentIdentityResponse, propertyId: string, options: unknown = {}) {
     const { property } = await this.ownedProperty(identity, propertyId);
     const page = parseInput(pageInputSchema, options);
-    const result = await this.repository.listAnalyses(propertyId, page.limit, page.cursor);
-    if (result.items.some(record => record.orgId !== property.orgId || record.ownerUserId !== property.ownerUserId)) {
-      throw databaseUnavailable();
-    }
     const nowEpoch = Math.floor(this.now().getTime() / 1_000);
-    const analyses = result.items.filter(record => !!record.roofModel &&
-      (record.expiresAtEpochSeconds === undefined || record.expiresAtEpochSeconds > nowEpoch)).map(record => ({
-      analysisId: record.analysisId, propertyId: record.propertyId, source: record.roof.source,
-      measuredAt: record.roof.measuredAt, roofAreaSquareMeters: record.roof.roofAreaSquareMeters,
-      segmentCount: record.roof.segmentCount,
-      ...(record.expiresAtEpochSeconds === undefined ? {} : {
-        expiresAt: new Date(record.expiresAtEpochSeconds * 1_000).toISOString(),
-      }),
-    }));
+    const analyses: Array<{ analysisId: string; propertyId: string; source: string; measuredAt: string;
+      roofAreaSquareMeters: number; segmentCount: number; expiresAt?: string }> = [];
+    let cursor = page.cursor;
+    let result = await this.repository.listAnalyses(propertyId, page.limit, cursor);
+    // Expired or model-less records are filtered after the query, so keep reading
+    // while the page is empty (bounded) rather than returning an empty page that still advertises a next cursor.
+    for (let reads = 1; ; reads++) {
+      if (result.items.some(record => record.orgId !== property.orgId || record.ownerUserId !== property.ownerUserId)) {
+        throw databaseUnavailable();
+      }
+      for (const record of result.items) {
+        if (!record.roofModel || (record.expiresAtEpochSeconds !== undefined && record.expiresAtEpochSeconds <= nowEpoch)) continue;
+        analyses.push({
+          analysisId: record.analysisId, propertyId: record.propertyId, source: record.roof.source,
+          measuredAt: record.roof.measuredAt, roofAreaSquareMeters: record.roof.roofAreaSquareMeters,
+          segmentCount: record.roof.segmentCount,
+          ...(record.expiresAtEpochSeconds === undefined ? {} : {
+            expiresAt: new Date(record.expiresAtEpochSeconds * 1_000).toISOString(),
+          }),
+        });
+      }
+      if (analyses.length > 0 || !result.nextCursor || reads >= 5) break;
+      cursor = result.nextCursor;
+      result = await this.repository.listAnalyses(propertyId, page.limit, cursor);
+    }
     return { analyses, ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}) };
   }
 

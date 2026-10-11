@@ -91,7 +91,7 @@ describe("Cognito configuration and storage", () => {
     mount(<SignInPanel />);
     await settled("unconfigured");
     expect(screen.getByText(/No demo or simulated login/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Sign in with Email & Password" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Sign in or create an account" }).hasAttribute("disabled")).toBe(true);
     await act(async () => { await current.beginSignIn(); await current.refresh(); await current.signOut(); });
     expect(sdk.configure).not.toHaveBeenCalled();
     expect(sdk.session).not.toHaveBeenCalled();
@@ -257,12 +257,12 @@ describe("hosted sign-in and sign-out actions", () => {
     await settled("signedOut");
     expect(screen.getByText(/then choose its create-account option/)).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Sign in with Email & Password" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue to create your account" }));
     await waitFor(() => expect(sdk.redirect).toHaveBeenCalledWith(undefined));
     first.unmount();
     mount(<SignInPanel />);
     await settled("signedOut");
-    fireEvent.click(screen.getByRole("button", { name: "Create an account" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in or create an account" }));
     await waitFor(() => expect(sdk.redirect).toHaveBeenCalledTimes(2));
   });
   it("does not render Google auth button on the sign-in panel", async () => {
@@ -270,14 +270,14 @@ describe("hosted sign-in and sign-out actions", () => {
     mount(<SignInPanel />);
     await settled("signedOut");
     expect(screen.queryByRole("button", { name: "Continue with Google" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Sign in with Email & Password" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign in or create an account" })).toBeTruthy();
   });
   it("sanitizes redirect errors and re-enables recovery", async () => {
     sdk.session.mockResolvedValue({});
     sdk.redirect.mockRejectedValue(new Error("PRIVATE_REDIRECT_ERROR"));
     mount(<SignInPanel />);
     await settled("signedOut");
-    fireEvent.click(screen.getByRole("button", { name: "Sign in with Email & Password" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in or create an account" }));
     await settled("error");
     expect(screen.getByRole("alert").textContent).toContain("could not be started");
     expect(document.body.textContent).not.toContain("PRIVATE_REDIRECT_ERROR");

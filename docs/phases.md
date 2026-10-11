@@ -2,6 +2,27 @@
 
 Build in this order. Do not skip foundational validation.
 
+## Current status (audit of 2026-10-11)
+
+Every phase has code, but "implemented locally" below does not mean complete. The development stack is deployed
+(see `live-deployment.md`); older "no resources have been deployed" notes in the sections below predate it.
+
+| Phase | Status | Open items |
+|---|---|---|
+| 0, 3, 5, 6, 7 (engine), 9, 15, 17, 18, 19, 20 | Implemented | — |
+| 1 | Partial | Custom domains not configured; runs on the Amplify default URL |
+| 2 | Partial | Google federation disabled; live sign-up not verified end to end |
+| 4 | Partial | `POST /v1/solar/analyze` and `/v1/analyze` are 501 scaffolds |
+| 7 (UI) | Partial | Savings has an entry page only; the estimator lives in the Analyze flow |
+| 8 | Partial | `GET /v1/policies*` is documented but has no route or handler |
+| 10, 11 | Engine done | No verified India rules are published; amounts stay unavailable until the admin workflow approves them |
+| 12 | Partial | Reminders and notifications are not implemented |
+| 13 | Partial | No Bedrock model is configured |
+| 14 | Partial | Prices and policy relevance are `UNAVAILABLE` |
+| 16 | Partial | Proposal PDF and send are out of scope |
+
+See `remediation-plan.md` for the audit findings and fix status.
+
 ## Phase 0 — Repository and AWS foundation
 - pnpm workspace
 - Next.js app

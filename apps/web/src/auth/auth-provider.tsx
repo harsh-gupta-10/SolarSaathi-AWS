@@ -1,5 +1,6 @@
 "use client";
 
+import { clearStoredProperties } from "../lib/properties-store";
 import {
   createContext, useCallback, useContext, useEffect, useRef, useState,
   type ReactNode,
@@ -153,6 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         update({ status: "loading", profile: null, error: null });
         try {
           // Amplify also redirects through Cognito logout for hosted sessions.
+          clearStoredProperties();
           await sdkSignOut();
           update({ status: "signedOut", profile: null, error: null });
         } catch {

@@ -114,6 +114,54 @@ describe("stored canonical tenant and owner authorization", () => {
     expect(memory.commands.filter(command => command instanceof QueryCommand).at(-1)?.input.IndexName).toBe("GSI1");
   });
 
+  it("deletes only an owned property, its locator and its core child records", async () => {
+    const { service, memory } = setupData();
+    await service.bootstrap(identity(), {});
+    await service.bootstrap(identity(otherId), {});
+    const first = await service.createProperty(identity(), propertyBody);
+    const kept = await service.createProperty(identity(), propertyBody);
+    const analysis = await service.saveAnalysis(identity(), first.propertyId, roof);
+    const keptAnalysis = await service.saveAnalysis(identity(), kept.propertyId, roof);
+    await expect(service.deleteProperty(identity(otherId), first.propertyId)).rejects.toMatchObject(notFound);
+    expect(memory.read(keys.locator(first.propertyId))).toBeDefined();
+    expect(await service.deleteProperty(identity(), first.propertyId)).toEqual({ deleted: { propertyId: first.propertyId } });
+    expect(memory.read(keys.property(first.customerId, first.propertyId))).toBeUndefined();
+    expect(memory.read(keys.locator(first.propertyId))).toBeUndefined();
+    expect(memory.read(keys.analysis(first.propertyId, analysis.analysisId))).toBeUndefined();
+    expect(memory.read(keys.analysis(kept.propertyId, keptAnalysis.analysisId))).toBeDefined();
+    expect((await service.listProperties(identity())).properties).toEqual([kept]);
+    await expect(service.getProperty(identity(), first.propertyId)).rejects.toMatchObject(notFound);
+    await expect(service.deleteProperty(identity(), first.propertyId)).rejects.toMatchObject(notFound);
+  });
+
+  it("purges applications, application events and design records with the property", async () => {
+    const { service, memory } = setupData();
+    await service.bootstrap(identity(), {});
+    const property = await service.createProperty(identity(), propertyBody);
+    const other = await service.createProperty(identity(), propertyBody);
+    const seeded = [
+      { PK: `PROPERTY#${property.propertyId}`, SK: "APPLICATION#app-1" },
+      { PK: "APPLICATION#app-1", SK: "EVENT#2026-10-01T00:00:00.000Z#evt-1" },
+      { PK: `PROPERTY#${property.propertyId}`, SK: "DESIGN#design-1" },
+      { PK: `PROPERTY#${property.propertyId}`, SK: "DESIGN_CLAIM#design-1" },
+    ];
+    const kept = { PK: `PROPERTY#${other.propertyId}`, SK: "APPLICATION#app-2" };
+    for (const key of [...seeded, kept]) memory.seed({ ...key, revision: 1 });
+    await service.deleteProperty(identity(), property.propertyId);
+    for (const key of seeded) expect(memory.read(key)).toBeUndefined();
+    expect(memory.read(kept)).toBeDefined();
+  });
+
+  it("does not delete a property whose revision changed after authorization", async () => {
+    const { service, memory } = setupData();
+    await service.bootstrap(identity(), {});
+    const property = await service.createProperty(identity(), propertyBody);
+    const key = keys.property(property.customerId, property.propertyId);
+    memory.beforeTransaction = () => { memory.seed({ ...memory.read(key)!, ...key, revision: 2 }); };
+    await expect(service.deleteProperty(identity(), property.propertyId)).rejects.toMatchObject({ statusCode: 409 });
+    expect(memory.read(keys.locator(property.propertyId))).toBeDefined();
+  });
+
   it("does not leak cross-org customer existence and properties between brokers", async () => {
     const { service } = setupData();
     const one = identity(actorId, "BROKER"), two = identity(otherId, "BROKER");

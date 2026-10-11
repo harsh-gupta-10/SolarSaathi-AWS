@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@solarsaathi/ui";
 import { useAuth } from "../../../auth/auth-provider";
+import { consumeReturnTo } from "../../../lib/return-to";
 
 export default function AuthCallbackPage() {
   const { status, oauthStatus, error } = useAuth();
   const router = useRouter();
   useEffect(() => {
-    if (status === "signedIn") router.replace("/app");
+    if (status === "signedIn") router.replace(consumeReturnTo());
   }, [status, router]);
   const failed = status === "error" || status === "unconfigured" || oauthStatus === "failed";
   return (

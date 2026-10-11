@@ -112,10 +112,10 @@ describe("base financial estimate UI", () => {
         importTariffRupeesPerKwh: 7.5, exportRateRupeesPerKwh: 2.5, annualMaintenanceRupees: 1500 }, expect.any(AbortSignal));
   });
 
-  it("populates standard Indian residential benchmarks via quick setup button", async () => {
+  it("populates illustrative planning values via quick setup button", async () => {
     const user = userEvent.setup();
     render(<FinancialEstimator {...props} />);
-    await user.click(screen.getByRole("button", { name: /Apply standard Indian residential benchmarks/ }));
+    await user.click(screen.getByRole("button", { name: /Fill with illustrative planning values/ }));
     expect((screen.getByLabelText("Gross installed quote or planning estimate for this size (₹)") as HTMLInputElement).value).toBe("192000");
     expect((screen.getByLabelText("Solar energy used on site (%)") as HTMLInputElement).value).toBe("90");
     expect((screen.getByLabelText("Avoidable import energy rate (₹/kWh)") as HTMLInputElement).value).toBe("7.5");

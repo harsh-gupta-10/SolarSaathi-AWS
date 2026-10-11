@@ -232,12 +232,24 @@ function pairAllowed(left: PolicyBenefitRuleV1, right: PolicyBenefitRuleV1,
   return false;
 }
 
+/** True when a conditional compatibility edge between the two rules cannot be decided because applicant facts are missing. */
+function compatibilityFactsUnknown(left: PolicyBenefitRuleV1, right: PolicyBenefitRuleV1,
+  context: BenefitEvaluationContextV1): boolean {
+  return [[left, right], [right, left]].some(([from, to]) => {
+    const edge = from!.compatibility.find(value => value.withBenefitId === to!.benefitId);
+    return edge?.mode === "CONDITIONAL" && all(edge.conditions ?? [], context) === "UNKNOWN";
+  });
+}
+
 function selectedAmounts(indices: number[], rules: PolicyBenefitRuleV1[], screens: Screen[]):
   { total: bigint; counted: Map<number, bigint> } {
   const counted = new Map<number, bigint>();
   const groupRemaining = new Map<string, bigint>();
   let total = 0n;
-  for (const index of indices) {
+  // Shared caps are consumed in a fixed precedence (central first) so attribution never depends on benefit IDs.
+  const precedence = { CENTRAL: 0, STATE: 1, DISCOM: 2, LOCAL: 3, OTHER: 4 } as const;
+  const ordered = [...indices].sort((x, y) => precedence[rules[x]!.scope] - precedence[rules[y]!.scope] || x - y);
+  for (const index of ordered) {
     const rule = rules[index]!;
     let amount = screens[index]!.amount ?? 0n;
     if (rule.combinedCapGroupId) {
@@ -328,8 +340,10 @@ export function evaluateBenefitStackV1(input: BenefitStackInputV1): BenefitStack
     const reasons = [...screen.reasons];
     if (selected) reasons.push("IN_OPTIMAL_VERIFIED_STACK");
     else if (screen.status === "YES") reasons.push(screen.amount === 0n ? "ZERO_VALUE_NO_PAYOUT" :
-      best.some(other => !pairAllowed(rule, rules[other]!, context)) ?
-        "COMPATIBILITY_OR_OVERLAP_EXCLUDED" : "NOT_IN_OPTIMAL_STACK");
+      best.some(other => compatibilityFactsUnknown(rule, rules[other]!, context)) ?
+        "COMPATIBILITY_FACTS_UNKNOWN" :
+        best.some(other => !pairAllowed(rule, rules[other]!, context)) ?
+          "COMPATIBILITY_OR_OVERLAP_EXCLUDED" : "NOT_IN_OPTIMAL_STACK");
     return {
       benefitId: rule.benefitId, ruleId: rule.ruleId, scope: rule.scope,
       jurisdiction: rule.jurisdiction, effectiveFrom: rule.effectiveFrom,

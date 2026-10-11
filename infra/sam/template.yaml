@@ -152,7 +152,7 @@ Resources:
       Cors:
         AllowOrigin: !Sub "'${ApplicationOrigin}'"
         AllowHeaders: "'Content-Type,Authorization'"
-        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowMethods: "'GET,POST,DELETE,OPTIONS'"
       GatewayResponses:
         DEFAULT_4XX:
           ResponseParameters:
@@ -1157,7 +1157,7 @@ Resources:
     Type: AWS::Serverless::Function
     Metadata:
       com.aws.cloudformation.Context:
-        why: Serves authenticated account, customer, property and lead operations through the shared core table.
+        why: Serves authenticated account, customer, property and lead operations through the shared core table, including owner-checked property deletion.
         must:
           - Keep the Cognito authorizer on every core route and enforce ownership in backend code.
           - Grant access only to the core table and its two property lookup indexes.
@@ -1176,6 +1176,7 @@ Resources:
               Action:
                 - dynamodb:GetItem
                 - dynamodb:PutItem
+                - dynamodb:DeleteItem
                 - dynamodb:ConditionCheckItem
                 - dynamodb:Query
               Resource: !GetAtt AnalysesTable.Arn
@@ -1234,6 +1235,12 @@ Resources:
             RestApiId: !Ref Api
             Path: /properties/{propertyId}
             Method: GET
+        DeleteProperty:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /properties/{propertyId}
+            Method: DELETE
         ListPropertyAnalyses:
           Type: Api
           Properties:

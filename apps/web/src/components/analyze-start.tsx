@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { CheckCircle2, ChevronRight, Layers, LocateFixed, MapPin, Ruler, ShieldCheck, Sparkles, Sun } from "lucide-react";
+import { CheckCircle2, ChevronRight, Layers, LocateFixed, MapPin, Ruler, ShieldCheck, Sun } from "lucide-react";
 import { Button, Input, Label } from "@solarsaathi/ui";
-import type { GeocodeCandidate, ManualRoofMeasurements, NormalizedRoofV1, RoofConfirmationResponse, RoofPoint, RoofPreviewResponse } from "@solarsaathi/types";
+import type { GeocodeCandidate, ManualRoofMeasurements, RoofConfirmationResponse, RoofPoint, RoofPreviewResponse } from "@solarsaathi/types";
 import { useAuth } from "../auth/auth-provider";
 import { ADDRESS_DRAFT_KEY, readAddressDraft, saveAddressDraft } from "../lib/address-draft";
 import { getPublicEnvironment } from "../lib/env";
 import { roofApi, RoofRequestError } from "../lib/roof-api";
 import { brokerApi } from "../lib/broker-api";
-import { getStoredProperty, saveStoredProperty, SAMPLE_PROPERTIES } from "../lib/properties-store";
+import { AnalysisStepper } from "./analysis-stepper";
+import { getStoredProperty, saveStoredProperty } from "../lib/properties-store";
 import { AddressForm } from "./address-form";
 import { SatelliteBuildingMap } from "./satellite-building-map";
 import { RoofLayoutViewer } from "./roof-layout-viewer";
@@ -203,7 +204,7 @@ export function AnalyzeStart() {
             return;
           }
           const current: RoofPoint = { latitude: lat, longitude: lng };
-          const formattedAddress = `Current Location (${lat.toFixed(5)}° N, ${lng.toFixed(5)}° E)`;
+          const formattedAddress = `Current location (${Math.abs(lat).toFixed(5)}° ${lat >= 0 ? "N" : "S"}, ${Math.abs(lng).toFixed(5)}° ${lng >= 0 ? "E" : "W"})`;
           try {
             saveAddressDraft(sessionStorage, formattedAddress);
           } catch {
@@ -223,35 +224,20 @@ export function AnalyzeStart() {
             placeId: `gps-${lat.toFixed(4)}-${lng.toFixed(4)}`,
             address: formattedAddress,
             location: current,
-            locationType: "ROOFTOP",
+            locationType: "APPROXIMATE",
             partialMatch: false,
           };
           setCandidates([gpsCandidate]);
           setSelected(gpsCandidate);
           setGpsSuccess(`GPS location locked (~${Math.round(accuracy)}m accuracy).`);
 
+          // The device position only centers the map. The user still picks the building themselves.
+          setGpsLocating(false);
           if (status === "signedIn" && profile) {
             run("property", async signal => {
-              const id = await ensureProperty(signal, formattedAddress);
-              if (signal.aborted) return;
-              setActiveTab(2);
-              setGpsLocating(false);
-              run("insights", async insightsSignal => {
-                const data = await roofApi.insights(id, gpsCandidate, current, insightsSignal);
-                if (!insightsSignal.aborted) {
-                  setPreview(data);
-                  setBuildingConfirmed(false);
-                  if (data.roof?.center) {
-                    setPoint(data.roof.center);
-                    setLatitude(data.roof.center.latitude.toFixed(6));
-                    setLongitude(data.roof.center.latitude.toFixed(6));
-                    setMapCenter(data.roof.center);
-                  }
-                }
-              });
+              await ensureProperty(signal, formattedAddress);
+              if (!signal.aborted) setActiveTab(2);
             });
-          } else {
-            setGpsLocating(false);
           }
         },
         failure => {
@@ -270,26 +256,6 @@ export function AnalyzeStart() {
       setGpsLocating(false);
       setGpsError("Could not initiate location request. Please enter your address manually.");
     }
-  }
-
-  function handleQuickCity(cityName: string) {
-    const cityAddresses: Record<string, string> = {
-      Pune: "FC Road, Shivajinagar, Pune, Maharashtra 411005",
-      Mumbai: "Bandra West, Mumbai, Maharashtra 400050",
-      Bengaluru: "Indiranagar 100ft Road, Bengaluru, Karnataka 560038",
-      "Delhi NCR": "Connaught Place, New Delhi, Delhi 110001",
-      Hyderabad: "Banjara Hills, Road No 12, Hyderabad, Telangana 500034",
-      Nagpur: "Civil Lines, Nagpur, Maharashtra 440001",
-    };
-    const target = cityAddresses[cityName] || `${cityName}, India`;
-    reset();
-    try {
-      saveAddressDraft(sessionStorage, target);
-    } catch {
-      // sessionStorage blocked
-    }
-    setAddress(target);
-    setEditing(false);
   }
 
   function findBuilding() {
@@ -456,77 +422,6 @@ export function AnalyzeStart() {
     });
   }
 
-  function fillSampleRoofData() {
-    const sample = SAMPLE_PROPERTIES[0];
-    const sampleAddress = sample.address;
-    const samplePropId = sample.propertyId;
-    const sampleAnalysisId = sample.analysisId || "analysis-sample-mumbai";
-
-    setAddress(sampleAddress);
-    setPropertyId(samplePropId);
-    setEditing(false);
-    setManualMode(false);
-    setError(undefined);
-
-    const samplePoint = { latitude: 19.0596, longitude: 72.8295 };
-    const sampleCandidate: GeocodeCandidate = {
-      placeId: "place-sample-bandra",
-      address: sampleAddress,
-      location: samplePoint,
-      locationType: "ROOFTOP",
-      partialMatch: false,
-    };
-    setCandidates([sampleCandidate]);
-    setSelected(sampleCandidate);
-    setPoint(samplePoint);
-    setMapCenter(samplePoint);
-    setLatitude("19.059600");
-    setLongitude("72.829500");
-
-    const sampleRoof: NormalizedRoofV1 = {
-      schemaVersion: 1,
-      source: "GOOGLE_SOLAR",
-      measuredAt: new Date().toISOString(),
-      roofAreaSquareMeters: 120.0,
-      segmentCount: 4,
-      segments: [
-        { segmentId: "seg-1", areaSquareMeters: 40.0 },
-        { segmentId: "seg-2", areaSquareMeters: 35.0 },
-        { segmentId: "seg-3", areaSquareMeters: 25.0 },
-        { segmentId: "seg-4", areaSquareMeters: 20.0 },
-      ],
-      buildingId: "buildings/sample-bandra-west",
-      center: samplePoint,
-      bounds: {
-        southwest: { latitude: 19.0594, longitude: 72.8293 },
-        northeast: { latitude: 19.0598, longitude: 72.8297 },
-      },
-      imageryDate: "2025-06-01",
-      imageryQuality: "HIGH",
-    };
-
-    setPreview({
-      schemaVersion: 1,
-      source: "GOOGLE_SOLAR",
-      requestId: "sample-preview-req",
-      previewId: "sample-preview-01",
-      roof: sampleRoof,
-    });
-    setBuildingConfirmed(true);
-
-    const confirmationResult: RoofConfirmationResponse = {
-      schemaVersion: 1,
-      source: "GOOGLE_SOLAR",
-      requestId: "sample-confirm-req",
-      analysisId: sampleAnalysisId,
-      roof: sampleRoof,
-    };
-    setResult(confirmationResult);
-
-    saveStoredProperty(sample, profile?.userId);
-    setActiveTab(3);
-  }
-
   const enabled = status === "signedIn" && !!profile && accountRef.current === account && !!address && !editing && !existingLookup && !existingLookupError;
   const visibleAddress = accountRef.current === account ? address : null;
   const visibleResult = enabled ? result : undefined;
@@ -543,95 +438,12 @@ export function AnalyzeStart() {
         <p>Choose the right building and check its measurements before saving an assessment.</p>
       </div>
 
-      {/* Stepper Tabs Nav Bar & Sample Data Button */}
-      <div className="mb-6 flex flex-col gap-3 rounded-2xl border bg-card p-3 shadow-xs sm:flex-row sm:items-center sm:justify-between">
-        <ol className="analysis-progress m-0 flex flex-wrap items-center gap-2 p-0" aria-label="Roof analysis steps">
-          <li aria-current={activeTab === 1 ? "step" : undefined}>
-            <button
-              type="button"
-              onClick={() => setActiveTab(1)}
-              className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all border ${
-                activeTab === 1
-                  ? "bg-primary text-primary-foreground border-primary shadow-xs ring-1 ring-primary/20"
-                  : "bg-background text-foreground hover:bg-muted border-border/80 shadow-2xs"
-              }`}
-            >
-              <span className={`inline-flex items-center justify-center size-5 rounded-full text-[11px] font-bold ${
-                activeTab === 1 ? "bg-white/20 text-white" : "bg-muted text-foreground"
-              }`}>1</span>
-              <span>1. Address &amp; Property</span>
-            </button>
-          </li>
-          <li aria-current={activeTab === 2 ? "step" : undefined}>
-            <button
-              type="button"
-              onClick={() => canAccessTab2 && setActiveTab(2)}
-              disabled={!canAccessTab2}
-              className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all border ${
-                activeTab === 2
-                  ? "bg-primary text-primary-foreground border-primary shadow-xs ring-1 ring-primary/20"
-                  : canAccessTab2
-                  ? "bg-background text-foreground hover:bg-muted border-border/80 shadow-2xs"
-                  : "bg-muted/30 border-border/60 text-muted-foreground/85 cursor-not-allowed"
-              }`}
-            >
-              <span className={`inline-flex items-center justify-center size-5 rounded-full text-[11px] font-bold ${
-                activeTab === 2 ? "bg-white/20 text-white" : canAccessTab2 ? "bg-muted text-foreground" : "bg-muted/70 text-muted-foreground/80"
-              }`}>2</span>
-              <span>2. Satellite &amp; Pin</span>
-            </button>
-          </li>
-          <li aria-current={activeTab === 3 ? "step" : undefined}>
-            <button
-              type="button"
-              onClick={() => canAccessTab3 && setActiveTab(3)}
-              disabled={!canAccessTab3}
-              className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all border ${
-                activeTab === 3
-                  ? "bg-primary text-primary-foreground border-primary shadow-xs ring-1 ring-primary/20"
-                  : canAccessTab3
-                  ? "bg-background text-foreground hover:bg-muted border-border/80 shadow-2xs"
-                  : "bg-muted/30 border-border/60 text-muted-foreground/85 cursor-not-allowed"
-              }`}
-            >
-              <span className={`inline-flex items-center justify-center size-5 rounded-full text-[11px] font-bold ${
-                activeTab === 3 ? "bg-white/20 text-white" : canAccessTab3 ? "bg-muted text-foreground" : "bg-muted/70 text-muted-foreground/80"
-              }`}>3</span>
-              <span>3. 3D Roof Model</span>
-            </button>
-          </li>
-          <li aria-current={activeTab === 4 ? "step" : undefined}>
-            <button
-              type="button"
-              onClick={() => canAccessTab4 && setActiveTab(4)}
-              disabled={!canAccessTab4}
-              className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all border ${
-                activeTab === 4
-                  ? "bg-primary text-primary-foreground border-primary shadow-xs ring-1 ring-primary/20"
-                  : canAccessTab4
-                  ? "bg-background text-foreground hover:bg-muted border-border/80 shadow-2xs"
-                  : "bg-muted/30 border-border/60 text-muted-foreground/85 cursor-not-allowed"
-              }`}
-            >
-              <span className={`inline-flex items-center justify-center size-5 rounded-full text-[11px] font-bold ${
-                activeTab === 4 ? "bg-white/20 text-white" : canAccessTab4 ? "bg-muted text-foreground" : "bg-muted/70 text-muted-foreground/80"
-              }`}>4</span>
-              <span>4. Solar &amp; Subsidies</span>
-            </button>
-          </li>
-        </ol>
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={fillSampleRoofData}
-          className="self-start sm:self-auto border-dashed border-amber-500/70 text-amber-800 dark:text-amber-300 hover:bg-amber-500/10 text-xs font-medium shadow-2xs"
-        >
-          <Sparkles className="mr-1.5 size-3.5 text-amber-500" />
-          ⚡ Auto-Fill Sample Data (Mumbai 3 kW)
-        </Button>
-      </div>
+      <AnalysisStepper active={activeTab} onSelect={step => setActiveTab(step as 1 | 2 | 3 | 4)} steps={[
+        { number: 1, label: "Address & Property", reachable: true },
+        { number: 2, label: "Satellite & Pin", reachable: canAccessTab2 },
+        { number: 3, label: "3D Roof Model", reachable: canAccessTab3 },
+        { number: 4, label: "Solar & Subsidies", reachable: canAccessTab4 },
+      ]} />
 
       {/* Auth Gate Note */}
       {status !== "signedIn" && (
@@ -788,20 +600,6 @@ export function AnalyzeStart() {
                     setEditing(false);
                   }}
                 />
-                {/* Quick Select Preset Indian Cities */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
-                  <span className="text-muted-foreground font-medium">Quick search:</span>
-                  {["Pune", "Mumbai", "Bengaluru", "Delhi NCR", "Hyderabad", "Nagpur"].map(city => (
-                    <button
-                      key={city}
-                      type="button"
-                      onClick={() => handleQuickCity(city)}
-                      className="rounded-full border border-border/80 bg-background px-2.5 py-0.5 text-xs font-medium text-foreground hover:bg-muted hover:border-primary/40 transition-colors cursor-pointer"
-                    >
-                      {city}
-                    </button>
-                  ))}
-                </div>
               </div>
             )}
 
@@ -1282,11 +1080,10 @@ export function AnalyzeStart() {
               <Layers className="mx-auto size-8 text-muted-foreground" />
               <h3 className="font-semibold text-lg">No roof measurements verified yet</h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                Complete Step 1 (Address) and Step 2 (Satellite Verification), or click auto-fill below to immediately explore a 3D model.
+                Complete Step 1 (Address) and Step 2 (Satellite Verification).
               </p>
               <div className="flex justify-center gap-3 pt-2">
                 <Button variant="outline" onClick={() => setActiveTab(1)}>Go to Step 1</Button>
-                <Button onClick={fillSampleRoofData}>⚡ Auto-Fill Sample Model</Button>
               </div>
             </div>
           )}
@@ -1324,11 +1121,10 @@ export function AnalyzeStart() {
               <Sun className="mx-auto size-8 text-muted-foreground" />
               <h3 className="font-semibold text-lg">Complete Roof Analysis First</h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                Solar sizing requires confirmed roof geometry. Finish Step 1 &amp; 2 or auto-fill a sample property.
+                Solar sizing requires confirmed roof geometry. Finish Step 1 &amp; 2 first.
               </p>
               <div className="flex justify-center gap-3 pt-2">
                 <Button variant="outline" onClick={() => setActiveTab(1)}>Start at Step 1</Button>
-                <Button onClick={fillSampleRoofData}>⚡ Auto-Fill Sample System</Button>
               </div>
             </div>
           )}

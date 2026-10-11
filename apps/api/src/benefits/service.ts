@@ -99,41 +99,58 @@ export class BenefitsService {
         const facts = bundle.facts.map(item => policyFactSchema.parse(item));
         if (version.status !== "ACTIVE" || version.verificationStatus !== "VERIFIED" ||
           facts.some(fact => fact.verificationStatus !== "VERIFIED")) throw unavailable();
-        const citation = facts[0]!.citation;
-        const [sourceVersion, currentSource, document, state] = await Promise.all([
-          this.workflow.getSourceVersion(citation.sourceId, citation.sourceRegistryVersion),
-          this.records.getSource(citation.sourceId),
-          this.records.getDocument(citation.sourceId, citation.documentId, citation.documentVersion),
-          this.workflow.getCrawlState(citation.sourceId),
-        ]);
-        if (!sourceVersion || !currentSource || !document || document.sha256 !== citation.documentSha256) {
-          throw unavailable();
+        // Every fact is backed by its own citation; load each distinct source/document once so a multi-source
+        // rule is checked against all of its sources instead of only the first fact's.
+        const citations = new Map<string, typeof facts[number]["citation"]>();
+        for (const fact of facts) {
+          const c = fact.citation;
+          citations.set(`${c.sourceId}|${c.sourceRegistryVersion}|${c.documentId}|${c.documentVersion}`, c);
         }
-        const source = validateOfficialSourceRecord(policySourceSchema.parse(sourceVersion));
-        const archived = policyDocumentSchema.parse(document);
-        const bundleEvidence = facts.map(fact => ({ source, document: archived, version, fact }));
-        const fresh = currentSource.registryVersion === sourceVersion.registryVersion &&
-          currentSourceFresh(currentSource, state, evaluatedAt) &&
-          state?.lastDocumentId === citation.documentId &&
-          state.lastDocumentVersion === citation.documentVersion &&
-          state.lastObservedSha256 === citation.documentSha256;
-        const stateStatus: unknown = state?.status;
-        const status = stateStatus === "ERROR" || !!state?.lastErrorCode ||
-          stateStatus !== undefined && stateStatus !== "READY" && stateStatus !== "RUNNING" ? "FAILED" :
-          stateStatus === "RUNNING" ? "DEGRADED" :
-            stateStatus === "READY" && fresh ? "HEALTHY" : "STALE";
-        return { bundleEvidence, health: { sourceId: source.sourceId, status,
-          ...(state?.lastCheckedAt ? { lastCheckedAt: state.lastCheckedAt } : {}) } as PolicySourceHealthV1 };
+        const loadedCitations = new Map<string, { source: ReturnType<typeof validateOfficialSourceRecord>;
+          archived: ReturnType<typeof policyDocumentSchema.parse>; health: PolicySourceHealthV1 }>();
+        for (const [citationKey, citation] of citations) {
+          const [sourceVersion, currentSource, document, state] = await Promise.all([
+            this.workflow.getSourceVersion(citation.sourceId, citation.sourceRegistryVersion),
+            this.records.getSource(citation.sourceId),
+            this.records.getDocument(citation.sourceId, citation.documentId, citation.documentVersion),
+            this.workflow.getCrawlState(citation.sourceId),
+          ]);
+          if (!sourceVersion || !currentSource || !document || document.sha256 !== citation.documentSha256) {
+            throw unavailable();
+          }
+          const source = validateOfficialSourceRecord(policySourceSchema.parse(sourceVersion));
+          const archived = policyDocumentSchema.parse(document);
+          const fresh = currentSource.registryVersion === sourceVersion.registryVersion &&
+            currentSourceFresh(currentSource, state, evaluatedAt) &&
+            state?.lastDocumentId === citation.documentId &&
+            state.lastDocumentVersion === citation.documentVersion &&
+            state.lastObservedSha256 === citation.documentSha256;
+          const stateStatus: unknown = state?.status;
+          const status = stateStatus === "ERROR" || !!state?.lastErrorCode ||
+            stateStatus !== undefined && stateStatus !== "READY" && stateStatus !== "RUNNING" ? "FAILED" :
+            stateStatus === "RUNNING" ? "DEGRADED" :
+              stateStatus === "READY" && fresh ? "HEALTHY" : "STALE";
+          loadedCitations.set(citationKey, { source, archived, health: { sourceId: source.sourceId, status,
+            ...(state?.lastCheckedAt ? { lastCheckedAt: state.lastCheckedAt } : {}) } as PolicySourceHealthV1 });
+        }
+        const bundleEvidence = facts.map(fact => {
+          const c = fact.citation;
+          const loaded = loadedCitations.get(`${c.sourceId}|${c.sourceRegistryVersion}|${c.documentId}|${c.documentVersion}`)!;
+          return { source: loaded.source, document: loaded.archived, version, fact };
+        });
+        return { bundleEvidence, healths: [...loadedCitations.values()].map(value => value.health) };
       };
       for (let offset = 0; offset < bundles.length; offset += 4) {
         const loaded = await Promise.all(bundles.slice(offset, offset + 4).map(loadBundle));
         for (const item of loaded) {
           evidence.push(...item.bundleEvidence);
-          const existingHealth = sourceHealth.find(value => value.sourceId === item.health.sourceId);
-          if (existingHealth) {
-            const priority = { HEALTHY: 0, DEGRADED: 1, STALE: 2, FAILED: 3 } as const;
-            if (priority[item.health.status] > priority[existingHealth.status]) existingHealth.status = item.health.status;
-          } else sourceHealth.push(item.health);
+          for (const health of item.healths) {
+            const existingHealth = sourceHealth.find(value => value.sourceId === health.sourceId);
+            if (existingHealth) {
+              const priority = { HEALTHY: 0, DEGRADED: 1, STALE: 2, FAILED: 3 } as const;
+              if (priority[health.status] > priority[existingHealth.status]) existingHealth.status = health.status;
+            } else sourceHealth.push(health);
+          }
         }
       }
       if (sourceHealth.every(item => item.status !== "HEALTHY")) return { ...common,

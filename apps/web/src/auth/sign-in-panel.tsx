@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Button } from "@solarsaathi/ui";
+import { consumeReturnTo, rememberReturnTo } from "../lib/return-to";
 import { useAuth } from "./auth-provider";
 
 export function SignInPanel({ createAccount = false }: { createAccount?: boolean }) {
@@ -12,9 +13,12 @@ export function SignInPanel({ createAccount = false }: { createAccount?: boolean
   const busy = status === "loading";
 
   useEffect(() => {
-    if (status === "signedIn") {
-      router.replace("/app");
-    }
+    // The hosted sign-in redirect leaves this page, so remember where the user was heading.
+    rememberReturnTo(new URLSearchParams(window.location.search).get("returnTo"));
+  }, []);
+
+  useEffect(() => {
+    if (status === "signedIn") router.replace(consumeReturnTo());
   }, [status, router]);
   return (
     <main className="auth-page">
@@ -36,10 +40,7 @@ export function SignInPanel({ createAccount = false }: { createAccount?: boolean
         ) : (
           <div className="auth-actions">
             <Button disabled={!configured || busy} onClick={() => void beginSignIn()}>
-              Sign in with Email &amp; Password
-            </Button>
-            <Button variant="outline" disabled={!configured || busy} onClick={() => void beginSignIn()}>
-              Create an account
+              {createAccount ? "Continue to create your account" : "Sign in or create an account"}
             </Button>
             {configured && status === "error" && (
               <Button variant="ghost" onClick={() => void refresh()}>Check session again</Button>
@@ -47,7 +48,7 @@ export function SignInPanel({ createAccount = false }: { createAccount?: boolean
           </div>
         )}
         <p className="text-sm text-muted-foreground">Account identity does not grant access to private data. The backend verifies permissions separately.</p>
-        <Link href="/app" className="text-sm underline underline-offset-4">Explore the public workspace</Link>
+        <Link href="/demo" className="text-sm underline underline-offset-4">Explore the guided demo without an account</Link>
       </section>
     </main>
   );

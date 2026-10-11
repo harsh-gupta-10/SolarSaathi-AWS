@@ -13,8 +13,11 @@ import { bearerAccessToken } from "./bearer";
 import { cognitoConfiguration, type AuthEnvironment, type CognitoConfiguration } from "./config";
 import { authServiceUnavailable, unauthorized } from "./errors";
 
+import { createHash } from "node:crypto";
 export const VERIFICATION_TIMEOUT_MS = 3_000;
 export const GET_USER_TIMEOUT_MS = 4_000;
+const USER_CACHE_TTL_MS = 30_000;
+const USER_CACHE_MAX = 500;
 const MAX_CACHE_ENTRIES = 8;
 
 export interface AccessTokenVerifier {
@@ -83,6 +86,7 @@ export function createCognitoIdentityResolver(dependencies: IdentityDependencies
   const verifierFactory = dependencies.createVerifier ?? createAccessTokenVerifier;
   const clientFactory = dependencies.createClient ?? createCognitoUserClient;
 
+  const userCache = new Map<string, { attributes: GetUserCommandOutput["UserAttributes"]; expiresAt: number }>();
   return async (event: APIGatewayProxyEvent, environment: AuthEnvironment): Promise<VerifiedCognitoUser> => {
     const configuration = cognitoConfiguration(environment);
     const token = bearerAccessToken(event);
@@ -104,6 +108,11 @@ export function createCognitoIdentityResolver(dependencies: IdentityDependencies
     if (groups !== undefined && (!Array.isArray(groups) || !groups.every(group => typeof group === "string"))) {
       throw unauthorized();
     }
+    const cacheKey = createHash("sha256").update(`${configuration.userPoolId}:${configuration.clientId}:${configuration.region}:${token}`).digest("hex");
+    const now = Date.now();
+    const hit = userCache.get(cacheKey);
+    if (hit && hit.expiresAt > now) return { sub: claims.sub, groups: groups ?? [], attributes: hit.attributes };
+    userCache.delete(cacheKey);
     let user: GetUserCommandOutput;
     const abortController = new AbortController();
     const abortTimer = setTimeout(() => abortController.abort(), GET_USER_TIMEOUT_MS);
@@ -120,6 +129,10 @@ export function createCognitoIdentityResolver(dependencies: IdentityDependencies
       clearTimeout(abortTimer);
     }
     if (!user || typeof user !== "object") throw unauthorized();
+    // Short-lived cache bounds Cognito GetUser traffic; it never outlives the token and caps revocation lag at 30 s.
+    if (userCache.size >= USER_CACHE_MAX) userCache.delete(userCache.keys().next().value as string);
+    userCache.set(cacheKey, { attributes: user.UserAttributes,
+      expiresAt: Math.min(now + USER_CACHE_TTL_MS, claims.exp * 1_000) });
     return { sub: claims.sub, groups: groups ?? [], attributes: user.UserAttributes };
   };
 }

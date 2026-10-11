@@ -255,6 +255,58 @@ describe("verified deterministic benefit stack", () => {
     expect(result.decisions.map(item => item.status)).toEqual(["SELECTED", "EXCLUDED"]);
   });
 
+  it("attributes a shared cap to central benefits before state benefits regardless of benefit IDs", () => {
+    const names = ["A", "B"] as const;
+    const scopes = { A: "STATE", B: "CENTRAL" } as const;
+    const amounts = { A: 30_000, B: 25_000 } as const;
+    const capped = names.map(name => {
+      const other = name === "A" ? "B" : "A";
+      const edge = { withBenefitId: `BENEFIT#${other}`, mode: "CAPPED_COMBINED" as const,
+        evidenceFactIds: [`FACT#${name}#EDGE#${other}`] };
+      return rule(name, amounts[name], { scope: scopes[name], factIds: [`FACT#${name}`, `FACT#${name}#CAP`,
+        ...edge.evidenceFactIds], combinedCapGroupId: "SHARED", combinedCapPaise: 40_000, compatibility: [edge] });
+    });
+    const base = input(capped);
+    const asState = { ...base, evidence: base.evidence.map(item => item.version.policyId === "POLICY#A" ?
+      { ...item, fact: { ...item.fact, category: "STATE_SUBSIDY" as const },
+        version: { ...item.version, category: "STATE_SUBSIDY" as const } } : item) };
+    const result = evaluateBenefitStackV1(asState);
+    expect(result.totalEligibleBenefitPaise).toBe(40_000);
+    expect(result.decisions.map(item => [item.benefitId, item.countedAmountPaise])).toEqual([
+      ["BENEFIT#A", 15_000], ["BENEFIT#B", 25_000],
+    ]);
+  });
+
+  it("does not stack non-additive compatibility modes", () => {
+    for (const mode of ["ALTERNATIVE", "SEQUENTIAL", "NOT_STACKABLE", "MUTUALLY_EXCLUSIVE", "UNKNOWN"] as const) {
+      const [a, b] = pair(rule("A", 30_000), rule("B", 20_000), mode);
+      const result = evaluateBenefitStackV1(input([a, b]));
+      expect(result.totalEligibleBenefitPaise).toBe(30_000);
+      expect(result.decisions.map(item => item.status)).toEqual(["SELECTED", "EXCLUDED"]);
+    }
+  });
+
+  it("excludes rules in the same overlap group", () => {
+    const overlap = (name: string, amount: number) => rule(name, amount, { overlapGroupId: "G",
+      factIds: [`FACT#${name}`, `FACT#${name}#OVERLAP`], overlapEvidenceFactIds: [`FACT#${name}#OVERLAP`] });
+    const result = evaluateBenefitStackV1(input([overlap("A", 30_000), overlap("B", 20_000)]));
+    expect(result.totalEligibleBenefitPaise).toBe(30_000);
+  });
+
+  it("names unknown applicant facts when a conditional compatibility edge cannot be decided", () => {
+    const [a, b] = pair(rule("A", 30_000), rule("B", 20_000), "ADDITIVE");
+    const conditional = (benefit: PolicyBenefitRuleV1, name: string) => {
+      const factId = `FACT#${name}#COND`;
+      return { ...benefit, factIds: [...benefit.factIds, factId],
+        compatibility: benefit.compatibility.map(edge => ({ ...edge, mode: "CONDITIONAL" as const,
+          conditions: [{ kind: "CUSTOMER_TYPE" as const, oneOf: ["RESIDENTIAL" as const], evidenceFactIds: [factId] }] })) };
+    };
+    // customerType is not supplied in the context, so the conditional edge is undecidable.
+    const result = evaluateBenefitStackV1(input([conditional(a, "A"), conditional(b, "B")]));
+    expect(result.totalEligibleBenefitPaise).toBe(30_000);
+    expect(result.decisions[1]?.reasonCodes).toContain("COMPATIBILITY_FACTS_UNKNOWN");
+  });
+
   it("uses BigInt intermediates and checked paise results", () => {
     const original = input([rule("A", 10_000)]);
     const perKw: PolicyBenefitRuleV1 = { ...original.rules[0]!,

@@ -51,6 +51,16 @@ describe("benefit evaluation UI", () => {
     expect(screen.getByText(/Previously verified rule SYNTHETIC/)).toBeTruthy();
     expect(screen.getByText(/current source check is missing, failed or stale/)).toBeTruthy();
   });
+  it("keeps the server's unavailable answer and never substitutes a client-side subsidy", async () => {
+    const user = userEvent.setup();
+    render(<BenefitEvaluator {...props} />);
+    await user.selectOptions(screen.getByLabelText("State or union territory"), "MH");
+    await user.selectOptions(screen.getByLabelText("Electricity customer type"), "RESIDENTIAL");
+    await user.click(screen.getByRole("button", { name: "Evaluate benefits" }));
+    expect(await screen.findByRole("heading", { name: "Verified benefit calculation unavailable" })).toBeTruthy();
+    expect(screen.queryByText(/78,000/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /sample|fill/i })).toBeNull();
+  });
   it("sends declared facts and leaves eligible cost unknown until supplied", async () => {
     const user = userEvent.setup();
     render(<BenefitEvaluator {...props} />);

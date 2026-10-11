@@ -30,11 +30,17 @@ described below; legacy `POST /v1/chat` reaches the same grounded handler.
 Phase 3 core routes are locally implemented: `GET /v1/users/me`,
 `POST /v1/users/bootstrap`, `GET /v1/organizations/me`,
 `GET|POST /v1/customers`, `GET|POST /v1/properties`,
-`GET /v1/properties/{propertyId}`, and `GET|POST /v1/leads`. Every route requires
+`GET|DELETE /v1/properties/{propertyId}`, and `GET|POST /v1/leads`. Every route requires
 a verified Cognito identity and a configured DynamoDB core table. The backend
 checks stored ownership and organization membership before reading or writing
 records. A homeowner bootstrap creates a personal organization and self
 customer atomically; brokers can create customers and leads.
+
+`DELETE /v1/properties/{propertyId}` removes the property, its locator and every
+property-scoped child record (analyses, roof previews, building confirmations,
+applications and their events, design records) after the same ownership checks.
+Cache items expire by TTL and generated design images by S3 lifecycle. A failed purge is
+logged as `PROPERTY_PURGE_INCOMPLETE` for alarming; the property is already unreachable.
 
 Phase 4 roof routes are locally implemented but have not been tested against
 live Google services:
@@ -287,7 +293,8 @@ Application responses use `DYNAMODB_APPLICATION_TRACKER_V1`. Progress is
 conflicts return `409 APPLICATION_CONFLICT`. Chat suggestions store no message
 and do not change state; a separate step request is required to save progress.
 
-Paths below are planned contracts unless listed as available above.
+Paths below mix implemented and planned contracts. Implemented: the roof routes except
+`POST /v1/solar/analyze`, which is a 501 scaffold. Planned (no route yet): `GET /v1/policies*`.
 
 ## Roof
 

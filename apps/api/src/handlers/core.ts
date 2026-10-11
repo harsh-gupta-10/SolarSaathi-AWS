@@ -13,7 +13,7 @@ export interface CoreHandlerDependencies extends ServiceDependencies {
 const routes = new Map([
   ["/v1/users/me", ["GET"]], ["/v1/users/bootstrap", ["POST"]], ["/v1/organizations/me", ["GET"]],
   ["/v1/customers", ["GET", "POST"]], ["/v1/properties", ["GET", "POST"]],
-  ["/v1/properties/{propertyId}", ["GET"]], ["/v1/leads", ["GET", "POST"]],
+  ["/v1/properties/{propertyId}", ["GET", "DELETE"]], ["/v1/leads", ["GET", "POST"]],
   ["/v1/properties/{propertyId}/analyses", ["GET"]],
 ]);
 
@@ -66,6 +66,7 @@ export function createCoreHandler(dependencies: CoreHandlerDependencies = {}) {
     if (path === "/v1/organizations/me") return jsonResponse(200, { ...response, organization: await service.getOrganization(identity) });
     if (path === "/v1/properties/{propertyId}") {
       if (!propertyId) throw new RequestError(400, "INVALID_REQUEST", "Provide a property ID.");
+      if (event.httpMethod === "DELETE") return jsonResponse(200, { ...response, ...await service.deleteProperty(identity, propertyId) });
       return jsonResponse(200, { ...response, property: await service.getProperty(identity, propertyId) });
     }
     if (path === "/v1/properties/{propertyId}/analyses") {

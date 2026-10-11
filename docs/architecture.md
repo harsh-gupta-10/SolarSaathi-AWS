@@ -154,6 +154,12 @@ Cache:
 
 Every cache has TTL/version rules.
 
+## Supporting services
+
+- AWS Secrets Manager holds the Google server key and the Brave Search key used by the policy crawler.
+- Amazon Location is used where the template configures it.
+- Server keys are resolved into Lambda environment variables at deploy time; reading them at runtime is a tracked improvement.
+
 ## Observability
 
 Every policy calculation should emit:

@@ -4,42 +4,21 @@
 SolarSaathi-AWS/
 ├── AGENTS.md
 ├── README.md
+├── amplify.yml
+├── .github/workflows/ci.yml
 ├── apps/
-│   ├── web/
-│   │   └── AGENTS.md
-│   └── api/
-│       └── AGENTS.md
+│   ├── web/            Next.js app (AGENTS.md)
+│   └── api/            Lambda handlers and services (AGENTS.md)
 ├── packages/
-│   ├── calculations/
-│   ├── types/
-│   ├── ui/
-│   └── config/
-├── infra/
-│   └── sam/
+│   ├── calculations/   deterministic solar and financial math (AGENTS.md)
+│   ├── policy/         policy schemas, ingestion, stacking engine
+│   ├── types/          shared API types (AGENTS.md)
+│   ├── ui/             shared components (AGENTS.md)
+│   └── config/         environment parsing
+├── infra/sam/          SAM template and template tests
+├── scripts/            auth readiness check, Amplify env writer
 ├── database/
 ├── public/
-└── docs/
-    ├── project.md
-    ├── phases.md
-    ├── policy-intelligence.md
-    ├── subsidy-stacking.md
-    ├── data-sources.md
-    ├── application-tracker.md
-    ├── accessories.md
-    ├── international.md
-    ├── architecture.md
-    ├── database.md
-    ├── api.md
-    ├── calculations.md
-    ├── ui.md
-    ├── aws.md
-    ├── security.md
-    ├── testing.md
-    ├── demo.md
-    ├── decisions.md
-    ├── agent.md
-    ├── commands.md
-    ├── env.md
-    ├── roadmap.md
-    └── tree.md
+└── docs/               see the list in AGENTS.md plus advisor, auth, implementation-contract,
+                        live-deployment, rooftop-designs, submission, remediation-plan, VERSION
 ```

@@ -126,7 +126,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(Object.values(events).map(event => `${event.Properties.Method} ${event.Properties.Path}`).sort()).toEqual([
       "GET /users/me", "POST /users/bootstrap", "GET /organizations/me",
       "GET /customers", "POST /customers", "GET /properties", "POST /properties",
-      "GET /properties/{propertyId}", "GET /leads", "POST /leads",
+      "GET /properties/{propertyId}", "DELETE /properties/{propertyId}", "GET /leads", "POST /leads",
       "GET /properties/{propertyId}/analyses",
     ].sort());
     expect(Object.values(events).every(event => event.Properties.Auth === undefined)).toBe(true);
@@ -138,7 +138,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(policies).toHaveLength(1);
     expect(policies[0]?.Statement).toEqual([
       expect.objectContaining({ Sid: "CoreTableItems", Effect: "Allow", Action: [
-        "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:ConditionCheckItem", "dynamodb:Query",
+        "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:ConditionCheckItem", "dynamodb:Query",
       ], Resource: "AnalysesTable.Arn" }),
       expect.objectContaining({ Sid: "CorePropertyIndexes", Effect: "Allow", Action: "dynamodb:Query", Resource: [
         "${AnalysesTable.Arn}/index/GSI1", "${AnalysesTable.Arn}/index/GSI2",

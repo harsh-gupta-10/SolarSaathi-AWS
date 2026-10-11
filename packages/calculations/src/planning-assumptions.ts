@@ -82,7 +82,10 @@ export interface IndicativeBudgetTierV1 {
   description: string;
 }
 
-/** Prevailing Indian rooftop solar benchmark ranges (pre-subsidy gross cost per kW). */
+/**
+ * Illustrative, UNSOURCED gross cost ranges per kW used only as an optional starting point in the UI. They are not a
+ * sourced price catalog and must never feed a result the user did not choose; a real quote replaces them.
+ */
 export const INDICATIVE_BUDGET_TIERS_V1: readonly IndicativeBudgetTierV1[] = Object.freeze([
   {
     id: "ECONOMY",
@@ -141,21 +144,21 @@ export function getIndicativeBudgetRangesV1(nominalKw: number): IndicativeBudget
 
 export const FINANCIAL_INPUT_PRESETS_V1 = Object.freeze({
   selfConsumption: Object.freeze([
-    { value: 90, label: "90% — Typical residential net-metering default" },
+    { value: 90, label: "90% — Mostly daytime use" },
     { value: 80, label: "80% — Moderate daytime home presence" },
     { value: 70, label: "70% — Working household (evening peak)" },
     { value: 100, label: "100% — Full self-use (heavy daytime appliances/EV)" },
   ]),
   importTariff: Object.freeze([
-    { value: 7.5, label: "₹7.50/kWh — Average domestic DISCOM tariff (Standard slab)" },
-    { value: 6.0, label: "₹6.00/kWh — Lower consumption slab" },
-    { value: 9.0, label: "₹9.00/kWh — High-tier consumption / Metro slab" },
-    { value: 11.0, label: "₹11.00/kWh — Commercial / Peak slab" },
+    { value: 7.5, label: "₹7.50/kWh — Illustrative; use the rate on your bill" },
+    { value: 6.0, label: "₹6.00/kWh — Illustrative lower rate" },
+    { value: 9.0, label: "₹9.00/kWh — Illustrative higher rate" },
+    { value: 11.0, label: "₹11.00/kWh — Illustrative commercial-scale rate" },
   ]),
   exportRate: Object.freeze([
     { value: 0, label: "₹0.00/kWh — No export credit / Self-use only (Conservative)" },
-    { value: 2.5, label: "₹2.50/kWh — Average DISCOM APPC feed-in rate" },
-    { value: 3.5, label: "₹3.50/kWh — Favorable state solar feed-in tariff" },
+    { value: 2.5, label: "₹2.50/kWh — Illustrative; confirm your DISCOM export credit" },
+    { value: 3.5, label: "₹3.50/kWh — Illustrative higher export credit" },
   ]),
   maintenance: Object.freeze([
     { value: 0, label: "₹0/yr — Covered by installer warranty / 5-yr free AMC" },

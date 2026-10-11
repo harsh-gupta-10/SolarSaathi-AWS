@@ -94,14 +94,14 @@ export function FinancialEstimator({ propertyId, analysisId, demand, generationK
           className="financial-preset-chip"
           onClick={applyStandardDefaults}
         >
-          Apply standard Indian residential benchmarks (₹{budgetRanges.find(r => r.tier === "STANDARD")?.typicalTotalRupees.toLocaleString("en-IN") ?? "typical"} · 90% self-use · ₹7.50 tariff · ₹0 export · ₹0 AMC)
+          Fill with illustrative planning values, not sourced figures (₹{budgetRanges.find(r => r.tier === "STANDARD")?.typicalTotalRupees.toLocaleString("en-IN") ?? "typical"} · 90% self-use · ₹7.50 tariff · ₹0 export · ₹0 AMC)
         </button>
       </div>
       <div className="financial-input-grid">
         <div>
           <Label htmlFor="financial-system">System candidate</Label>
           <select id="financial-system" value={nominal} onChange={event => change(() => { setNominal(event.target.value); setQuote(""); setBudgetTier(""); })} aria-describedby="financial-system-help">{selectable.map(candidate => <option key={candidate.nominalKw} value={candidate.nominalKw}>{candidate.nominalKw} kW nominal · {candidate.panelCount} panels{candidate.nominalKw === recommendedNominalKw ? " · recommended" : ""}</option>)}</select>
-          <p id="financial-system-help">A new size recalculates indicative budget ranges. The backend checks roof fit again.</p>
+          <p id="financial-system-help">A new size recalculates the illustrative budget ranges. The ranges and presets are unsourced planning aids; replace them with your installer quote and electricity bill. The backend checks roof fit again.</p>
         </div>
         <div>
           <Label htmlFor="financial-quote">Gross installed quote or planning estimate for this size (₹)</Label>

@@ -61,15 +61,6 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
       .finally(() => { if (request.current === controller) { request.current = null; setBusy(false); } });
   }
 
-  function fillSampleDemand() {
-    change(() => {
-      setBasis("CONSUMPTION");
-      setConsumption("350");
-      setYieldFactor("1500");
-      setSanctionedLoad("5");
-    });
-  }
-
   return <section className="system-designer" aria-labelledby="system-designer-title">
     <div className="system-designer-heading">
       <div>
@@ -79,15 +70,6 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
       </div>
       <div className="flex flex-col items-end gap-2">
         <BarChart3 size={28} aria-hidden="true" />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="text-xs font-semibold text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
-          onClick={fillSampleDemand}
-        >
-          ⚡ Fill Sample Bill (350 kWh)
-        </Button>
       </div>
     </div>
     <form onSubmit={submit} noValidate className="system-designer-form">
