@@ -312,3 +312,16 @@ P0–P2 (UI) and P3 (backend) can run in parallel. P4 depends on P2 and P3. P6 a
 - **P4 chat UI:** done against the contract in `docs/chat-api-contract.md` (stream client, state reducer, cards,
   proposals, pinned summary, hero hand-off). It activates when `NEXT_PUBLIC_CHAT_STREAM_URL` is set.
 - **P8 shell:** navigation reduced to 5 plus "More tools"; sign-in links return users to the page they were on.
+
+## Deployment status (2026-10-11)
+
+- **Deployed to dev:** API stack `solarsaathi-dev` (chat Function URL, chat/price REST routes, Bedrock Guardrail `ChatGuardrail`) and the
+  web app (Amplify build 8) with `NEXT_PUBLIC_CHAT_STREAM_URL` set to the `ChatStreamUrl` output. Gates: `pnpm check` green (958 tests).
+- **Blocked outside the code:** Bedrock returns `ValidationException: Operation not allowed` for every Anthropic model in this account
+  (checked Opus 5.5, Sonnet 5.5, Haiku 5.5, Opus 4.8, Sonnet 4.6, Haiku 4.5 through the `global.` inference profiles). The account needs Bedrock
+  model access or Anthropic use-case approval before the assistant can answer. Until then chat turns return a model-unavailable message.
+- **Config used:** `AdvisorBedrockModelId=global.anthropic.claude-opus-5-5`, matching profile ARN, and foundation-model ARN
+  `arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-5-5`.
+- **Not configured:** `BraveSearchKeySecretArn` (price research reports itself unavailable), no approved price benchmarks (quotes stay `UNAVAILABLE`).
+- **Unverified against live Bedrock:** Opus 5.5 effort field name (`CHAT_MODEL_REQUEST_FIELDS`), prompt-cache checkpoints, guardrail streaming mode and regex support.
+- **Not built:** installer-quote upload and comparison (P8), WAF, full split of `analyze-start.tsx`, pruning of unused marketing CSS.
