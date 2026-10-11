@@ -4,22 +4,27 @@
 and eligible benefits from current verified rules, follow the application
 steps, and explore the remaining roof space.
 
-## Current evidence (2026-10-09)
+## Current evidence (2026-10-11)
 
-SolarSaathi has a locally implemented application and an AWS SAM template. The
-repository is private at `harsh-gupta-10/SolarSaathi-AWS`, on `main`. GitHub
-Actions runs `pnpm check`, SAM validation and SAM build on pushes and pull
-requests. Local Phase 20 checks passed 839 tests, lint, typechecking, API/PDF
-smoke and production builds. These are source and fixture checks, not proof of
-a deployed service. Check the Actions result for the exact submission commit;
-do not reuse a prior commit's green badge.
+SolarSaathi is deployed as a development environment on AWS (`ap-south-1`): Amplify
+Hosting serves the Next.js app, and the `solarsaathi-dev` CloudFormation stack runs
+Cognito, API Gateway, Lambda, DynamoDB and S3. See [live-deployment.md](live-deployment.md)
+for the URLs and the verified smoke checks. The repository is public at
+`harsh-gupta-10/SolarSaathi-AWS`; GitHub Actions runs `pnpm check`, SAM validation
+and SAM build on every push (851 tests at the last audit).
 
-No SolarSaathi AWS stack, Amplify site, Cognito pool, Google project, live policy
-corpus or Bedrock model has been verified in this workspace. The AWS CLI session
-was expired at the last read-only check, and the local gcloud configuration had
-no active project. No cloud deployment or successful cloud resource read was
-made for this runbook. Do not present a local fixture as live policy data or
-an AWS-backed demo.
+Known limits, stated plainly:
+
+- The official-source policy catalog has not been published through the two-person
+  admin workflow yet, so the live app fails closed: it shows "No verified subsidy
+  rule is published for your area yet" instead of a number. Subsidy amounts appear
+  only in the labelled fixture demo (`/demo/*`), never as live policy.
+- Amazon Bedrock refuses every model in this AWS account, so chat runs on an
+  OpenAI provider with the key in AWS Secrets Manager. Bedrock stays the default
+  and is not removed.
+- Google Maps, Geocoding and Solar APIs are external integrations.
+
+Do not present a local fixture as live policy data.
 
 ## Choose the presentation mode
 

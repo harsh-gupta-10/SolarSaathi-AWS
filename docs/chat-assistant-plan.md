@@ -338,7 +338,7 @@ P0–P2 (UI) and P3 (backend) can run in parallel. P4 depends on P2 and P3. P6 a
 returns "You have not filled out the request form". The account has not submitted the Anthropic use-case form, so
 every Claude call fails with `ValidationException: Operation not allowed`. No code change can fix this.
 
-### Owner steps (AWS console, account 944311261347)
+### Owner steps (AWS console, account <AWS_ACCOUNT_ID>)
 1. Sign in to the AWS console, region **Asia Pacific (Mumbai) ap-south-1**, open **Amazon Bedrock**.
 2. Open **Model catalog**, pick **Claude Sonnet 5.5** (Anthropic), and choose **Request access** / **Submit use case
    details**. Fill in the Anthropic use-case form: company, website (the Amplify URL), intended use (a rooftop-solar
@@ -366,7 +366,7 @@ OVERRIDES=$(aws cloudformation describe-stacks --region ap-south-1 --stack-name 
 eval sam deploy --stack-name solarsaathi-dev --region ap-south-1 --resolve-s3 \
   --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --parameter-overrides "$OVERRIDES" \
   AdvisorBedrockModelId=global.anthropic.claude-sonnet-5-5 \
-  AdvisorBedrockModelArn=arn:aws:bedrock:ap-south-1:944311261347:inference-profile/global.anthropic.claude-sonnet-5-5 \
+  AdvisorBedrockModelArn=arn:aws:bedrock:ap-south-1:<AWS_ACCOUNT_ID>:inference-profile/global.anthropic.claude-sonnet-5-5 \
   AdvisorBedrockFoundationModelArn='arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5-5'
 ```
 Review the change set before confirming. The advisor function shares these parameters and also switches to Sonnet 5.5.
@@ -386,7 +386,7 @@ Review the change set before confirming. The advisor function shares these param
 `openai.gpt-6.1-sol`) instead of Claude. It stays on AWS and the same Converse API, so no code change is needed: the model
 is only a deploy parameter. The advisor function shares these parameters and switches too.
 
-**Finding (checked 2026-10-11, account 944311261347, ap-south-1): this does not remove the block.** A real `converse` call
+**Finding (checked 2026-10-11, account <AWS_ACCOUNT_ID>, ap-south-1): this does not remove the block.** A real `converse` call
 to `global.openai.gpt-6.1-sol` fails with `ValidationException: Operation not allowed`, exactly like Claude. So do
 `openai.gpt-oss-120b-1:0`, `global.openai.gpt-6-sol`, `global.openai.gpt-5.5` and the Amazon Nova models
 (`amazon.nova-lite-v1:0`, `global.amazon.nova-2-lite-v1:0`). Because even Amazon's own models are refused, the cause is
@@ -404,7 +404,7 @@ aws bedrock-runtime converse --region ap-south-1 --model-id global.openai.gpt-6.
 **Redeploy parameters** (same procedure as above; only the three model values change):
 ```
 AdvisorBedrockModelId=global.openai.gpt-6.1-sol
-AdvisorBedrockModelArn=arn:aws:bedrock:ap-south-1:944311261347:inference-profile/global.openai.gpt-6.1-sol
+AdvisorBedrockModelArn=arn:aws:bedrock:ap-south-1:<AWS_ACCOUNT_ID>:inference-profile/global.openai.gpt-6.1-sol
 AdvisorBedrockFoundationModelArn='arn:aws:bedrock:*::foundation-model/openai.gpt-6.1-sol'
 ```
 Untested with this model once access works: tool calling and the guardrail on GPT-6.1 Sol, and prompt caching (the code

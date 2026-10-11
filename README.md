@@ -51,7 +51,7 @@ Current policy values are never treated as permanent constants. A crawler detect
 - **Live Web Application**: [https://main.d12c230dem2g5h.amplifyapp.com](https://main.d12c230dem2g5h.amplifyapp.com)
 - **Guided Demo Walkthrough**: [https://main.d12c230dem2g5h.amplifyapp.com/demo](https://main.d12c230dem2g5h.amplifyapp.com/demo)
 - **Live API Endpoint (v1)**: `https://ii1kh7hhb8.execute-api.ap-south-1.amazonaws.com/v1`
-- **AWS Infrastructure**: Deployed in `ap-south-1` (Account `944311261347`) via CloudFormation stack `solarsaathi-dev` (DynamoDB single-table, Cognito User Pool with managed login, and API Gateway + Lambda backend) and AWS Amplify Hosting app `d12c230dem2g5h` (`WEB_COMPUTE` on branch `main`).
+- **AWS Infrastructure**: Deployed in `ap-south-1` (Account `<AWS_ACCOUNT_ID>`) via CloudFormation stack `solarsaathi-dev` (DynamoDB single-table, Cognito User Pool with managed login, and API Gateway + Lambda backend) and AWS Amplify Hosting app `d12c230dem2g5h` (`WEB_COMPUTE` on branch `main`).
 - **Google Cloud Platform**: Project `solarsaathi-india-20261009` with active Maps JavaScript, Geocoding, and Solar APIs.
 - **Deployment Details & Audit**: See [docs/live-deployment.md](docs/live-deployment.md) for full deployment records and smoke check results.
 

@@ -13,3 +13,17 @@ coverage/
 *.tsbuildinfo
 google-cloud-sdk/
 .agents/skills/
+
+# Local-only: hackathon submission drafts, editor/agent state, secrets, OS junk
+submission/
+.claude/
+.vscode/
+.idea/
+.next/
+out/
+*.pem
+*.key
+.aws/
+cdk.out/
+samconfig.toml
+Thumbs.db

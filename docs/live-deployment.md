@@ -7,7 +7,7 @@ launch or a verified India subsidy catalog.
 
 | Service | Development target |
 | --- | --- |
-| AWS | Account `944311261347`, `ap-south-1` |
+| AWS | Account `<AWS_ACCOUNT_ID>`, `ap-south-1` |
 | CloudFormation | `solarsaathi-dev` (`CREATE_COMPLETE`) |
 | Amplify Hosting | App `d12c230dem2g5h`, `main`, `WEB_COMPUTE` |
 | Website | `https://main.d12c230dem2g5h.amplifyapp.com` |
