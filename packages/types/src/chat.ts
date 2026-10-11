@@ -78,12 +78,12 @@ export type ChatStreamEvent =
   | { type: "quick_replies"; replies: ChatQuickReply[] }
   | { type: "proposal"; proposal: ChatProposal }
   | { type: "grounding"; replaced: number }   // ungrounded figures were removed from model text
-  | { type: "error"; code: ChatErrorCode; message: string }
+  | { type: "error"; code: ChatErrorCode; message: string; requestId?: string } // requestId lets support find the CloudWatch log line
   | { type: "done"; usage?: { inputTokens: number; outputTokens: number } };
 
 export type ChatErrorCode =
   | "UNAUTHENTICATED" | "RATE_LIMITED" | "BUDGET_EXCEEDED" | "GUARDRAIL_BLOCKED"
-  | "MODEL_UNAVAILABLE" | "MODEL_REFUSED" | "TOOL_FAILED" | "INVALID_REQUEST" | "INTERNAL";
+  | "MODEL_UNAVAILABLE" | "MODEL_ACCESS_DENIED" | "MODEL_TIMEOUT" | "MODEL_BUSY" | "MODEL_REFUSED" | "TOOL_FAILED" | "INVALID_REQUEST" | "INTERNAL";
 
 export interface ChatStreamRequest {
   chatId?: string;              // omit to start a new chat

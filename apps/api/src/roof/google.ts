@@ -54,6 +54,7 @@ export class GoogleRoofClient {
     const url = new URL("https://solar.googleapis.com/v1/buildingInsights:findClosest");
     url.search = new URLSearchParams({
       "location.latitude": String(location.latitude), "location.longitude": String(location.longitude),
+      // BASE is a minimum: Google returns HIGH or MEDIUM imagery whenever it exists, so one call gets the best quality.
       requiredQuality: "BASE", key: this.solarKey,
     }).toString();
     return request(this.fetcher, url, "Roof lookup is temporarily unavailable. Try again later or enter roof measurements manually.", true);

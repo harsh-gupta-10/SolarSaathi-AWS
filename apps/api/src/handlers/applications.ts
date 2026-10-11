@@ -1,6 +1,7 @@
 import type { APIGatewayProxyEvent } from "aws-lambda";
 import { createCognitoIdentityResolver, type CognitoIdentityResolver } from "../auth/cognito";
 import { currentIdentityResponse } from "../auth/profile";
+import { S3ApplicationDocumentStore, type ApplicationDocumentStore } from "../applications/documents";
 import { ApplicationService } from "../applications/service";
 import { DynamoApplicationRepository, type ApplicationRepository } from "../applications/storage";
 import { BenefitsService } from "../benefits/service";
@@ -22,15 +23,21 @@ export interface ApplicationsHandlerDependencies extends ServiceDependencies {
   createPublication?: (tableName: string, region: string) => PolicyPublicationRepository;
   createApplications?: (coreTable: string, policyTable: string, region: string) => ApplicationRepository;
   createItems?: (tableName: string, region: string) => ItemTable;
+  createDocumentStore?: (bucket: string, region: string) => ApplicationDocumentStore;
 }
 
-type Route = { kind: "collection" | "detail" | "step" | "details" | "documents" | "events" | "chat-update";
-  applicationId?: string; stepId?: string };
+type Route = { kind: "collection" | "detail" | "step" | "details" | "documents" | "document" | "document-confirm" |
+  "document-download" | "events" | "chat-update"; applicationId?: string; stepId?: string; documentId?: string };
 function route(event: APIGatewayProxyEvent): Route {
   const stage = event.requestContext?.stage;
   const relative = stage && event.path.startsWith(`/${stage}/`) ? event.path.slice(stage.length + 1) : event.path;
   const path = relative.startsWith("/v1/") ? relative : `/v1${relative}`;
   if (path === "/v1/applications") return { kind: "collection" };
+  const document = /^\/v1\/applications\/([^/]+)\/documents\/([^/]+)(?:\/(confirm|download))?$/.exec(path);
+  if (document) {
+    return { kind: document[3] === "confirm" ? "document-confirm" : document[3] === "download" ? "document-download" : "document",
+      applicationId: document[1], documentId: document[2] };
+  }
   const match = /^\/v1\/applications\/([^/]+)(?:\/(steps\/([^/]+)|details|documents|events|chat-update))?$/.exec(path);
   if (!match) throw new RequestError(404, "NOT_FOUND", "The requested endpoint was not found.");
   const suffix = match[2];
@@ -60,7 +67,8 @@ export function createApplicationsHandler(dependencies: ApplicationsHandlerDepen
   return withRequestLogging(async (event, context, environment) => {
     const selected = route(event);
     const allowed = selected.kind === "collection" ? ["GET", "POST"] :
-      selected.kind === "detail" || selected.kind === "events" ? ["GET"] : ["POST"];
+      selected.kind === "detail" || selected.kind === "events" || selected.kind === "document-download" ? ["GET"] :
+        selected.kind === "document" ? ["DELETE"] : ["POST"];
     if (!allowed.includes(event.httpMethod)) throw new RequestError(405, "METHOD_NOT_ALLOWED", "Use a supported method for this endpoint.");
     if (!environment.CORE_TABLE_NAME || !process.env.POLICY_TABLE_NAME) {
       throw new RequestError(503, "APPLICATION_STORAGE_NOT_CONFIGURED", "Application tracking is not configured.");
@@ -78,8 +86,11 @@ export function createApplicationsHandler(dependencies: ApplicationsHandlerDepen
     const makeApplications = dependencies.createApplications ?? ((coreTable, policyName, region) =>
       new DynamoApplicationRepository(coreTable, policyName, region));
     const repository = makeApplications(environment.CORE_TABLE_NAME, policyTable, environment.AWS_REGION);
+    const documentBucket = process.env.APPLICATION_DOCUMENT_BUCKET;
+    const documentStore = documentBucket ? (dependencies.createDocumentStore ?? ((bucket, region) =>
+      new S3ApplicationDocumentStore(bucket, region)))(documentBucket, environment.AWS_REGION) : undefined;
     const service = new ApplicationService(core, new BenefitsService(core, records, workflow, publication, dependencies.now),
-      publication, repository, dependencies.now, dependencies.createId);
+      publication, repository, dependencies.now, dependencies.createId, documentStore);
     const common = { schemaVersion: 1 as const, source: "DYNAMODB_APPLICATION_TRACKER_V1" as const,
       requestId: context.awsRequestId };
     if (selected.kind === "collection") {
@@ -99,17 +110,40 @@ export function createApplicationsHandler(dependencies: ApplicationsHandlerDepen
       const options = query(event, false);
       return jsonResponse(200, { ...common, application: await service.get(identity, options.propertyId, applicationId) });
     }
+    if (selected.kind === "document-download") {
+      const options = query(event, false);
+      return jsonResponse(200, { ...common, download: await service.documentDownload(identity, options.propertyId,
+        applicationId, selected.documentId!) });
+    }
     if (selected.kind === "events") {
       const options = query(event, true);
       return jsonResponse(200, { ...common, ...await service.events(identity, options.propertyId, applicationId, options.limit, options.cursor) });
+    }
+    if (selected.kind === "document") {
+      const values = event.queryStringParameters ?? {};
+      const multiple = event.multiValueQueryStringParameters ?? {};
+      if (Object.keys(values).some(name => name !== "propertyId" && name !== "expectedRevision") ||
+        Object.values(multiple).some(list => !list || list.length !== 1) ||
+        !values.propertyId || !/^[1-9][0-9]{0,8}$/.test(values.expectedRevision ?? "")) {
+        throw new RequestError(400, "INVALID_REQUEST", "Provide a property ID and the expected revision.");
+      }
+      return jsonResponse(200, { ...common, application: await service.deleteDocument(identity, applicationId,
+        selected.documentId!, { propertyId: values.propertyId, expectedRevision: Number(values.expectedRevision) }) });
     }
     const body = parseJsonObject(event);
     if (selected.kind === "chat-update") {
       return jsonResponse(200, { ...common, ...await service.chatUpdate(identity, applicationId, body) });
     }
+    if (selected.kind === "documents") {
+      // The upload URL is returned only to the caller and is never logged.
+      return jsonResponse(200, { ...common, ...await service.addDocument(identity, applicationId, body) });
+    }
+    // A reissued upload URL (confirm with reissueUpload) is returned only to the caller and is never logged.
+    if (selected.kind === "document-confirm") {
+      return jsonResponse(200, { ...common, ...await service.confirmDocument(identity, applicationId, selected.documentId!, body) });
+    }
     const application = selected.kind === "step" ? await service.transition(identity, applicationId, selected.stepId!, body) :
-      selected.kind === "details" ? await service.updateDetails(identity, applicationId, body) :
-        await service.addDocument(identity, applicationId, body);
+      await service.updateDetails(identity, applicationId, body);
     return jsonResponse(200, { ...common, application });
   });
 }

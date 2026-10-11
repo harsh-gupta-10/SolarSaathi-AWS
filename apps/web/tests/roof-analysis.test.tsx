@@ -14,19 +14,20 @@ const mapEnvironment = vi.hoisted(() => ({ key: undefined as string | undefined 
 const api = vi.hoisted(() => ({
   bootstrap: vi.fn(), createCustomer: vi.fn(), createProperty: vi.fn(), geocode: vi.fn(),
   insights: vi.fn(), confirmBuilding: vi.fn(), confirmRoof: vi.fn(), confirmManualRoof: vi.fn(),
+  latestAnalysisId: vi.fn(), analysis: vi.fn(),
 }));
 const broker = vi.hoisted(() => ({ property: vi.fn() }));
 vi.mock("../src/auth/auth-provider", () => ({ useAuth: () => identity }));
 vi.mock("../src/lib/roof-api", () => ({ roofApi: api, RoofRequestError: class extends Error {} }));
 vi.mock("../src/lib/broker-api", () => ({ brokerApi: broker }));
 vi.mock("../src/lib/env", () => ({ getPublicEnvironment: () => ({ NEXT_PUBLIC_GOOGLE_MAPS_KEY: mapEnvironment.key }) }));
-vi.mock("../src/components/satellite-building-map", () => ({ SatelliteBuildingMap: ({ center, deviceLocation, roofBounds, onPointChange }: {
+vi.mock("../src/components/satellite-building-map", () => ({ SatelliteBuildingMap: ({ center, deviceLocation, roof, onPointChange }: {
   center: { latitude: number; longitude: number };
   deviceLocation?: { point: { latitude: number; longitude: number }; accuracyMeters: number };
-  roofBounds?: object;
+  roof?: { bounds?: object };
   onPointChange: (point: { latitude: number; longitude: number }) => void;
 }) => <div data-testid="satellite-map" data-center={JSON.stringify(center)} data-device={JSON.stringify(deviceLocation)}
-  data-overlay={Boolean(roofBounds)}><button onClick={() => onPointChange({ latitude: 19.07601, longitude: 72.87771 })}>Select house on map</button></div> }));
+  data-overlay={Boolean(roof?.bounds)}><button onClick={() => onPointChange({ latitude: 19.07601, longitude: 72.87771 })}>Select house on map</button></div> }));
 
 const roof = { schemaVersion: 1, source: "GOOGLE_SOLAR", measuredAt: "2026-10-08T10:00:00.000Z",
   roofAreaSquareMeters: 42, segmentCount: 1, segments: [{ segmentId: "roof-1", areaSquareMeters: 42 }],
@@ -35,6 +36,7 @@ const candidate = { placeId: "place-1", address: "Example Road, Mumbai 400001",
   location: { latitude: 19.076, longitude: 72.8777 }, locationType: "ROOFTOP", partialMatch: false };
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/app/analyze");
   window.history.replaceState({}, "", "/app/analyze");
   mapEnvironment.key = undefined;
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => null);
@@ -57,6 +59,28 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("roof analysis flow", () => {
+  it("keeps the saved property and analysis in the address bar and reopens them after a reload", async () => {
+    const user = userEvent.setup();
+    api.createProperty.mockResolvedValue("property-9");
+    const first = render(<AnalyzeStart />);
+    await screen.findByText(candidate.address);
+    await user.click(screen.getByRole("button", { name: "Enter roof measurements manually" }));
+    await user.type(screen.getByLabelText("Roof surface area (m²)"), "35");
+    await user.click(screen.getByRole("button", { name: "Confirm and save my measurements" }));
+    await screen.findByText("Roof measurements saved");
+    expect(window.location.search).toBe("?propertyId=property-9&analysisId=analysis-2");
+    expect((screen.getByRole("button", { name: /System size/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: /Cost & savings/ }) as HTMLButtonElement).disabled).toBe(true);
+    first.unmount();
+
+    broker.property.mockResolvedValueOnce({ propertyId: "property-9", customerId: "customer-1", label: "Home", address: candidate.address });
+    api.analysis.mockResolvedValueOnce(await api.confirmManualRoof.mock.results[0]!.value);
+    render(<AnalyzeStart />);
+    await screen.findByText("Roof measurements saved");
+    expect(api.analysis).toHaveBeenCalledWith("property-9", "analysis-2", expect.any(AbortSignal));
+    expect(api.createProperty).toHaveBeenCalledTimes(1);
+  });
+
   it("uses an owned saved property link without creating a duplicate customer or property", async () => {
     window.history.replaceState({}, "", "/app/analyze?propertyId=property-1");
     identity.profile = { userId: "broker-1", cognitoSub: "broker-1", email: "broker@example.com", name: "Broker", role: "BROKER" };

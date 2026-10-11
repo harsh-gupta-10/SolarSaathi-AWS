@@ -23,7 +23,7 @@ export async function* handleChatTurn(runtime: ChatRuntime, client: BedrockStrea
   const input = parsed.data;
   const decision = await runtime.limits.startTurn(userId);
   if (!decision.allowed) { yield { type: "error", code: decision.code!, message: decision.message! }; return; }
-  if (!client || !config) { yield { type: "error", code: "MODEL_UNAVAILABLE", message: "The assistant is not configured yet." }; return; }
+  if (!client || !config) { yield { type: "error", code: "MODEL_ACCESS_DENIED", message: "The assistant is not configured in this deployment yet.", requestId: request.requestId }; return; }
 
   const masked = maskSensitive(input.message);
   const reply = input.reply ? { cardId: input.reply.cardId, value: maskSensitive(input.reply.value).text } : undefined;
@@ -57,10 +57,11 @@ export async function* handleChatTurn(runtime: ChatRuntime, client: BedrockStrea
   } catch (error) {
     if (error instanceof RequestError) {
       yield { type: "error", code: error.statusCode === 404 || error.statusCode === 400 || error.statusCode === 409 ? "INVALID_REQUEST" : "INTERNAL",
-        message: error.message };
+        message: error.message, requestId: request.requestId };
     } else {
-      console.error(JSON.stringify({ event: "chat_turn_failed", requestId: request.requestId, name: error instanceof Error ? error.name : "unknown" }));
-      yield { type: "error", code: "INTERNAL", message: "Something went wrong. Please try again." };
+      console.error(JSON.stringify({ event: "chat_turn_failed", requestId: request.requestId, name: error instanceof Error ? error.name : "unknown",
+        message: error instanceof Error ? error.message.slice(0, 300) : undefined }));
+      yield { type: "error", code: "INTERNAL", message: "Something went wrong. Please try again.", requestId: request.requestId };
     }
   }
 }

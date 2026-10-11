@@ -169,7 +169,7 @@ Resources:
       Cors:
         AllowOrigin: !Sub "'${ApplicationOrigin}'"
         AllowHeaders: "'Content-Type,Authorization,Idempotency-Key'"
-        AllowMethods: "'GET,POST,DELETE,PATCH,OPTIONS'"
+        AllowMethods: "'GET,POST,PUT,DELETE,PATCH,OPTIONS'"
       GatewayResponses:
         DEFAULT_4XX:
           ResponseParameters:
@@ -851,6 +851,7 @@ Resources:
         Variables:
           CORE_TABLE_NAME: !Ref AnalysesTable
           POLICY_TABLE_NAME: !Ref PolicyTable
+          APPLICATION_DOCUMENT_BUCKET: !Ref ApplicationDocumentBucket
       Policies:
         - Statement:
             - Sid: ReadOwnedApplicationRecords
@@ -911,6 +912,19 @@ Resources:
               Effect: Allow
               Action: dynamodb:Query
               Resource: !Sub "${PolicyTable.Arn}/index/GSI5"
+            # Presigned upload/download URLs act with these permissions; keys are server-built under applications/.
+            - Sid: ApplicationDocumentObjects
+              Effect: Allow
+              Action: [s3:PutObject, s3:GetObject, s3:DeleteObject]
+              Resource: !Sub "${ApplicationDocumentBucket.Arn}/applications/*"
+            # Lets HeadObject report a missing upload as 404 instead of 403.
+            - Sid: ApplicationDocumentMissingObjectCheck
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt ApplicationDocumentBucket.Arn
+              Condition:
+                StringLike:
+                  "s3:prefix": ["applications/*"]
       Events:
         CreateApplication:
           Type: Api
@@ -936,6 +950,15 @@ Resources:
         ApplicationChatUpdate:
           Type: Api
           Properties: { RestApiId: !Ref Api, Path: "/applications/{applicationId}/chat-update", Method: POST }
+        ApplicationDocumentConfirm:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/applications/{applicationId}/documents/{documentId}/confirm", Method: POST }
+        ApplicationDocumentDownload:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/applications/{applicationId}/documents/{documentId}/download", Method: GET }
+        ApplicationDocumentDelete:
+          Type: Api
+          Properties: { RestApiId: !Ref Api, Path: "/applications/{applicationId}/documents/{documentId}", Method: DELETE }
 
   PolicyFunction:
     Type: AWS::Serverless::Function
@@ -1204,7 +1227,7 @@ Resources:
         why: Serves authenticated account, customer, property and lead operations through the shared core table, including owner-checked property deletion.
         must:
           - Keep the Cognito authorizer on every core route and enforce ownership in backend code.
-          - Grant access only to the core table and its two property lookup indexes.
+          - Grant access only to the core table and its two property lookup indexes, plus delete-only access to application documents for property deletion.
     Properties:
       Handler: handlers/core.handler
       CodeUri: ../../apps/api/dist
@@ -1213,8 +1236,14 @@ Resources:
       Environment:
         Variables:
           CORE_TABLE_NAME: !Ref AnalysesTable
+          APPLICATION_DOCUMENT_BUCKET: !Ref ApplicationDocumentBucket
       Policies:
         - Statement:
+            # Property deletion also deletes the property's uploaded application files. Delete only, documents prefix only.
+            - Sid: CorePropertyDocumentPurge
+              Effect: Allow
+              Action: s3:DeleteObject
+              Resource: !Sub "${ApplicationDocumentBucket.Arn}/applications/*"
             - Sid: CoreTableItems
               Effect: Allow
               Action:
@@ -1300,6 +1329,24 @@ Resources:
             RestApiId: !Ref Api
             Path: /properties/{propertyId}/analyses
             Method: GET
+        GetPropertyAnalysis:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /properties/{propertyId}/analyses/{analysisId}
+            Method: GET
+        GetAnalysisDraft:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /properties/{propertyId}/analyses/{analysisId}/draft
+            Method: GET
+        SaveAnalysisDraft:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /properties/{propertyId}/analyses/{analysisId}/draft
+            Method: PUT
         ListLeads:
           Type: Api
           Properties:
@@ -2087,6 +2134,66 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # Private applicant documents (ID, bill, bank proof). Policy: docs/security.md "Application document uploads".
+  ApplicationDocumentBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+          - Id: ExpireApplicantDocuments
+            Status: Enabled
+            Prefix: applications/
+            ExpirationInDays: 365
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: [!Ref ApplicationOrigin]
+            AllowedMethods: [PUT, GET]
+            AllowedHeaders: [content-type]
+            MaxAge: 300
+      Tags:
+        - Key: Project
+          Value: SolarSaathi
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: DataClassification
+          Value: PersonalDocuments
+
+  ApplicationDocumentBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ApplicationDocumentBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt ApplicationDocumentBucket.Arn
+              - !Sub "${ApplicationDocumentBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
   DesignAssetBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -2230,6 +2337,9 @@ Outputs:
   DesignAssetBucketName:
     Description: Private short-lived inspirational design image bucket.
     Value: !Ref DesignAssetBucket
+  ApplicationDocumentBucketName:
+    Description: Private applicant document bucket (365-day expiry).
+    Value: !Ref ApplicationDocumentBucket
   CognitoUserPoolId:
     Description: Public user pool identifier for frontend configuration.
     Value: !Ref UserPool

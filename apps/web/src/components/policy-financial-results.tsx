@@ -1,5 +1,6 @@
 import { ArrowUpRight, CircleHelp, ShieldAlert } from "lucide-react";
 import type { PolicyFinancialEstimateResponse } from "../lib/policy-financial-api";
+import { explainPolicyReasons } from "../lib/policy-reasons";
 
 const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const years = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 });
@@ -25,12 +26,16 @@ function PolicySources({ response, asOfSnapshot = false, demo = false }: { respo
 
 export function PolicyFinancialResults({ response, asOfSnapshot = false, demo = false }: { response: PolicyFinancialEstimateResponse; asOfSnapshot?: boolean; demo?: boolean }) {
   const projection = response.projection;
-  if (!projection) return <section className="policy-financial-unavailable" role="status" aria-labelledby="policy-financial-unavailable-title">
-    <ShieldAlert size={25} aria-hidden="true" /><div><h4 id="policy-financial-unavailable-title">Policy-adjusted estimate unavailable</h4>
-      <p>The base cash flow remains available above. {asOfSnapshot ? "No benefit in this saved evaluation could be modeled as an upfront deduction from the quote." : "No current, confirmed benefit can be modeled as an upfront deduction from this quote."} Adjusted net cost and payback are not shown.</p>
-      {response.reasonCodes?.includes("NO_UPFRONT_MODELABLE_BENEFITS") && <p>Other selected benefits may exist, but their form or timing cannot be represented as an upfront cost reduction. See the rule decisions below.</p>}
-      {response.benefits.result && <p>Reviewed rule decisions are available below. Coverage may still be incomplete.</p>}
-    </div></section>;
+  if (!projection) {
+    const explanations = explainPolicyReasons([...(response.reasonCodes ?? []), ...(response.benefits.reasonCodes ?? [])]);
+    return <section className="policy-financial-unavailable" role="status" aria-labelledby="policy-financial-unavailable-title">
+      <ShieldAlert size={25} aria-hidden="true" /><div><h4 id="policy-financial-unavailable-title">{explanations[0]?.title ?? "Subsidy-adjusted estimate not available"}</h4>
+        {explanations.length > 0 ? explanations.map(item => <p key={item.code}>{explanations[0] === item ? "" : <><strong>{item.title}.</strong> </>}{item.text}{item.action ? ` ${item.action}` : ""}</p>)
+          : <p>{asOfSnapshot ? "No benefit in this saved evaluation could be shown as a reduction of the quote." : "No current, confirmed benefit can be shown as a reduction of this quote."}</p>}
+        <p>Your savings estimate without subsidies is still shown above. A cost after subsidy and payback with subsidy are not shown.</p>
+        {response.benefits.result && <p>The rule-by-rule decisions are below. Coverage may still be incomplete.</p>}
+      </div></section>;
+  }
 
   const missingCoverage = !projection.coverageComplete;
   const missingFacts = projection.warnings.includes("BENEFIT_AMOUNT_UNKNOWN");

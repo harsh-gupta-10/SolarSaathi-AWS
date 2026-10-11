@@ -29,7 +29,10 @@ function storageKey(userId: string): string {
 export function clearStoredProperties(): void {
   if (typeof window === "undefined") return;
   try {
-    for (const key of Object.keys(localStorage)) if (key.startsWith(`${STORAGE_PREFIX}.`)) localStorage.removeItem(key);
+    // Analysis form drafts (lib/analysis-draft.tsx) hold personal answers too and go with the property cache.
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith(`${STORAGE_PREFIX}.`) || key.startsWith("solarsaathi.draft.v1.")) localStorage.removeItem(key);
+    }
   } catch { /* storage unavailable */ }
 }
 

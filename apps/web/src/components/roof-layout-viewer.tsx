@@ -2,9 +2,9 @@
 
 import dynamic from "next/dynamic";
 import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Box, Compass, Grid, Maximize2, Minus, Plus, RotateCcw, RotateCw } from "lucide-react";
+import { Box, Compass, Maximize2, Minus, Plus, RotateCcw, RotateCw } from "lucide-react";
 import { Button } from "@solarsaathi/ui";
-import { getRoofLayoutAssumptionsV1, planRoofLayout, type RoofLayout, type RoofLayoutAssumptions, type RoofLayoutCorners, type RoofLayoutPanel } from "@solarsaathi/calculations";
+import { getRoofLayoutAssumptionsV1, planRoofLayout, type RoofLayout } from "@solarsaathi/calculations";
 import type { NormalizedRoofV1 } from "@solarsaathi/types";
 import type { ViewCommand } from "./roof-layout-scene";
 import { roofLayoutWarningText } from "../lib/roof-layout-copy";
@@ -31,177 +31,6 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
   }
 }
 
-/**
- * Organizes scattered/zigzag solar panel suggestions into a professional, cohesive,
- * building-aligned solar array (e.g. 2x3 or 3x2 aligned grid for 6 panels).
- */
-function buildAlignedProfessionalLayout(layout: RoofLayout, assumptions: RoofLayoutAssumptions): RoofLayout {
-  if (!layout.segments.length || !layout.panels.length) return layout;
-
-  const targetCount = layout.panelCount ?? layout.panels.length;
-  if (targetCount <= 0) return layout;
-
-  const segment = layout.segments[0];
-  const corners = segment.corners;
-  if (corners.length < 4) return layout;
-
-  const c0 = corners[0], c1 = corners[1], c2 = corners[2], c3 = corners[3];
-  const ux = c1.x - c0.x, uy = c1.y - c0.y, uz = c1.z - c0.z;
-  const vx = c3.x - c0.x, vy = c3.y - c0.y, vz = c3.z - c0.z;
-  const lenU = Math.hypot(ux, uy, uz) || 1;
-  const lenV = Math.hypot(vx, vy, vz) || 1;
-  const uDir = { x: ux / lenU, y: uy / lenU, z: uz / lenU };
-  const vDir = { x: vx / lenV, y: vy / lenV, z: vz / lenV };
-
-  const nx = uDir.y * vDir.z - uDir.z * vDir.y;
-  const ny = uDir.z * vDir.x - uDir.x * vDir.z;
-  const nz = uDir.x * vDir.y - uDir.y * vDir.x;
-  const lenN = Math.hypot(nx, ny, nz) || 1;
-  let norm = { x: nx / lenN, y: ny / lenN, z: nz / lenN };
-  if (norm.y < 0) {
-    norm = { x: -norm.x, y: -norm.y, z: -norm.z };
-  }
-
-  const segCenter = {
-    x: (c0.x + c1.x + c2.x + c3.x) / 4,
-    y: (c0.y + c1.y + c2.y + c3.y) / 4,
-    z: (c0.z + c1.z + c2.z + c3.z) / 4,
-  };
-
-  // Determine grid columns and rows to arrange targetCount panels neatly without zigzag
-  let cols: number;
-  let rows: number;
-
-  if (targetCount === 6) {
-    if (lenU >= lenV) {
-      cols = 3;
-      rows = 2;
-    } else {
-      cols = 2;
-      rows = 3;
-    }
-  } else if (targetCount <= 4) {
-    cols = Math.min(targetCount, 2);
-    rows = Math.ceil(targetCount / cols);
-  } else if (targetCount === 8) {
-    if (lenU >= lenV) {
-      cols = 4;
-      rows = 2;
-    } else {
-      cols = 2;
-      rows = 4;
-    }
-  } else if (targetCount === 9) {
-    cols = 3;
-    rows = 3;
-  } else if (targetCount === 10) {
-    if (lenU >= lenV) {
-      cols = 5;
-      rows = 2;
-    } else {
-      cols = 2;
-      rows = 5;
-    }
-  } else if (targetCount === 12) {
-    if (lenU >= lenV) {
-      cols = 4;
-      rows = 3;
-    } else {
-      cols = 3;
-      rows = 4;
-    }
-  } else {
-    cols = Math.max(1, Math.min(targetCount, Math.round(Math.sqrt(targetCount * (lenU / lenV)))));
-    rows = Math.ceil(targetCount / cols);
-  }
-
-  // Standard full-size commercial/residential module dimensions (e.g. 550W Tier-1 mono PERC)
-  // Ensures panels are clearly visible, full-size, and aligned to the building structure
-  const pWidth = Math.max(assumptions.panelWidthMeters, 1.13);
-  const pHeight = Math.max(assumptions.panelHeightMeters, 2.18);
-  const clampGap = 0.04;
-  const mountElevation = 0.08;
-
-  const arrayWidth = cols * pWidth + (cols - 1) * clampGap;
-  const arrayDepth = rows * pHeight + (rows - 1) * clampGap;
-
-  const newPanels: RoofLayoutPanel[] = [];
-  let placed = 0;
-
-  for (let r = 0; r < rows && placed < targetCount; r++) {
-    for (let c = 0; c < cols && placed < targetCount; c++) {
-      placed++;
-      const uOffset = -arrayWidth / 2 + pWidth / 2 + c * (pWidth + clampGap);
-      const vOffset = -arrayDepth / 2 + pHeight / 2 + r * (pHeight + clampGap);
-
-      const pCenter = {
-        x: segCenter.x + uOffset * uDir.x + vOffset * vDir.x + norm.x * mountElevation,
-        y: segCenter.y + uOffset * uDir.y + vOffset * vDir.y + norm.y * mountElevation,
-        z: segCenter.z + uOffset * uDir.z + vOffset * vDir.z + norm.z * mountElevation,
-      };
-
-      const halfW = pWidth / 2;
-      const halfH = pHeight / 2;
-
-      const pCorners = [
-        {
-          x: pCenter.x - halfW * uDir.x - halfH * vDir.x,
-          y: pCenter.y - halfW * uDir.y - halfH * vDir.y,
-          z: pCenter.z - halfW * uDir.z - halfH * vDir.z,
-        },
-        {
-          x: pCenter.x + halfW * uDir.x - halfH * vDir.x,
-          y: pCenter.y + halfW * uDir.y - halfH * vDir.y,
-          z: pCenter.z + halfW * uDir.z - halfH * vDir.z,
-        },
-        {
-          x: pCenter.x + halfW * uDir.x + halfH * vDir.x,
-          y: pCenter.y + halfW * uDir.y + halfH * vDir.y,
-          z: pCenter.z + halfW * uDir.z + halfH * vDir.z,
-        },
-        {
-          x: pCenter.x - halfW * uDir.x + halfH * vDir.x,
-          y: pCenter.y - halfW * uDir.y + halfH * vDir.y,
-          z: pCenter.z - halfW * uDir.z + halfH * vDir.z,
-        },
-      ];
-
-      newPanels.push({
-        panelId: `panel-${placed}`,
-        segmentId: segment.segmentId,
-        orientation: pWidth <= pHeight ? "PORTRAIT" : "LANDSCAPE",
-        center: pCenter,
-        corners: pCorners as unknown as RoofLayoutCorners,
-        yearlyEnergyDcKwh: layout.panels[placed - 1]?.yearlyEnergyDcKwh,
-      });
-    }
-  }
-
-  const allPoints = [...layout.segments.flatMap(s => s.corners), ...newPanels.flatMap(p => p.corners)];
-  const updatedBounds = allPoints.length
-    ? {
-        min: {
-          x: Math.min(...allPoints.map(p => p.x)),
-          y: Math.min(...allPoints.map(p => p.y)),
-          z: Math.min(...allPoints.map(p => p.z)),
-        },
-        max: {
-          x: Math.max(...allPoints.map(p => p.x)),
-          y: Math.max(...allPoints.map(p => p.y)),
-          z: Math.max(...allPoints.map(p => p.z)),
-        },
-      }
-    : layout.bounds;
-
-  return {
-    ...layout,
-    bounds: updatedBounds,
-    panels: newPanels,
-    panelCount: newPanels.length,
-    dcCapacityKw: (newPanels.length * assumptions.panelCapacityWatts) / 1000,
-  };
-}
-
 function PlanView({ layout }: { layout: RoofLayout }) {
   const corners = layout.segments.flatMap(segment => segment.corners);
   if (!corners.length) return <p className="roof-viewer-loading">A roof outline is unavailable for this assessment.</p>;
@@ -217,6 +46,10 @@ function PlanView({ layout }: { layout: RoofLayout }) {
     <svg className="roof-plan-svg" viewBox={viewBox} preserveAspectRatio="xMidYMid meet" role="img"
       aria-label={`Schematic top-down roof plan with ${layout.segments.length} roof segments and ${layout.panels.length} proposed panels`}>
       <title>Roof and proposed solar panel plan</title>
+      {layout.footprint.length >= 3 && (
+        <polygon points={points(layout.footprint)} fill="none" stroke="#d9e6da" strokeDasharray={`${span * 0.02} ${span * 0.015}`}
+          strokeWidth={span * 0.005} />
+      )}
       {layout.segments.map((segment, index) => (
         <polygon key={segment.segmentId} points={points(segment.corners)}
           fill={segment.geometryKind === "AREA_ONLY_ILLUSTRATION" ? "#84948a" : index % 2 === 0 ? "#9ac7a2" : "#b1d2af"}
@@ -233,13 +66,8 @@ function PlanView({ layout }: { layout: RoofLayout }) {
 
 export function RoofLayoutViewer({ roof, analysisId }: { roof: NormalizedRoofV1; analysisId: string }) {
   const assumptions = useMemo(() => getRoofLayoutAssumptionsV1(roof), [roof]);
-  const rawLayout = useMemo(() => planRoofLayout(roof, assumptions), [roof, assumptions]);
-  const [alignedArray, setAlignedArray] = useState(true);
-
-  const layout = useMemo(() => {
-    if (!alignedArray || !rawLayout.panels.length) return rawLayout;
-    return buildAlignedProfessionalLayout(rawLayout, assumptions);
-  }, [alignedArray, rawLayout, assumptions]);
+  // The planner's own fit is shown as-is: panels stay on their roof plane, inside its setbacks and service path.
+  const layout = useMemo(() => planRoofLayout(roof, assumptions), [roof, assumptions]);
 
   const [webGl, setWebGl] = useState<"checking" | "available" | "unavailable">("checking");
   const [mode, setMode] = useState<"3d" | "plan">("plan");
@@ -262,7 +90,7 @@ export function RoofLayoutViewer({ roof, analysisId }: { roof: NormalizedRoofV1;
   const geometryLabel = layout.segments.some(segment => segment.geometryKind === "AREA_ONLY_ILLUSTRATION")
     ? "Roof shape is symbolic because only area was provided."
     : layout.segments.some(segment => segment.geometryKind === "GOOGLE_BOUNDS_APPROXIMATE")
-      ? "Google bounds are approximate boxes, not traced roof edges."
+      ? "Each Google roof plane is approximated as a rectangle turned to its direction, not traced roof edges."
       : "Roof rectangle uses the dimensions you entered.";
 
   return (
@@ -282,18 +110,6 @@ export function RoofLayoutViewer({ roof, analysisId }: { roof: NormalizedRoofV1;
               <Button variant={mode === "3d" ? "default" : "outline"} size="sm" disabled={webGl !== "available"} aria-pressed={mode === "3d"} onClick={() => setMode("3d")}>3D view</Button>
               <Button variant={mode === "plan" ? "default" : "outline"} size="sm" aria-pressed={mode === "plan"} onClick={() => setMode("plan")}>Plan view</Button>
             </div>
-            {rawLayout.panels.length > 0 && (
-              <Button
-                variant={alignedArray ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setAlignedArray(!alignedArray)}
-                className="text-xs gap-1.5"
-                title="Toggle between aligned professional array and raw provider suggestions"
-              >
-                <Grid className="size-3.5" aria-hidden="true" />
-                {alignedArray ? "Professional Array (Aligned)" : "Raw Suggestions"}
-              </Button>
-            )}
             {webGl === "unavailable" && <span className="roof-viewer-state">3D is unavailable on this device.</span>}
           </div>
           <div className="roof-viewer-stage">

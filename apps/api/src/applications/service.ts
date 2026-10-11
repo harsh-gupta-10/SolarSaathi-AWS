@@ -6,8 +6,11 @@ import { CoreService } from "../data/service";
 import { identifier, parseInput } from "../data/schemas";
 import { RequestError } from "../lib/http";
 import type { PolicyPublicationRepository } from "../policy/publication-storage";
-import { addDocumentSchema, chatUpdateSchema, createApplicationSchema, transitionStepSchema, updateDetailsSchema,
-  storedApplicationSchema, type ApplicationEventV1, type ApplicationStepStatus, type SolarApplicationV1 } from "./schema";
+import { addDocumentSchema, chatUpdateSchema, createApplicationSchema, documentActionSchema, transitionStepSchema,
+  updateDetailsSchema, storedApplicationSchema, type ApplicationDocumentMetadataV1, type ApplicationEventV1,
+  type ApplicationStepStatus, type SolarApplicationV1 } from "./schema";
+import { DOCUMENT_RETENTION_DAYS, documentObjectKey, matchesSignature, type ApplicationDocumentStore,
+  type DocumentUploadTicket } from "./documents";
 import type { ApplicationRepository } from "./storage";
 
 interface PublishedProcessStep {
@@ -81,7 +84,20 @@ function encodeCursor(key: Record<string, string> | undefined, propertyId: strin
 export class ApplicationService {
   constructor(private readonly core: CoreService, private readonly benefits: BenefitsService,
     private readonly publication: PolicyPublicationRepository, private readonly repository: ApplicationRepository,
-    private readonly now: () => Date = () => new Date(), private readonly createId: () => string = randomUUID) {}
+    private readonly now: () => Date = () => new Date(), private readonly createId: () => string = randomUUID,
+    private readonly documentStore?: ApplicationDocumentStore) {}
+
+  private store(): ApplicationDocumentStore {
+    if (!this.documentStore) throw new RequestError(503, "DOCUMENT_STORAGE_NOT_CONFIGURED", "Document uploads are not configured.");
+    return this.documentStore;
+  }
+
+  private findDocument(application: SolarApplicationV1, documentId: string): ApplicationDocumentMetadataV1 {
+    parseInput(identifier, documentId);
+    const document = application.documents.find(item => item.documentId === documentId);
+    if (!document) throw new RequestError(404, "DOCUMENT_NOT_FOUND", "The document is not in this application.");
+    return document;
+  }
 
   async create(identity: CurrentIdentityResponse, body: unknown): Promise<SolarApplicationV1> {
     const input = parseInput(createApplicationSchema, body);
@@ -217,23 +233,110 @@ export class ApplicationService {
     return next;
   }
 
-  async addDocument(identity: CurrentIdentityResponse, applicationId: string, body: unknown) {
+  async addDocument(identity: CurrentIdentityResponse, applicationId: string, body: unknown):
+    Promise<{ application: SolarApplicationV1; upload?: DocumentUploadTicket }> {
     const input = parseInput(addDocumentSchema, body);
+    const store = input.file ? this.store() : undefined;
     const current = await this.owned(identity, input.propertyId, applicationId);
     if (current.revision !== input.expectedRevision) throw conflict();
-    if (current.documents.length >= 30) throw new RequestError(422, "DOCUMENT_LIMIT", "This tracker already has 30 document notes.");
+    if (current.documents.length >= 30) throw new RequestError(422, "DOCUMENT_LIMIT", "This tracker already has 30 documents.");
     const at = this.now().toISOString();
     const documentId = this.createId();
-    const document = { documentId, documentType: input.documentType, label: input.label,
+    const objectKey = input.file ? documentObjectKey(current.createdByUserId, applicationId, documentId) : undefined;
+    const document: ApplicationDocumentMetadataV1 = { documentId, documentType: input.documentType, label: input.label,
       ...(input.obtainedOn ? { obtainedOn: input.obtainedOn } : {}), recordedAt: at,
-      verificationStatus: "USER_REPORTED" as const };
+      verificationStatus: "USER_REPORTED" as const,
+      ...(input.file && objectKey ? { file: { objectKey, contentType: input.file.contentType,
+        sizeBytes: input.file.sizeBytes, sha256Reported: input.file.sha256, status: "PENDING_UPLOAD" as const } } : {}) };
     const next = storedApplicationSchema.parse({ ...current, documents: [...current.documents, document],
       revision: current.revision + 1, updatedAt: at });
+    // Sign the upload first: if signing fails, nothing is recorded, so no pending entry is left that can never finish.
+    const upload = store && input.file && objectKey
+      ? await store.uploadTicket(objectKey, input.file.contentType, input.file.sizeBytes, this.now()) : undefined;
     const scope = await this.core.getPropertyWriteScope(identity, input.propertyId);
     await this.repository.replace(current, next, { schemaVersion: 1, eventId: this.createId(), applicationId,
       propertyId: input.propertyId, actorId: identity.profile.userId, occurredAt: at,
       action: "DOCUMENT_RECORDED", documentId }, scope);
-    return next;
+    return upload ? { application: next, upload } : { application: next };
+  }
+
+  /** Marks a pending file as stored only after S3 holds an object of the declared size, type and file signature. */
+  async confirmDocument(identity: CurrentIdentityResponse, applicationId: string, documentId: string, body: unknown):
+    Promise<{ application: SolarApplicationV1; upload?: DocumentUploadTicket }> {
+    const input = parseInput(documentActionSchema, body);
+    const store = this.store();
+    const current = await this.owned(identity, input.propertyId, applicationId);
+    if (current.revision !== input.expectedRevision) throw conflict();
+    const document = this.findDocument(current, documentId);
+    const file = document.file;
+    if (!file) throw new RequestError(422, "NO_FILE", "This document note has no file to confirm.");
+    if (file.status === "UPLOADED") throw new RequestError(409, "NO_STATE_CHANGE", "This file is already stored.");
+    const stored = await store.inspect(file.objectKey);
+    if (!stored) {
+      // An upload that never arrived (closed tab, expired link) can be retried with a fresh link for the same entry.
+      if (input.reissueUpload) {
+        return { application: current, upload: await store.uploadTicket(file.objectKey, file.contentType, file.sizeBytes, this.now()) };
+      }
+      throw new RequestError(409, "UPLOAD_NOT_FOUND", "The file has not been uploaded yet.");
+    }
+    if (stored.sizeBytes !== file.sizeBytes || stored.contentType !== file.contentType ||
+      !matchesSignature(file.contentType, stored.head)) {
+      await store.delete(file.objectKey);
+      throw new RequestError(422, "UPLOAD_MISMATCH", "The uploaded file does not match the declared type or size and was removed.");
+    }
+    const now = this.now();
+    const at = now.toISOString();
+    const expiresAt = new Date(now.getTime() + DOCUMENT_RETENTION_DAYS * 86_400_000).toISOString();
+    const documents = current.documents.map(item => item.documentId !== documentId ? item :
+      { ...item, file: { ...file, status: "UPLOADED" as const, uploadedAt: at, expiresAt } });
+    const next = storedApplicationSchema.parse({ ...current, documents, revision: current.revision + 1, updatedAt: at });
+    const scope = await this.core.getPropertyWriteScope(identity, input.propertyId);
+    await this.repository.replace(current, next, { schemaVersion: 1, eventId: this.createId(), applicationId,
+      propertyId: input.propertyId, actorId: identity.profile.userId, occurredAt: at,
+      action: "DOCUMENT_UPLOADED", documentId }, scope);
+    return { application: next };
+  }
+
+  async documentDownload(identity: CurrentIdentityResponse, propertyId: string, applicationId: string, documentId: string) {
+    const store = this.store();
+    const current = await this.owned(identity, propertyId, applicationId);
+    const file = this.findDocument(current, documentId).file;
+    if (!file || file.status !== "UPLOADED") throw new RequestError(409, "FILE_NOT_UPLOADED", "This document has no stored file.");
+    const now = this.now();
+    if (file.expiresAt && Date.parse(file.expiresAt) <= now.getTime()) {
+      throw new RequestError(410, "FILE_EXPIRED", "This file passed its retention period and was deleted.");
+    }
+    const url = await store.downloadUrl(file.objectKey, file.contentType);
+    return { url, expiresAt: new Date(now.getTime() + 300_000).toISOString() };
+  }
+
+  /** Deletes the stored object first (idempotent), then the metadata, so a retry never leaves an orphaned file. */
+  async deleteDocument(identity: CurrentIdentityResponse, applicationId: string, documentId: string, body: unknown) {
+    const input = parseInput(documentActionSchema, body);
+    const current = await this.owned(identity, input.propertyId, applicationId);
+    if (current.revision !== input.expectedRevision) throw conflict();
+    const document = this.findDocument(current, documentId);
+    if (document.file) await this.store().delete(document.file.objectKey);
+    const remove = async (base: SolarApplicationV1) => {
+      const at = this.now().toISOString();
+      const next = storedApplicationSchema.parse({ ...base,
+        documents: base.documents.filter(item => item.documentId !== documentId),
+        revision: base.revision + 1, updatedAt: at });
+      const scope = await this.core.getPropertyWriteScope(identity, input.propertyId);
+      await this.repository.replace(base, next, { schemaVersion: 1, eventId: this.createId(), applicationId,
+        propertyId: input.propertyId, actorId: identity.profile.userId, occurredAt: at,
+        action: "DOCUMENT_DELETED", documentId }, scope);
+      return next;
+    };
+    try { return await remove(current); }
+    catch (error) {
+      // The file is already gone, so the user's intent is settled: retry the record once on the latest revision rather
+      // than leave an entry that still offers a download for a missing file.
+      const latest = await this.owned(identity, input.propertyId, applicationId);
+      if (!latest.documents.some(item => item.documentId === documentId)) return latest;
+      if (latest.revision === current.revision) throw error;
+      return remove(latest);
+    }
   }
 
   async events(identity: CurrentIdentityResponse, propertyId: string, applicationId: string,

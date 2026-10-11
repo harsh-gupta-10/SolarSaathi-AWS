@@ -3,7 +3,7 @@
 import { SignInLink } from "./sign-in-link";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { CheckCircle2, ChevronRight, Layers, LocateFixed, MapPin, Ruler, ShieldCheck, Sun } from "lucide-react";
+import { ChevronLeft, CheckCircle2, ChevronRight, Layers, LocateFixed, MapPin, Ruler, ShieldCheck, Sun } from "lucide-react";
 import { Button, Input, Label } from "@solarsaathi/ui";
 import type { GeocodeCandidate, ManualRoofMeasurements, RoofConfirmationResponse, RoofPoint, RoofPreviewResponse } from "@solarsaathi/types";
 import { useAuth } from "../auth/auth-provider";
@@ -16,18 +16,60 @@ import { getStoredProperty, saveStoredProperty } from "../lib/properties-store";
 import { AddressForm } from "./address-form";
 import { SatelliteBuildingMap } from "./satellite-building-map";
 import { RoofLayoutViewer } from "./roof-layout-viewer";
-import { SystemDesigner } from "./system-designer";
+import { SystemDesigner, type SystemDesignOutcome } from "./system-designer";
+import { FinancialEstimator } from "./financial-estimator";
+import { BenefitEvaluator } from "./benefit-evaluator";
+import type { FinancialEstimateResponse } from "../lib/financial-api";
+import { AnalysisDraftProvider, DraftSaveIndicator, hasSavedDesignInputs } from "../lib/analysis-draft";
+import { focusHeading, useRevealOnChange } from "../lib/reveal";
 
 type Busy = "property" | "geocode" | "insights" | "building" | "roof" | "manual";
 const parseNumber = (value: string, min: number, max: number): number | undefined => {
   const number = Number(value);
   return value.trim() && Number.isFinite(number) && number >= min && number <= max ? number : undefined;
 };
+type Step = 1 | 2 | 3 | 4 | 5 | 6;
+const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
+/** Properties created in this browser session (as opposed to a link the user opened). */
+const createdHere = new Set<string>();
+
+/** Keeps the saved property and analysis in the address bar so a reload or shared tab returns to the same work. */
+function syncLocation(propertyId?: string, analysisId?: string) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (propertyId) url.searchParams.set("propertyId", propertyId); else url.searchParams.delete("propertyId");
+  if (analysisId) url.searchParams.set("analysisId", analysisId); else url.searchParams.delete("analysisId");
+  if (url.toString() !== window.location.href) window.history.replaceState(window.history.state, "", url);
+}
+
+/** Back / next controls that stay visible at the bottom of the screen on long steps. */
+function StepActions({ back, next, nextHref, nextLabel, nextHint }: {
+  back?: () => void; next?: () => void; nextHref?: string; nextLabel: string; nextHint?: string;
+}) {
+  return (
+    <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 p-3 backdrop-blur">
+      {back ? <Button variant="outline" size="sm" onClick={back}><ChevronLeft className="size-4" aria-hidden="true" /> Back</Button> : <span />}
+      <div className="flex items-center gap-3">
+        {!next && !nextHref && nextHint && <span className="text-xs text-muted-foreground">{nextHint}</span>}
+        {nextHref
+          ? <Button asChild size="sm" className="gap-1.5"><Link href={nextHref}>{nextLabel} <ChevronRight className="size-4" aria-hidden="true" /></Link></Button>
+          : <Button size="sm" onClick={next} disabled={!next} className="gap-1.5">{nextLabel} <ChevronRight className="size-4" aria-hidden="true" /></Button>}
+      </div>
+    </div>
+  );
+}
+
 const errorText = (error: unknown) => error instanceof RoofRequestError ? error.message : "This step could not be completed. Try again.";
 
 export function AnalyzeStart() {
   const { status, profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<1 | 2 | 3 | 4>(1);
+  const [activeTab, setActiveTab] = useState<Step>(1);
+  const [design, setDesign] = useState<SystemDesignOutcome>();
+  const [estimate, setEstimate] = useState<FinancialEstimateResponse>();
+  const stepperRef = useRef<HTMLDivElement>(null);
+  const stepContentRef = useRef<HTMLDivElement>(null);
+  const firstStep = useRef(true);
   const [address, setAddress] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [customerName, setCustomerName] = useState("");
@@ -76,22 +118,51 @@ export function AnalyzeStart() {
     setLocationStatus("idle"); setLocationMessage(undefined); setPreview(undefined);
     setBuildingConfirmed(false); setResult(undefined); setManualMode(false);
     setGpsLocating(false); setGpsError(undefined); setGpsSuccess(undefined);
+    setDesign(undefined); setEstimate(undefined);
+    // A property this page added to the address bar belongs to the previous session; an opened link is re-checked
+    // for the new account instead (the backend enforces ownership).
+    const linked = new URLSearchParams(window.location.search).get("propertyId");
+    if (linked && createdHere.has(linked)) syncLocation(undefined, undefined);
     setActiveTab(1);
   }, [account, status]);
 
   useEffect(() => {
     if (!account) return;
-    const linkedPropertyId = new URLSearchParams(window.location.search).get("propertyId");
+    const params = new URLSearchParams(window.location.search);
+    const linkedPropertyId = params.get("propertyId");
+    const linkedAnalysisId = params.get("analysisId");
     if (!linkedPropertyId) return;
-    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(linkedPropertyId)) {
+    if (!ID_PATTERN.test(linkedPropertyId) || (linkedAnalysisId !== null && !ID_PATTERN.test(linkedAnalysisId))) {
       setExistingLookupError("This property link is invalid. Open the property from your workspace again."); return;
     }
     const controller = new AbortController(); propertyLookup.current = controller;
     setExistingLookup(true); setExistingLookupError(undefined);
-    void brokerApi.property(linkedPropertyId, controller.signal).then(property => {
+    void (async () => {
+      const property = await brokerApi.property(linkedPropertyId, controller.signal);
       if (controller.signal.aborted) return;
       setAddress(property.address); setPropertyId(property.propertyId); setEditing(false); setCustomerName("");
-    }).catch(failure => {
+      // Reopen the saved roof: the linked analysis, or the most recent confirmed one for this property.
+      let analysisId: string | undefined;
+      try { analysisId = linkedAnalysisId ?? await roofApi.latestAnalysisId(property.propertyId, controller.signal); }
+      catch { analysisId = undefined; }
+      if (!analysisId || controller.signal.aborted) return;
+      try {
+        const saved = await roofApi.analysis(property.propertyId, analysisId, controller.signal);
+        if (controller.signal.aborted) return;
+        setResult(saved);
+        syncLocation(property.propertyId, saved.analysisId);
+        // Continue where the user left off: sizing answers saved for this roof reopen the sizing step. Later steps
+        // need fresh backend results, which are never stored, so they are not restored.
+        const resume = profile?.userId ? await hasSavedDesignInputs(profile.userId, property.propertyId, saved.analysisId, controller.signal) : false;
+        if (!controller.signal.aborted) setActiveTab(resume ? 4 : 3);
+      } catch (failure) {
+        if (controller.signal.aborted) return;
+        // An expired or deleted analysis just means the roof must be confirmed again. Any other failure keeps the
+        // property usable and the link intact (a reload retries) and says the saved roof could not be loaded.
+        if (failure instanceof RoofRequestError && failure.code === "NOT_FOUND") syncLocation(property.propertyId, undefined);
+        else setError(`Your saved roof could not be loaded: ${errorText(failure)}`);
+      }
+    })().catch(failure => {
       if (controller.signal.aborted) return;
       // Fallback for homeowners loading their saved properties from My Properties
       const localProp = getStoredProperty(linkedPropertyId, profile?.userId);
@@ -125,6 +196,22 @@ export function AnalyzeStart() {
     return () => controller.abort();
   }, [account, profile?.userId]);
 
+  // Move the reader to the top of each new step and put keyboard focus on its heading.
+  useEffect(() => {
+    if (firstStep.current) { firstStep.current = false; return; }
+    const reduce = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    stepperRef.current?.scrollIntoView?.({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    const frame = requestAnimationFrame(() => focusHeading(stepContentRef.current));
+    return () => cancelAnimationFrame(frame);
+  }, [activeTab]);
+
+  // A new confirmed roof invalidates downstream results (their inputs stay in the saved draft).
+  useEffect(() => { setDesign(undefined); setEstimate(undefined); }, [result?.analysisId]);
+  useEffect(() => { if (propertyId) syncLocation(propertyId, result?.analysisId); }, [propertyId, result?.analysisId]);
+
+  const buildingRevealRef = useRevealOnChange<HTMLDivElement>(preview?.previewId);
+  const roofRevealRef = useRevealOnChange<HTMLDivElement>(buildingConfirmed ? preview?.previewId : undefined);
+
   function reset() {
     request.current?.abort(); request.current = null;
     propertyLookup.current?.abort(); propertyLookup.current = null;
@@ -134,6 +221,8 @@ export function AnalyzeStart() {
     setLocationStatus("idle"); setLocationMessage(undefined); setPreview(undefined);
     setBuildingConfirmed(false); setResult(undefined); setManualMode(false);
     setGpsLocating(false); setGpsError(undefined); setGpsSuccess(undefined);
+    setDesign(undefined); setEstimate(undefined);
+    syncLocation(undefined, undefined);
     setActiveTab(1);
   }
 
@@ -174,6 +263,7 @@ export function AnalyzeStart() {
     await roofApi.bootstrap(signal);
     const customerId = profile.role === "BROKER" ? await roofApi.createCustomer(customerName.trim(), signal) : undefined;
     const id = await roofApi.createProperty(targetAddress, customerId, signal);
+    createdHere.add(id);
     if (!signal.aborted) {
       setPropertyId(id);
       saveStoredProperty({
@@ -431,6 +521,9 @@ export function AnalyzeStart() {
   const canAccessTab2 = candidates.length > 0 || manualMode || Boolean(preview) || Boolean(result);
   const canAccessTab3 = Boolean(visibleResult || preview);
   const canAccessTab4 = Boolean(visibleResult && propertyId);
+  const canAccessTab5 = canAccessTab4 && Boolean(design?.response.design.recommendation);
+  const canAccessTab6 = canAccessTab5 && Boolean(estimate);
+  const draftScope = profile && propertyId && visibleResult ? { userId: profile.userId, propertyId, analysisId: visibleResult.analysisId } : undefined;
 
   return (
     <>
@@ -439,12 +532,17 @@ export function AnalyzeStart() {
         <p>Choose the right building and check its measurements before saving an assessment.</p>
       </div>
 
-      <AnalysisStepper active={activeTab} onSelect={step => setActiveTab(step as 1 | 2 | 3 | 4)} steps={[
-        { number: 1, label: "Address & Property", reachable: true },
-        { number: 2, label: "Satellite & Pin", reachable: canAccessTab2 },
-        { number: 3, label: "3D Roof Model", reachable: canAccessTab3 },
-        { number: 4, label: "Solar & Subsidies", reachable: canAccessTab4 },
-      ]} />
+      <div ref={stepperRef} className="sticky top-0 z-20 -mx-2 bg-muted/95 px-2 pt-2 backdrop-blur">
+        <AnalysisStepper active={activeTab} onSelect={step => setActiveTab(step as Step)} steps={[
+          { number: 1, label: "Address", reachable: true },
+          { number: 2, label: "Find building", reachable: canAccessTab2 },
+          { number: 3, label: "Roof model", reachable: canAccessTab3 },
+          { number: 4, label: "System size", reachable: canAccessTab4 },
+          { number: 5, label: "Cost & savings", reachable: canAccessTab5 },
+          { number: 6, label: "Subsidies & apply", reachable: canAccessTab6 },
+        ]} />
+      </div>
+      <div ref={stepContentRef}>
 
       {/* Auth Gate Note */}
       {status !== "signedIn" && (
@@ -689,6 +787,11 @@ export function AnalyzeStart() {
               <Button variant="ghost" size="sm" onClick={() => setActiveTab(1)}>
                 ← Back to Address
               </Button>
+              {visibleResult && (
+                <Button size="sm" onClick={() => setActiveTab(3)} className="gap-1.5">
+                  Next: roof model <ChevronRight className="size-4" aria-hidden="true" />
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -738,8 +841,7 @@ export function AnalyzeStart() {
                     center={mapCenter ?? selected!.location}
                     point={point!}
                     deviceLocation={deviceLocation}
-                    roofCenter={preview?.roof.center}
-                    roofBounds={preview?.roof.bounds}
+                    roof={preview?.roof}
                     onPointChange={selectHouseOnMap}
                   />
                 ) : (
@@ -866,6 +968,7 @@ export function AnalyzeStart() {
             </div>
           )}
 
+          <div ref={buildingRevealRef} />
           {preview && !manualMode && (
             <section className="rounded-xl border bg-background p-6" aria-labelledby="building-confirm-title">
               <h2 id="building-confirm-title" className="text-xl">
@@ -897,6 +1000,7 @@ export function AnalyzeStart() {
             </section>
           )}
 
+          <div ref={roofRevealRef} />
           {preview && buildingConfirmed && !manualMode && (
             <section className="rounded-xl border bg-background p-6" aria-labelledby="roof-confirm-title">
               <Ruler aria-hidden="true" className="mb-3 text-primary" />
@@ -1089,32 +1193,63 @@ export function AnalyzeStart() {
         </section>
       )}
 
-      {/* TAB 4: Solar Sizing & Stacking Subsidies */}
-      {activeTab === 4 && (
-        <section className="space-y-6" aria-label="Solar System Sizing and Subsidies">
-          {visibleResult && propertyId ? (
-            <>
+      {/* TABS 4–6: size, cost and benefits. Answers are kept in the analysis draft (this device + account). */}
+      {activeTab >= 4 && (
+        <section className="space-y-6" aria-label="Solar system, cost and subsidies">
+          {visibleResult && propertyId && draftScope ? (
+            <AnalysisDraftProvider {...draftScope}>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
                 <div>
-                  <h2 className="text-xl font-semibold">Step 4: Solar Sizing &amp; Subsidies</h2>
-                  <p className="text-xs text-muted-foreground">Calculate capacity, savings, and stacked government benefits.</p>
+                  <h2 className="text-xl font-semibold">
+                    {activeTab === 4 ? "Step 4: Choose a system size" : activeTab === 5 ? "Step 5: Cost and savings" : "Step 6: Subsidies and applying"}
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    {activeTab === 4 ? "Compare system sizes that fit your confirmed roof."
+                      : activeTab === 5 ? "Turn your installer's quote into a 25-year savings scenario."
+                        : "Check verified government benefits and start your application checklist."}
+                  </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setActiveTab(3)}>
-                    ← Back to 3D Roof
-                  </Button>
-                  <Button variant="outline" asChild size="sm">
-                    <Link href="/app/properties">View All My Properties</Link>
-                  </Button>
-                </div>
+                <DraftSaveIndicator />
               </div>
 
-              <SystemDesigner
-                key={`${propertyId}:${visibleResult.analysisId}`}
-                propertyId={propertyId}
-                analysisId={visibleResult.analysisId}
-              />
-            </>
+              {activeTab === 4 && (
+                <>
+                  <SystemDesigner key={`${propertyId}:${visibleResult.analysisId}`} propertyId={propertyId} analysisId={visibleResult.analysisId}
+                    initialResult={design} onResult={outcome => { setDesign(outcome); setEstimate(undefined); }} />
+                  <StepActions back={() => setActiveTab(3)} next={canAccessTab5 ? () => setActiveTab(5) : undefined}
+                    nextLabel="Next: cost and savings" nextHint="Compare system sizes to continue." />
+                </>
+              )}
+              {activeTab === 5 && design?.response.design.recommendation && (
+                <>
+                  <FinancialEstimator key={design.response.requestId} propertyId={propertyId} analysisId={visibleResult.analysisId}
+                    demand={design.demand} generationKwhPerKwYear={design.generationKwhPerKwYear}
+                    candidates={design.response.design.candidates} recommendedNominalKw={design.response.design.recommendation.nominalKw}
+                    initialResult={estimate} onResult={setEstimate} />
+                  <StepActions back={() => setActiveTab(4)} next={canAccessTab6 ? () => setActiveTab(6) : undefined}
+                    nextLabel="Next: subsidies" nextHint="Estimate the cash flow to continue." />
+                </>
+              )}
+              {activeTab === 6 && design && estimate && (
+                <>
+                  <BenefitEvaluator propertyId={propertyId} analysisId={visibleResult.analysisId} demand={design.demand}
+                    generationKwhPerKwYear={design.generationKwhPerKwYear} nominalKw={estimate.system.nominalKw}
+                    grossSystemCostRupees={estimate.financial.input.quote.grossSystemCostRupees}
+                    financialInputs={{ grossSystemCostRupees: estimate.financial.input.quote.grossSystemCostRupees,
+                      selfConsumptionFraction: estimate.financial.input.usage.selfConsumptionFraction,
+                      importTariffRupeesPerKwh: estimate.financial.input.usage.importTariffRupeesPerKwh,
+                      exportRateRupeesPerKwh: estimate.financial.input.usage.exportRateRupeesPerKwh,
+                      annualMaintenanceRupees: estimate.financial.input.assumptions.annualMaintenanceRupees }} />
+                  <StepActions back={() => setActiveTab(5)} nextLabel="View my applications" nextHref="/app/applications" />
+                </>
+              )}
+              {((activeTab === 5 && !design?.response.design.recommendation) || (activeTab === 6 && !(design && estimate))) && (
+                <div className="rounded-xl border bg-muted/30 p-6 text-center">
+                  <p className="text-sm text-muted-foreground">Your answers are saved. Finish the previous step to see this one.</p>
+                  <Button className="mt-3" variant="outline" onClick={() => setActiveTab(activeTab === 5 ? 4 : 5)}>Go to previous step</Button>
+                </div>
+              )}
+            </AnalysisDraftProvider>
           ) : (
             <div className="rounded-xl border bg-muted/30 p-8 text-center space-y-3">
               <Sun className="mx-auto size-8 text-muted-foreground" />
@@ -1129,6 +1264,7 @@ export function AnalyzeStart() {
           )}
         </section>
       )}
+      </div>
     </>
   );
 }

@@ -17,7 +17,11 @@ import {
 const denied = () => new RequestError(403, "FORBIDDEN", "This operation is not permitted for this account.");
 const missing = () => new RequestError(404, "NOT_FOUND", "The requested record was not found.");
 interface Account { user: StoredUser; organization: StoredOrganization }
-export interface ServiceDependencies { now?: () => Date; createId?: () => string }
+export interface ServiceDependencies {
+  now?: () => Date; createId?: () => string;
+  /** Deletes uploaded application files (S3) when their property is deleted. Absent when no bucket is configured. */
+  deleteDocumentObjects?: (objectKeys: readonly string[]) => Promise<void>;
+}
 export interface PropertyWriteScope {
   actorUserId: string;
   actorRole: StoredUser["role"];
@@ -35,7 +39,7 @@ export interface PropertyWriteScope {
 export class CoreService {
   private readonly now: () => Date;
   private readonly createId: () => string;
-  constructor(private readonly repository: CoreRepository, dependencies: ServiceDependencies = {}) {
+  constructor(private readonly repository: CoreRepository, private readonly dependencies: ServiceDependencies = {}) {
     this.now = dependencies.now ?? (() => new Date());
     this.createId = dependencies.createId ?? randomUUID;
   }
@@ -236,8 +240,13 @@ export class CoreService {
       { key: keys.property(property.customerId, property.propertyId), revision: property.revision },
       { key: keys.locator(property.propertyId), revision: locator.revision },
     ], [this.repository.organizationGuard(account.organization)]);
-    try { await this.repository.purgePropertyChildren(property.propertyId); }
-    catch (cause) {
+    try {
+      const objectKeys = await this.repository.purgePropertyChildren(property.propertyId);
+      if (objectKeys.length) {
+        if (!this.dependencies.deleteDocumentObjects) throw new Error("DOCUMENT_STORE_NOT_CONFIGURED");
+        await this.dependencies.deleteDocumentObjects(objectKeys);
+      }
+    } catch (cause) {
       // Children are unreachable once the locator is gone, but they hold personal data: make the leak visible to alarms.
       console.error(JSON.stringify({ event: "PROPERTY_PURGE_INCOMPLETE", propertyId: property.propertyId,
         reason: cause instanceof Error ? cause.name : "unknown" }));

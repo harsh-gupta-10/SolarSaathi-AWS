@@ -8,9 +8,12 @@ import { ApplicationsPanel } from "../src/components/application-tracker";
 const identity = vi.hoisted(() => ({ status: "signedIn" as "signedIn" | "signedOut", profile: { userId: "owner-one" } as
   { userId: string } | null }));
 const api = vi.hoisted(() => ({ properties: vi.fn(), list: vi.fn(), get: vi.fn(), transition: vi.fn(),
-  details: vi.fn(), document: vi.fn(), chatSuggestion: vi.fn() }));
+  details: vi.fn(), document: vi.fn(), chatSuggestion: vi.fn(), uploadDocument: vi.fn(), confirmDocument: vi.fn(),
+  documentDownloadUrl: vi.fn(), deleteDocument: vi.fn() }));
 vi.mock("../src/auth/auth-provider", () => ({ useAuth: () => identity }));
-vi.mock("../src/lib/applications-api", () => ({ applicationsApi: api }));
+vi.mock("../src/lib/applications-api", () => ({ applicationsApi: api,
+  documentFileProblem: (file: File) => file.size > 10 * 1024 * 1024 ? "Choose a file of 10 MB or less." :
+    ["application/pdf", "image/jpeg", "image/png"].includes(file.type) ? undefined : "Choose a PDF, JPEG or PNG file." }));
 vi.mock("../src/lib/roof-api", () => ({ RoofRequestError: class extends Error {} }));
 
 const citation = { schemaVersion: 1 as const, sourceId: "SRC#SYNTHETIC", sourceRegistryVersion: 1,
@@ -86,5 +89,67 @@ describe("application tracker account and property boundaries", () => {
     resolveOld({ applications: [application("property-one", "application-one")] });
     await waitFor(() => expect(api.list).toHaveBeenCalledWith("property-two", undefined, expect.any(AbortSignal)));
     expect(screen.queryByRole("button", { name: /application-one/ })).toBeNull();
+  });
+});
+
+describe("application document uploads", () => {
+  async function openTracker() {
+    const user = userEvent.setup({ applyAccept: false });
+    render(<ApplicationsPanel />);
+    await user.click(await screen.findByRole("button", { name: /Synthetic/ }));
+    await screen.findByRole("heading", { name: "Documents" });
+    return user;
+  }
+  const stored = (base: ReturnType<typeof application>, status: "UPLOADED" | "PENDING_UPLOAD") => ({ ...base, revision: 2,
+    documents: [{ documentId: "doc-one", documentType: "ELECTRICITY_BILL", label: "October bill",
+      recordedAt: "2026-10-08T00:00:00.000Z", verificationStatus: "USER_REPORTED",
+      file: { objectKey: "applications/abc/application-one/doc-one", contentType: "application/pdf", sizeBytes: 2048,
+        sha256Reported: "a".repeat(64), status, ...(status === "UPLOADED" ? { uploadedAt: "2026-10-08T00:00:00.000Z",
+          expiresAt: "2027-10-08T00:00:00.000Z" } : {}) } }] });
+
+  it("uploads a chosen file through the API client and shows its retention date", async () => {
+    const user = await openTracker();
+    api.uploadDocument.mockImplementation(async (current: ReturnType<typeof application>) => stored(current, "UPLOADED"));
+    await user.selectOptions(screen.getByLabelText(/Document type/), "ELECTRICITY_BILL");
+    await user.type(screen.getByLabelText(/Short label/), "October bill");
+    const file = new File(["%PDF-1.7"], "bill.pdf", { type: "application/pdf" });
+    await user.upload(screen.getByLabelText(/File \(optional\)/), file);
+    await user.click(screen.getByRole("button", { name: "Upload document" }));
+    await screen.findByText("File uploaded and stored privately.");
+    expect(api.uploadDocument).toHaveBeenCalledWith(expect.objectContaining({ applicationId: "application-one" }),
+      { documentType: "ELECTRICITY_BILL", label: "October bill" }, file);
+    expect(api.document).not.toHaveBeenCalled();
+    expect(screen.getByText(/deleted automatically on 8 Oct 2027/)).toBeTruthy();
+  });
+
+  it("rejects an unsupported file type before calling the API", async () => {
+    const user = await openTracker();
+    await user.selectOptions(screen.getByLabelText(/Document type/), "OTHER");
+    await user.type(screen.getByLabelText(/Short label/), "Script");
+    await user.upload(screen.getByLabelText(/File \(optional\)/), new File(["<html>"], "page.html", { type: "text/html" }));
+    await user.click(screen.getByRole("button", { name: "Upload document" }));
+    expect(await screen.findByText("Choose a PDF, JPEG or PNG file.")).toBeTruthy();
+    expect(api.uploadDocument).not.toHaveBeenCalled();
+  });
+
+  it("requires a second click to delete a stored file", async () => {
+    api.get.mockImplementation(async (propertyId: string, id: string) => stored(application(propertyId, id), "UPLOADED"));
+    const user = await openTracker();
+    api.deleteDocument.mockImplementation(async (current: ReturnType<typeof application>) => ({ ...current, documents: [], revision: 3 }));
+    await user.click(screen.getByRole("button", { name: "Delete October bill" }));
+    expect(api.deleteDocument).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Confirm delete" }));
+    await screen.findByText("Document and file deleted.");
+    expect(api.deleteDocument).toHaveBeenCalledWith(expect.objectContaining({ revision: 2 }), "doc-one");
+  });
+
+  it("offers a re-check for an unfinished upload instead of a download", async () => {
+    api.get.mockImplementation(async (propertyId: string, id: string) => stored(application(propertyId, id), "PENDING_UPLOAD"));
+    const user = await openTracker();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+    api.confirmDocument.mockImplementation(async (current: ReturnType<typeof application>) => stored({ ...current }, "UPLOADED"));
+    await user.click(screen.getByRole("button", { name: "Check upload" }));
+    await screen.findByText("File stored privately.");
+    expect(api.confirmDocument).toHaveBeenCalledWith(expect.objectContaining({ revision: 2 }), "doc-one");
   });
 });

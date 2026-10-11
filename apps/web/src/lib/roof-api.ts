@@ -33,6 +33,9 @@ const previewResponse = z.object({ ...envelope, source: z.literal("GOOGLE_SOLAR"
 const confirmationResponse = z.object({ ...envelope, source: z.enum(["GOOGLE_SOLAR", "MANUAL"]), analysisId: z.string().min(1), roof });
 const propertyResponse = z.object({ ...envelope, source: z.literal("DYNAMODB"), property: z.object({ propertyId: z.string().min(1) }).passthrough() });
 const deletedPropertyResponse = z.object({ ...envelope, source: z.literal("DYNAMODB"), deleted: z.object({ propertyId: z.string().min(1) }) });
+const analysisSummaryPage = z.object({ ...envelope, source: z.literal("DYNAMODB"), analyses: z.array(z.object({
+  analysisId: z.string().min(1), propertyId: z.string().min(1), source: z.enum(["GOOGLE_SOLAR", "MANUAL"]), measuredAt: z.string().min(1),
+})), nextCursor: z.string().optional() });
 const customerResponse = z.object({ ...envelope, source: z.literal("DYNAMODB"), customer: z.object({ customerId: z.string().min(1) }).passthrough() });
 
 export class RoofRequestError extends Error {
@@ -64,7 +67,7 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
-async function authenticatedRequest<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body: unknown,
+async function authenticatedRequest<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body: unknown,
   schema: z.ZodType<T>, signal?: AbortSignal, timeoutMs = 12_000): Promise<T> {
   const url = endpoint(path);
   const controller = new AbortController();
@@ -125,6 +128,11 @@ export function patchAuthenticated<T>(path: string, body: unknown, schema: z.Zod
   return authenticatedRequest("PATCH", path, body, schema, signal, timeoutMs);
 }
 
+export function putAuthenticated<T>(path: string, body: unknown, schema: z.ZodType<T>, signal?: AbortSignal,
+  timeoutMs = 12_000): Promise<T> {
+  return authenticatedRequest("PUT", path, body, schema, signal, timeoutMs);
+}
+
 export function deleteAuthenticated<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal,
   timeoutMs = 12_000): Promise<T> {
   return authenticatedRequest("DELETE", path, undefined, schema, signal, timeoutMs);
@@ -148,6 +156,29 @@ export const roofApi = {
     postAuthenticated("/solar/confirm-building", { propertyId, previewId, confirmed: true }, previewResponse, signal) as Promise<RoofPreviewResponse>,
   confirmRoof: (propertyId: string, previewId: string, signal?: AbortSignal): Promise<RoofConfirmationResponse> =>
     postAuthenticated("/solar/confirm-roof", { propertyId, previewId, confirmed: true }, confirmationResponse, signal) as Promise<RoofConfirmationResponse>,
+  /** Most recent confirmed, unexpired analysis for an owned property, if any. */
+  latestAnalysisId: async (propertyId: string, signal?: AbortSignal): Promise<string | undefined> => {
+    // Analyses are listed in key order, not time order, so read every page (bounded) before picking the newest.
+    let latest: { analysisId: string; measuredAt: string } | undefined;
+    let cursor: string | undefined;
+    for (let page = 0; page < 10; page++) {
+      const result = await getAuthenticated(`/properties/${encodeURIComponent(propertyId)}/analyses?limit=50` +
+        (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""), analysisSummaryPage, signal);
+      for (const item of result.analyses) {
+        if (item.propertyId === propertyId && (!latest || item.measuredAt > latest.measuredAt)) latest = item;
+      }
+      if (!result.nextCursor) break;
+      cursor = result.nextCursor;
+    }
+    return latest?.analysisId;
+  },
+  /** The full confirmed roof of a saved analysis, in the same shape the confirmation step returned. */
+  analysis: async (propertyId: string, analysisId: string, signal?: AbortSignal): Promise<RoofConfirmationResponse> => {
+    const result = await getAuthenticated(`/properties/${encodeURIComponent(propertyId)}/analyses/${encodeURIComponent(analysisId)}`,
+      z.object({ ...envelope, source: z.enum(["GOOGLE_SOLAR", "MANUAL"]), analysisId: z.string().min(1), roof }).passthrough(), signal);
+    if (result.analysisId !== analysisId) throw new RoofRequestError("INVALID_RESPONSE", "The service returned a different analysis.");
+    return { schemaVersion: 1, requestId: result.requestId, source: result.source, analysisId: result.analysisId, roof: result.roof } as RoofConfirmationResponse;
+  },
   confirmManualRoof: (propertyId: string, manual: ManualRoofMeasurements, signal?: AbortSignal): Promise<RoofConfirmationResponse> =>
     postAuthenticated("/solar/confirm-roof", { propertyId, manual, confirmed: true }, confirmationResponse, signal) as Promise<RoofConfirmationResponse>,
 };

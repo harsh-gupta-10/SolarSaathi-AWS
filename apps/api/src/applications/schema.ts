@@ -2,6 +2,7 @@ import { benefitEvaluationContextSchema, policyCitationSchema, type PolicyCitati
 import { z } from "zod";
 import { identifier } from "../data/schemas";
 import { systemDemandSchema } from "../systems/schema";
+import { DOCUMENT_CONTENT_TYPES, MAX_DOCUMENT_BYTES } from "./documents";
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 const applicationId = identifier;
@@ -24,10 +25,20 @@ export const updateDetailsSchema = z.object({
   propertyId: identifier, expectedRevision: z.number().int().positive(),
   referenceNumber: text(120).nullable().optional(), vendorName: text(160).nullable().optional(),
 }).strict().refine(value => value.referenceNumber !== undefined || value.vendorName !== undefined);
+const contentType = z.enum(DOCUMENT_CONTENT_TYPES);
+const sizeBytes = z.number().int().min(1).max(MAX_DOCUMENT_BYTES);
+const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 export const addDocumentSchema = z.object({
   propertyId: identifier, expectedRevision: z.number().int().positive(),
   documentType: z.string().regex(/^[A-Z][A-Z0-9_]{1,63}$/), label: text(120),
   obtainedOn: z.iso.date().optional(),
+  // Optional file: the API returns a short-lived upload URL; the file is not stored until confirmed.
+  file: z.object({ contentType, sizeBytes, sha256 }).strict().optional(),
+}).strict();
+export const documentActionSchema = z.object({
+  propertyId: identifier, expectedRevision: z.number().int().positive(),
+  /** Confirm only: when no file has arrived, return a fresh upload link for the same entry instead of an error. */
+  reissueUpload: z.boolean().optional(),
 }).strict();
 export const chatUpdateSchema = z.object({
   propertyId: identifier, stepId,
@@ -40,9 +51,15 @@ export interface ApplicationStepV1 {
   citations: PolicyCitationV1[]; status: ApplicationStepStatus; verificationStatus: "USER_REPORTED";
   updatedAt: string; startedAt?: string; completedAt?: string; note?: string;
 }
+export interface ApplicationDocumentFileV1 {
+  objectKey: string; contentType: z.infer<typeof contentType>; sizeBytes: number;
+  /** Client-computed SHA-256 (hex), recorded as reported; not verified by the server. */
+  sha256Reported: string;
+  status: "PENDING_UPLOAD" | "UPLOADED"; uploadedAt?: string; expiresAt?: string;
+}
 export interface ApplicationDocumentMetadataV1 {
   documentId: string; documentType: string; label: string; obtainedOn?: string;
-  recordedAt: string; verificationStatus: "USER_REPORTED";
+  recordedAt: string; verificationStatus: "USER_REPORTED"; file?: ApplicationDocumentFileV1;
 }
 export interface SolarApplicationV1 {
   schemaVersion: 1; applicationId: string; propertyId: string; analysisId: string; createdByUserId: string;
@@ -58,7 +75,7 @@ export interface SolarApplicationV1 {
 }
 export interface ApplicationEventV1 {
   schemaVersion: 1; eventId: string; applicationId: string; propertyId: string; actorId: string; occurredAt: string;
-  action: "CREATED" | "STEP_TRANSITION" | "DETAILS_UPDATED" | "DOCUMENT_RECORDED";
+  action: "CREATED" | "STEP_TRANSITION" | "DETAILS_UPDATED" | "DOCUMENT_RECORDED" | "DOCUMENT_UPLOADED" | "DOCUMENT_DELETED";
   stepId?: string; fromStatus?: ApplicationStepStatus; toStatus?: ApplicationStepStatus;
   note?: string; changedFields?: string[]; documentId?: string;
 }
@@ -82,6 +99,10 @@ export const storedApplicationSchema: z.ZodType<SolarApplicationV1> = z.object({
     completedAt: z.iso.datetime({ offset: true }).optional(), note: text(1_000).optional() }).strict()).min(1).max(20),
   documents: z.array(z.object({ documentId: identifier, documentType: addDocumentSchema.shape.documentType,
     label: text(120), obtainedOn: z.iso.date().optional(), recordedAt: z.iso.datetime({ offset: true }),
-    verificationStatus: z.literal("USER_REPORTED") }).strict()).max(30),
+    verificationStatus: z.literal("USER_REPORTED"), file: z.object({
+      objectKey: z.string().regex(/^applications\/[a-f0-9]{32}\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/),
+      contentType, sizeBytes, sha256Reported: sha256, status: z.enum(["PENDING_UPLOAD", "UPLOADED"]),
+      uploadedAt: z.iso.datetime({ offset: true }).optional(), expiresAt: z.iso.datetime({ offset: true }).optional(),
+    }).strict().optional() }).strict()).max(30),
   revision: z.number().int().positive(), createdAt: z.iso.datetime({ offset: true }), updatedAt: z.iso.datetime({ offset: true }),
 }).strict();

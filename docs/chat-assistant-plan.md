@@ -325,3 +325,57 @@ P0–P2 (UI) and P3 (backend) can run in parallel. P4 depends on P2 and P3. P6 a
 - **Not configured:** `BraveSearchKeySecretArn` (price research reports itself unavailable), no approved price benchmarks (quotes stay `UNAVAILABLE`).
 - **Unverified against live Bedrock:** Opus 5.5 effort field name (`CHAT_MODEL_REQUEST_FIELDS`), prompt-cache checkpoints, guardrail streaming mode and regex support.
 - **Not built:** installer-quote upload and comparison (P8), WAF, full split of `analyze-start.tsx`, pruning of unused marketing CSS.
+
+## Chat model: Sonnet 5.5 and enabling access (2026-10-11)
+
+**Decision:** chat uses Claude Sonnet 5.5 through the global inference profile `global.anthropic.claude-sonnet-5-5`
+(listed `ACTIVE` by `aws bedrock list-inference-profiles --region ap-south-1`). The model is a deploy parameter
+(`AdvisorBedrockModelId` and its IAM ARNs), so the template has no hardcoded model.
+
+**Root cause of "The assistant is unavailable right now" (checked read-only on 2026-10-11):**
+`aws bedrock get-foundation-model-availability --model-id anthropic.claude-sonnet-5-5` returns
+`authorizationStatus: NOT_AUTHORIZED`, `agreementAvailability: NOT_AVAILABLE`, and `get-use-case-for-model-access`
+returns "You have not filled out the request form". The account has not submitted the Anthropic use-case form, so
+every Claude call fails with `ValidationException: Operation not allowed`. No code change can fix this.
+
+### Owner steps (AWS console, account 944311261347)
+1. Sign in to the AWS console, region **Asia Pacific (Mumbai) ap-south-1**, open **Amazon Bedrock**.
+2. Open **Model catalog**, pick **Claude Sonnet 5.5** (Anthropic), and choose **Request access** / **Submit use case
+   details**. Fill in the Anthropic use-case form: company, website (the Amplify URL), intended use (a rooftop-solar
+   assistant for Indian homeowners that explains deterministic calculations), and confirm the terms. This form is
+   per account and covers all Anthropic models.
+3. Wait for the status to change (usually minutes). Check from the CLI:
+   `aws bedrock get-foundation-model-availability --region ap-south-1 --model-id anthropic.claude-sonnet-5-5`
+   must show `authorizationStatus: AUTHORIZED`.
+4. Smoke-test without the app:
+   ```sh
+   aws bedrock-runtime converse --region ap-south-1 --model-id global.anthropic.claude-sonnet-5-5 \
+     --messages '[{"role":"user","content":[{"text":"Say hello"}]}]'
+   ```
+
+### Redeploy with Sonnet 5.5
+The chat error-handling changes also need a deploy. `sam deploy` falls back to template defaults for parameters you
+do not pass, so carry the current values forward and override only the three model parameters (no parameter in this
+template is `NoEcho`, so the read-back values are complete):
+```sh
+cd infra/sam && sam build
+OVERRIDES=$(aws cloudformation describe-stacks --region ap-south-1 --stack-name solarsaathi-dev \
+  --query 'Stacks[0].Parameters[].[ParameterKey,ParameterValue]' --output text |
+  grep -Ev '^(AdvisorBedrockModelId|AdvisorBedrockModelArn|AdvisorBedrockFoundationModelArn)\s' |
+  awk -F'\t' '{printf "%s=\"%s\" ", $1, $2}')
+eval sam deploy --stack-name solarsaathi-dev --region ap-south-1 --resolve-s3 \
+  --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --parameter-overrides "$OVERRIDES" \
+  AdvisorBedrockModelId=global.anthropic.claude-sonnet-5-5 \
+  AdvisorBedrockModelArn=arn:aws:bedrock:ap-south-1:944311261347:inference-profile/global.anthropic.claude-sonnet-5-5 \
+  AdvisorBedrockFoundationModelArn='arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5-5'
+```
+Review the change set before confirming. The advisor function shares these parameters and also switches to Sonnet 5.5.
+
+### Diagnostics after this change
+- Model failures now log `chat_model_error` with `code`, provider `name`, `message` (≤300 chars), `httpStatusCode`,
+  `bedrockRequestId` and `fault` in `/solarsaathi/solarsaathi-dev/<env>/chat-agent`. No prompt or user text is logged.
+- Users see a specific message per code: `MODEL_ACCESS_DENIED` (model not enabled / wrong model ID),
+  `MODEL_TIMEOUT`, `MODEL_BUSY` (throttling or quota), `MODEL_UNAVAILABLE` (anything else), plus a
+  "Reference for support" request ID that matches the log line.
+- If access is enabled but turns still fail, check the log `message` for prompt-cache or guardrail streaming errors
+  (still unverified against live Bedrock); set `CHAT_PROMPT_CACHE=false` on the function to rule out caching.

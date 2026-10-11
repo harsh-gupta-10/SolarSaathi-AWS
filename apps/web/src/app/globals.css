@@ -1264,7 +1264,7 @@
 .skip-link:focus { transform: translateY(0); }
 
 .app-layout { min-height: 100vh; display: grid; grid-template-columns: 260px minmax(0, 1fr); background: var(--muted); }
-.desktop-sidebar { background: var(--background); border-right: 1px solid var(--border); padding: 1.75rem 1.1rem; display: flex; flex-direction: column; }
+.desktop-sidebar { background: var(--background); border-right: 1px solid var(--border); padding: 1.75rem 1.1rem; display: flex; flex-direction: column; position: sticky; top: 0; align-self: start; height: 100vh; height: 100dvh; overflow-y: auto; overscroll-behavior: contain; }
 .desktop-sidebar > .brand { padding-inline: 0.5rem; }
 .workspace-caption { font-size: 0.8rem; color: var(--muted-foreground); padding: 0.8rem 0.5rem 1.5rem; }
 .workspace-links { list-style: none; display: grid; gap: 0.25rem; padding: 0; margin: 0; }

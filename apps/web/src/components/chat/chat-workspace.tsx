@@ -34,6 +34,10 @@ const ERROR_HELP: Record<string, string> = {
   RATE_LIMITED: "You have reached the chat limit for now. Please try again later.",
   BUDGET_EXCEEDED: "You have reached today's chat limit. It resets tomorrow.",
   GUARDRAIL_BLOCKED: "I can only help with rooftop solar, your electricity use, subsidies and applications. Please ask about one of those.",
+  MODEL_ACCESS_DENIED: "The AI assistant has not been switched on for this deployment yet. You can still analyze your roof, compare systems and check benefits from My roofs.",
+  MODEL_TIMEOUT: "The assistant took too long to answer. Please try again, or ask a shorter question.",
+  MODEL_BUSY: "The assistant is busy right now. Please try again in a minute.",
+  MODEL_UNAVAILABLE: "The assistant is unavailable right now. Please try again shortly.",
 };
 
 function MessageView({ message, onReply, onQuick }: { message: UiMessage; onReply: (card: ChatCard, value: string, label: string) => void;
@@ -55,7 +59,10 @@ function MessageView({ message, onReply, onQuick }: { message: UiMessage; onRepl
           {message.quickReplies.map(item => <li key={item.value}><Button type="button" variant="outline" onClick={() => onQuick(item.value)}>{item.label}</Button></li>)}
         </ul>
       ) : null}
-      {message.error ? <Callout tone="danger">{ERROR_HELP[message.error.code] ?? message.error.message}</Callout> : null}
+      {message.error ? <Callout tone="danger">
+        {ERROR_HELP[message.error.code] ?? message.error.message}
+        {message.error.requestId ? <span className="mt-1 block font-mono text-xs opacity-80">Reference for support: {message.error.requestId}</span> : null}
+      </Callout> : null}
     </div>
   );
 }

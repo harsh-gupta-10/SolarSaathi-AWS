@@ -44,9 +44,16 @@ export interface RoofLayoutSegment {
   pitchDegrees: number;
   azimuthDegrees: number;
   center: RoofLayoutPoint;
-  /** Southwest, southeast, northeast, northwest in the local frame. */
+  /**
+   * Counter-clockwise from above, starting at the corner nearest southwest. The rectangle is rotated to the
+   * segment azimuth (folded into ±45°), so with azimuth 0/90/180/270 the order is southwest, southeast,
+   * northeast, northwest.
+   */
   corners: RoofLayoutCorners;
 }
+
+/** A ground-plan point in the same local east/north metres as the layout. */
+export interface RoofLayoutPlanPoint { x: number; z: number }
 
 export interface RoofLayoutPanel {
   panelId: string;
@@ -63,6 +70,11 @@ export interface RoofLayout {
   source: NormalizedRoofV1["source"];
   fitStatus: RoofFitStatus;
   bounds: RoofLayoutBounds | null;
+  /**
+   * One approximate building outline: the convex hull of the modeled segment rectangles, counter-clockwise from
+   * above. It is shared by the 3D walls and the satellite-map overlay; it is not a surveyed footprint.
+   */
+  footprint: RoofLayoutPlanPoint[];
   segments: RoofLayoutSegment[];
   panels: RoofLayoutPanel[];
   /** Null means the available geometry cannot support a defensible fit estimate. */
@@ -74,9 +86,13 @@ export interface RoofLayout {
 
 interface Point2 { x: number; z: number }
 interface Rectangle { minX: number; maxX: number; minZ: number; maxZ: number }
+/** A rotated plan frame: local x runs along `axisU`, local z along `axisV`, both unit vectors. */
+interface Frame { origin: Point2; axisU: Point2; axisV: Point2 }
 interface WorkingSegment {
   result: RoofLayoutSegment;
+  /** Segment rectangle in its own frame's local coordinates. */
   rectangle: Rectangle;
+  frame: Frame;
   pitchRadians: number;
   azimuthRadians: number;
   center2: Point2;
@@ -137,8 +153,82 @@ function project(point: RoofPoint, origin: RoofPoint): Point2 {
   };
 }
 
+function unproject(point: Point2, origin: RoofPoint): RoofPoint {
+  return {
+    latitude: origin.latitude + point.z / EARTH_RADIUS_METERS / DEG_TO_RAD,
+    longitude: origin.longitude + point.x / (EARTH_RADIUS_METERS * Math.cos(origin.latitude * DEG_TO_RAD)) / DEG_TO_RAD,
+  };
+}
+
 function centerOf(rectangle: Rectangle): Point2 {
   return { x: (rectangle.minX + rectangle.maxX) / 2, z: (rectangle.minZ + rectangle.maxZ) / 2 };
+}
+
+const IDENTITY_FRAME: Frame = { origin: { x: 0, z: 0 }, axisU: { x: 1, z: 0 }, axisV: { x: 0, z: 1 } };
+
+function toWorld(frame: Frame, local: Point2): Point2 {
+  return { x: frame.origin.x + local.x * frame.axisU.x + local.z * frame.axisV.x,
+    z: frame.origin.z + local.x * frame.axisU.z + local.z * frame.axisV.z };
+}
+
+function toLocal(frame: Frame, world: Point2): Point2 {
+  const dx = world.x - frame.origin.x, dz = world.z - frame.origin.z;
+  return { x: dx * frame.axisU.x + dz * frame.axisU.z, z: dx * frame.axisV.x + dz * frame.axisV.z };
+}
+
+/**
+ * Folds an azimuth into the plan rotation nearest to north-aligned, in [-45°, 45°). A roof plane's downhill
+ * direction is perpendicular or parallel to its edges, so this rotation squares the rectangle with the plane.
+ */
+export function segmentPlanRotationDegrees(azimuthDegrees: number): number {
+  return ((azimuthDegrees % 90) + 90 + 45) % 90 - 45;
+}
+
+function rotatedFrame(origin: Point2, rotationDegrees: number): Frame {
+  const angle = rotationDegrees * DEG_TO_RAD;
+  // axisV has compass bearing `rotationDegrees`; axisU is 90° clockwise from it.
+  return { origin, axisU: { x: Math.cos(angle), z: -Math.sin(angle) }, axisV: { x: Math.sin(angle), z: Math.cos(angle) } };
+}
+
+/**
+ * Side lengths of a rectangle rotated by `rotationDegrees` that fits the axis-aligned box `width` × `depth`
+ * (east × north) and does not exceed `groundArea`. For an exact rotated rectangle the box is reproduced; for an
+ * irregular plane, both sides are scaled uniformly down to the reported ground area.
+ */
+export function fitRotatedRectangle(width: number, depth: number, groundArea: number, rotationDegrees: number):
+  { along: number; across: number } {
+  const angle = rotationDegrees * DEG_TO_RAD;
+  const c = Math.abs(Math.cos(angle)), s = Math.abs(Math.sin(angle));
+  let along: number, across: number;
+  if (s <= METRE_EPSILON) { along = width; across = depth; } else {
+    // width = along·c + across·s and depth = along·s + across·c.
+    const sum = (width + depth) / (c + s);
+    const difference = c - s > 1e-3 ? (width - depth) / (c - s) : 0;
+    along = (sum + difference) / 2; across = (sum - difference) / 2;
+    if (along <= METRE_EPSILON || across <= METRE_EPSILON) { along = sum / 2; across = sum / 2; }
+  }
+  const area = along * across;
+  const areaScale = groundArea > 0 && area > groundArea ? Math.sqrt(groundArea / area) : 1;
+  along *= areaScale; across *= areaScale;
+  const fitScale = Math.min(1, width / (along * c + across * s), depth / (along * s + across * c));
+  return { along: along * fitScale, across: across * fitScale };
+}
+
+/** Convex hull (Andrew's monotone chain), counter-clockwise when viewed from above (x east, z north). */
+export function convexHull(points: readonly RoofLayoutPlanPoint[]): RoofLayoutPlanPoint[] {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.z - b.z);
+  if (sorted.length < 3) return sorted;
+  const cross = (o: Point2, a: Point2, b: Point2) => (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x);
+  const lower: Point2[] = [], upper: Point2[] = [];
+  for (const point of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= METRE_EPSILON) lower.pop();
+    lower.push(point);
+  }
+  for (const point of [...sorted].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= METRE_EPSILON) upper.pop();
+    upper.push(point);
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)].map(({ x, z }) => ({ x, z }));
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -156,20 +246,19 @@ function point3(segment: WorkingSegment, point: Point2, offset = 0): RoofLayoutP
 }
 
 function rectangleCorners(segment: WorkingSegment, rectangle: Rectangle): RoofLayoutCorners {
-  return [
-    point3(segment, { x: rectangle.minX, z: rectangle.minZ }),
-    point3(segment, { x: rectangle.maxX, z: rectangle.minZ }),
-    point3(segment, { x: rectangle.maxX, z: rectangle.maxZ }),
-    point3(segment, { x: rectangle.minX, z: rectangle.maxZ }),
-  ];
+  return ([
+    { x: rectangle.minX, z: rectangle.minZ }, { x: rectangle.maxX, z: rectangle.minZ },
+    { x: rectangle.maxX, z: rectangle.maxZ }, { x: rectangle.minX, z: rectangle.maxZ },
+  ] as Point2[]).map(local => point3(segment, toWorld(segment.frame, local))) as RoofLayoutCorners;
 }
 
-function makeSegment(source: RoofSegmentV1, rectangle: Rectangle, kind: RoofGeometryKind, centerHeight = 0): WorkingSegment {
+function makeSegment(source: RoofSegmentV1, rectangle: Rectangle, kind: RoofGeometryKind, centerHeight = 0,
+  frame: Frame = IDENTITY_FRAME): WorkingSegment {
   const pitchRadians = (source.pitchDegrees ?? 0) * DEG_TO_RAD;
   const azimuthRadians = (source.azimuthDegrees ?? 0) * DEG_TO_RAD;
-  const center2 = centerOf(rectangle);
+  const center2 = toWorld(frame, centerOf(rectangle));
   const segment = {
-    rectangle, pitchRadians, azimuthRadians, center2, centerHeight,
+    rectangle, frame, pitchRadians, azimuthRadians, center2, centerHeight,
     result: { segmentId: source.segmentId, geometryKind: kind, areaSquareMeters: source.areaSquareMeters,
       pitchDegrees: source.pitchDegrees ?? 0, azimuthDegrees: source.azimuthDegrees ?? 0,
       center: { x: center2.x, y: centerHeight, z: center2.z }, corners: [] as unknown as RoofLayoutCorners },
@@ -178,7 +267,13 @@ function makeSegment(source: RoofSegmentV1, rectangle: Rectangle, kind: RoofGeom
   return segment;
 }
 
-function googleSegment(source: RoofSegmentV1, origin: RoofPoint, maxModeledPitchDegrees: number): WorkingSegment | undefined {
+/**
+ * Google gives each roof plane an axis-aligned bounding box. The plane is modeled as a rectangle rotated to its
+ * azimuth that fits inside that box with the reported ground area, so rotated houses are not drawn as
+ * north-aligned boxes.
+ */
+function googleSegment(source: RoofSegmentV1, origin: RoofPoint, maxModeledPitchDegrees: number,
+  centerHeight: number): WorkingSegment | undefined {
   const middle = midpoint(source);
   if (!middle || !source.bounds || (source.pitchDegrees ?? 0) > maxModeledPitchDegrees) return undefined;
   const southwest = project(source.bounds.southwest, origin);
@@ -188,16 +283,33 @@ function googleSegment(source: RoofSegmentV1, origin: RoofPoint, maxModeledPitch
   if (width <= METRE_EPSILON || depth <= METRE_EPSILON) return undefined;
   const pitch = (source.pitchDegrees ?? 0) * DEG_TO_RAD;
   const targetGroundArea = source.groundAreaSquareMeters ?? source.areaSquareMeters * Math.cos(pitch);
-  const scale = Math.min(1, Math.sqrt(targetGroundArea / (width * depth)));
-  if (!Number.isFinite(scale) || scale <= 0) return undefined;
+  if (!Number.isFinite(targetGroundArea) || targetGroundArea <= 0) return undefined;
+  const rotation = segmentPlanRotationDegrees(source.azimuthDegrees ?? 0);
+  const { along, across } = fitRotatedRectangle(width, depth, targetGroundArea, rotation);
+  if (!(along > METRE_EPSILON && across > METRE_EPSILON)) return undefined;
+  const angle = rotation * DEG_TO_RAD;
+  const c = Math.abs(Math.cos(angle)), s = Math.abs(Math.sin(angle));
+  const halfBoxX = (along * c + across * s) / 2, halfBoxZ = (along * s + across * c) / 2;
   const preferred = validPoint(source.center) ? project(source.center, origin) : project(middle, origin);
-  const halfWidth = width * scale / 2, halfDepth = depth * scale / 2;
-  const center = { x: clamp(preferred.x, box.minX + halfWidth, box.maxX - halfWidth),
-    z: clamp(preferred.z, box.minZ + halfDepth, box.maxZ - halfDepth) };
-  return makeSegment(source, {
-    minX: center.x - halfWidth, maxX: center.x + halfWidth,
-    minZ: center.z - halfDepth, maxZ: center.z + halfDepth,
-  }, "GOOGLE_BOUNDS_APPROXIMATE", source.planeHeightAtCenterMeters ?? 0);
+  const center = { x: clamp(preferred.x, box.minX + halfBoxX, box.maxX - halfBoxX),
+    z: clamp(preferred.z, box.minZ + halfBoxZ, box.maxZ - halfBoxZ) };
+  return makeSegment(source, { minX: -along / 2, maxX: along / 2, minZ: -across / 2, maxZ: across / 2 },
+    "GOOGLE_BOUNDS_APPROXIMATE", centerHeight, rotatedFrame(center, rotation));
+}
+
+/**
+ * Google plane heights are metres above sea level. Heights are made relative to the lowest modeled plane so the
+ * model sits near y = 0; if any modeled plane lacks a height, all planes are modeled at the same relative height.
+ */
+function relativePlaneHeights(segments: readonly RoofSegmentV1[], maxModeledPitchDegrees: number): number[] {
+  // Only planes that can be modeled set the baseline: a dropped near-vertical or bounds-less plane must not lift the rest.
+  const modeled = segments.filter(segment => segment.bounds && (segment.pitchDegrees ?? 0) <= maxModeledPitchDegrees);
+  const heights = modeled.map(segment => segment.planeHeightAtCenterMeters);
+  if (!heights.length || !heights.every((height): height is number => height !== undefined && Number.isFinite(height))) {
+    return segments.map(() => 0);
+  }
+  const base = Math.min(...heights);
+  return segments.map(segment => (segment.planeHeightAtCenterMeters ?? base) - base);
 }
 
 function manualSegment(roof: NormalizedRoofV1, assumptions: RoofLayoutAssumptions,
@@ -311,8 +423,8 @@ function manualPanels(segment: WorkingSegment, assumptions: RoofLayoutAssumption
             { x: center.x + width / 2, z: center.z + depth / 2 }, { x: center.x - width / 2, z: center.z + depth / 2 },
           ];
           panels.push({ panelId: `manual-${panels.length + 1}`, segmentId: segment.result.segmentId, orientation,
-            center: point3(segment, center, assumptions.mountingOffsetMeters),
-            corners: corners2.map(point => point3(segment, point, assumptions.mountingOffsetMeters)) as RoofLayoutCorners });
+            center: point3(segment, toWorld(segment.frame, center), assumptions.mountingOffsetMeters),
+            corners: corners2.map(point => point3(segment, toWorld(segment.frame, point), assumptions.mountingOffsetMeters)) as RoofLayoutCorners });
         }
       }
     }
@@ -350,7 +462,7 @@ function googlePanels(roof: NormalizedRoofV1, segments: Map<number, WorkingSegme
     const panel = panelFor(segment, project(suggestion.center, origin), suggestion.orientation,
       assumptions, `google-${index + 1}`, sameGooglePanelSpec ? suggestion.yearlyEnergyDcKwh : undefined);
     const polygon = footprint(panel);
-    if (!insideBands(polygon, bands) || panels.some(existing => existing.segmentId === panel.segmentId &&
+    if (!insideBands(polygon.map(point => toLocal(segment.frame, point)), bands) || panels.some(existing => existing.segmentId === panel.segmentId &&
       !separatedByGap(footprint(existing), polygon, assumptions.panelGapMeters))) {
       filtered = true;
       continue;
@@ -375,25 +487,55 @@ function layoutBounds(segments: RoofLayoutSegment[], panels: RoofLayoutPanel[]):
  * Produces a visual, deterministic fit model. Google bounds are rectangular approximations,
  * so their displayed edge clearance is never an engineering or installation approval.
  */
+function layoutOrigin(roof: NormalizedRoofV1): RoofPoint | undefined {
+  return [roof.center, ...roof.segments.map(segment => segment.center), ...roof.segments.map(midpoint)].find(validPoint);
+}
+
+function googleSegmentModels(roof: NormalizedRoofV1, origin: RoofPoint, assumptions: RoofLayoutAssumptions,
+  warnings: Set<RoofLayoutWarning>): Map<number, WorkingSegment> {
+  const models = new Map<number, WorkingSegment>();
+  const heights = relativePlaneHeights(roof.segments, assumptions.maxModeledPitchDegrees);
+  roof.segments.forEach((segment, index) => {
+    if (segment.pitchDegrees === undefined) warnings.add("PITCH_ASSUMED_FLAT");
+    const model = googleSegment(segment, origin, assumptions.maxModeledPitchDegrees, heights[index]);
+    if (model) models.set(index, model);
+    else warnings.add((segment.pitchDegrees ?? 0) > assumptions.maxModeledPitchDegrees ?
+      "NEAR_VERTICAL_SEGMENT" : "SEGMENT_BOUNDS_MISSING");
+  });
+  return models;
+}
+
+function footprintOf(segments: readonly RoofLayoutSegment[]): RoofLayoutPlanPoint[] {
+  return convexHull(segments.flatMap(segment => segment.corners.map(({ x, z }) => ({ x, z }))));
+}
+
+/**
+ * The approximate building outline from Google roof planes as latitude/longitude, counter-clockwise. It is the
+ * same outline as `RoofLayout.footprint` and is meant for a map overlay labelled approximate. Returns null for
+ * manual roofs or when no plane can be modeled.
+ */
+export function googleBuildingOutline(roof: NormalizedRoofV1, assumptions: RoofLayoutAssumptions): RoofPoint[] | null {
+  validate(roof, assumptions);
+  if (roof.source !== "GOOGLE_SOLAR") return null;
+  const origin = layoutOrigin(roof);
+  if (!origin) return null;
+  const segments = Array.from(googleSegmentModels(roof, origin, assumptions, new Set()).values(), model => model.result);
+  const outline = footprintOf(segments);
+  return outline.length >= 3 ? outline.map(point => unproject(point, origin)) : null;
+}
+
 export function planRoofLayout(roof: NormalizedRoofV1, assumptions: RoofLayoutAssumptions): RoofLayout {
   validate(roof, assumptions);
   const warnings = new Set<RoofLayoutWarning>();
-  const segmentModels = new Map<number, WorkingSegment>();
+  let segmentModels = new Map<number, WorkingSegment>();
   let panels: RoofLayoutPanel[] = [];
   let fitStatus: RoofFitStatus = "UNDETERMINED";
   let panelCount: number | null = null;
   if (roof.source === "GOOGLE_SOLAR") {
     warnings.add("GOOGLE_BOUNDS_ARE_APPROXIMATE");
-    const origin = [roof.center, ...roof.segments.map(segment => segment.center), ...roof.segments.map(midpoint)]
-      .find(validPoint);
+    const origin = layoutOrigin(roof);
     if (origin) {
-      roof.segments.forEach((segment, index) => {
-        if (segment.pitchDegrees === undefined) warnings.add("PITCH_ASSUMED_FLAT");
-        const model = googleSegment(segment, origin, assumptions.maxModeledPitchDegrees);
-        if (model) segmentModels.set(index, model);
-        else warnings.add((segment.pitchDegrees ?? 0) > assumptions.maxModeledPitchDegrees ?
-          "NEAR_VERTICAL_SEGMENT" : "SEGMENT_BOUNDS_MISSING");
-      });
+      segmentModels = googleSegmentModels(roof, origin, assumptions, warnings);
       const selected = googlePanels(roof, segmentModels, origin, assumptions, warnings);
       panels = selected.panels;
       if (selected.evaluable || (roof.panelSuggestions?.length === 0 && segmentModels.size > 0)) {
@@ -422,7 +564,7 @@ export function planRoofLayout(roof: NormalizedRoofV1, assumptions: RoofLayoutAs
   if (!segments.length) warnings.add("NO_USABLE_GEOMETRY");
   return {
     schemaVersion: 1, coordinateSystem: "LOCAL_EAST_UP_NORTH_METERS", source: roof.source,
-    fitStatus, bounds: layoutBounds(segments, panels), segments, panels, panelCount,
+    fitStatus, bounds: layoutBounds(segments, panels), footprint: footprintOf(segments), segments, panels, panelCount,
     dcCapacityKw: panelCount === null ? null : panelCount * assumptions.panelCapacityWatts / 1_000,
     clearances: { edgeSetbackMeters: assumptions.edgeSetbackMeters, panelGapMeters: assumptions.panelGapMeters,
       servicePathWidthMeters: assumptions.servicePathWidthMeters },

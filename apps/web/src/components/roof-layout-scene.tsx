@@ -9,98 +9,98 @@ import type { RoofLayout } from "@solarsaathi/calculations";
 export type ViewCommand = { action: "left" | "right" | "in" | "out" | "top" | "reset"; sequence: number };
 type Point = { x: number; y: number; z: number };
 
+/** Illustrative wall height below the lowest roof edge; Google gives roof heights, not the ground level. */
+const ILLUSTRATIVE_WALL_HEIGHT_METERS = 3;
+const PLINTH_HEIGHT_METERS = 0.45;
+const WALL_SAMPLE_SPACING_METERS = 0.25;
+
+type Plane = { contains(x: number, z: number): boolean; heightAt(x: number, z: number): number };
+
+/** The planar roof rectangle through a segment's corners, in scene coordinates. */
+export function planeOf(corners: readonly Point[]): Plane {
+  const [c0, c1, , c3] = corners;
+  const ux = c1.x - c0.x, uz = c1.z - c0.z, vx = c3.x - c0.x, vz = c3.z - c0.z;
+  const determinant = ux * vz - uz * vx || 1e-9;
+  const local = (x: number, z: number) => {
+    const dx = x - c0.x, dz = z - c0.z;
+    return { a: (dx * vz - dz * vx) / determinant, b: (ux * dz - uz * dx) / determinant };
+  };
+  const tolerance = 1e-3;
+  return {
+    contains(x, z) { const { a, b } = local(x, z); return a >= -tolerance && a <= 1 + tolerance && b >= -tolerance && b <= 1 + tolerance; },
+    heightAt(x, z) { const { a, b } = local(x, z); return c0.y + a * (c1.y - c0.y) + b * (c3.y - c0.y); },
+  };
+}
+
 /**
- * Renders the building walls, foundation plinth, and roof fascia beneath the modeled roof
- * so the house appears as a realistic architectural structure instead of a floating flat polygon.
+ * Mirrors the planner's east/up/north frame into three.js' right-handed frame (north → −z), so the 3D view
+ * matches the satellite map and the top-down plan instead of showing a mirror image.
  */
-function BuildingStructure({
-  segments,
-  bounds,
-}: {
-  segments: RoofLayout["segments"];
-  bounds: RoofLayout["bounds"];
+export function toSceneFrame(layout: RoofLayout): RoofLayout {
+  const flip = <T extends { z: number }>(point: T): T => ({ ...point, z: -point.z });
+  return {
+    ...layout,
+    bounds: layout.bounds && { min: { ...layout.bounds.min, z: -layout.bounds.max.z }, max: { ...layout.bounds.max, z: -layout.bounds.min.z } },
+    footprint: layout.footprint.map(flip),
+    segments: layout.segments.map(segment => ({ ...segment, center: flip(segment.center), corners: segment.corners.map(flip) as typeof segment.corners })),
+    panels: layout.panels.map(panel => ({ ...panel, center: flip(panel.center), corners: panel.corners.map(flip) as typeof panel.corners })),
+  };
+}
+
+/**
+ * One building body extruded from the shared footprint: walls rise from the ground to the roof planes above
+ * each wall point (so gable ends close up to the ridge), with a flat cap where no plane covers the outline.
+ */
+function BuildingStructure({ footprint, planes, eaveY, groundY }: {
+  footprint: RoofLayout["footprint"]; planes: Plane[]; eaveY: number; groundY: number;
 }) {
-  const groundY = (bounds?.min.y ?? 0) - 3.8;
-  const plinthHeight = 0.45;
-  const fasciaHeight = 0.18;
-
-  const { wallFaces, plinthFaces, fasciaFaces, wallEdges } = useMemo(() => {
-    const wallPos: number[] = [];
-    const plinthPos: number[] = [];
-    const fasciaPos: number[] = [];
-    const edgePos: number[] = [];
-
-    for (const segment of segments) {
-      const corners = segment.corners;
-      for (let i = 0; i < 4; i++) {
-        const c1 = corners[i];
-        const c2 = corners[(i + 1) % 4];
-
-        // 1. Main wall quad (from below fascia down to plinth)
-        const topY1 = c1.y - fasciaHeight;
-        const topY2 = c2.y - fasciaHeight;
-        const botY = groundY + plinthHeight;
-
-        // Tri 1
-        wallPos.push(c1.x, topY1, c1.z, c2.x, topY2, c2.z, c2.x, botY, c2.z);
-        // Tri 2
-        wallPos.push(c1.x, topY1, c1.z, c2.x, botY, c2.z, c1.x, botY, c1.z);
-
-        // 2. Foundation plinth quad (from botY down to groundY)
-        plinthPos.push(c1.x, botY, c1.z, c2.x, botY, c2.z, c2.x, groundY, c2.z);
-        plinthPos.push(c1.x, botY, c1.z, c2.x, groundY, c2.z, c1.x, groundY, c1.z);
-
-        // 3. Roof fascia / eave trim quad (from roof surface down by fasciaHeight)
-        fasciaPos.push(c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, c2.x, topY2, c2.z);
-        fasciaPos.push(c1.x, c1.y, c1.z, c2.x, topY2, c2.z, c1.x, topY1, c1.z);
-
-        // Wall corner accent lines
-        edgePos.push(c1.x, c1.y, c1.z, c1.x, groundY, c1.z);
-        edgePos.push(c1.x, topY1, c1.z, c2.x, topY2, c2.z);
-        edgePos.push(c1.x, botY, c1.z, c2.x, botY, c2.z);
+  const { wallFaces, plinthFaces, capFaces, wallEdges } = useMemo(() => {
+    const wallPos: number[] = [], plinthPos: number[] = [], capPos: number[] = [], edgePos: number[] = [];
+    const plinthTop = groundY + PLINTH_HEIGHT_METERS;
+    const topAt = (x: number, z: number) => {
+      const heights = planes.filter(plane => plane.contains(x, z)).map(plane => plane.heightAt(x, z));
+      return heights.length ? Math.max(eaveY, ...heights) : eaveY;
+    };
+    for (let index = 0; index < footprint.length; index++) {
+      const start = footprint[index], end = footprint[(index + 1) % footprint.length];
+      const steps = Math.max(1, Math.ceil(Math.hypot(end.x - start.x, end.z - start.z) / WALL_SAMPLE_SPACING_METERS));
+      for (let step = 0; step < steps; step++) {
+        const t0 = step / steps, t1 = (step + 1) / steps;
+        const x0 = start.x + (end.x - start.x) * t0, z0 = start.z + (end.z - start.z) * t0;
+        const x1 = start.x + (end.x - start.x) * t1, z1 = start.z + (end.z - start.z) * t1;
+        const top0 = topAt(x0, z0), top1 = topAt(x1, z1);
+        wallPos.push(x0, top0, z0, x1, top1, z1, x1, plinthTop, z1, x0, top0, z0, x1, plinthTop, z1, x0, plinthTop, z0);
+        plinthPos.push(x0, plinthTop, z0, x1, plinthTop, z1, x1, groundY, z1, x0, plinthTop, z0, x1, groundY, z1, x0, groundY, z0);
       }
+      edgePos.push(start.x, topAt(start.x, start.z), start.z, start.x, groundY, start.z);
     }
-
-    const wallsGeo = new BufferGeometry();
-    wallsGeo.setAttribute("position", new Float32BufferAttribute(wallPos, 3));
-    wallsGeo.computeVertexNormals();
-
-    const plinthGeo = new BufferGeometry();
-    plinthGeo.setAttribute("position", new Float32BufferAttribute(plinthPos, 3));
-    plinthGeo.computeVertexNormals();
-
-    const fasciaGeo = new BufferGeometry();
-    fasciaGeo.setAttribute("position", new Float32BufferAttribute(fasciaPos, 3));
-    fasciaGeo.computeVertexNormals();
-
-    const edgesGeo = new BufferGeometry();
-    edgesGeo.setAttribute("position", new Float32BufferAttribute(edgePos, 3));
-
-    return { wallFaces: wallsGeo, plinthFaces: plinthGeo, fasciaFaces: fasciaGeo, wallEdges: edgesGeo };
-  }, [segments, groundY]);
+    for (let index = 1; index + 1 < footprint.length; index++) {
+      for (const point of [footprint[0], footprint[index], footprint[index + 1]]) capPos.push(point.x, eaveY - 0.02, point.z);
+    }
+    const geometry = (positions: number[], normals = true) => {
+      const result = new BufferGeometry();
+      result.setAttribute("position", new Float32BufferAttribute(positions, 3));
+      if (normals) result.computeVertexNormals();
+      return result;
+    };
+    return { wallFaces: geometry(wallPos), plinthFaces: geometry(plinthPos), capFaces: geometry(capPos), wallEdges: geometry(edgePos, false) };
+  }, [footprint, planes, eaveY, groundY]);
 
   useEffect(() => () => {
-    wallFaces.dispose();
-    plinthFaces.dispose();
-    fasciaFaces.dispose();
-    wallEdges.dispose();
-  }, [wallFaces, plinthFaces, fasciaFaces, wallEdges]);
+    wallFaces.dispose(); plinthFaces.dispose(); capFaces.dispose(); wallEdges.dispose();
+  }, [wallFaces, plinthFaces, capFaces, wallEdges]);
 
   return (
     <>
-      {/* Exterior masonry / render wall */}
       <mesh geometry={wallFaces}>
         <meshStandardMaterial color="#ded7ca" roughness={0.88} metalness={0.04} side={DoubleSide} />
       </mesh>
-      {/* Foundation plinth */}
       <mesh geometry={plinthFaces}>
         <meshStandardMaterial color="#475569" roughness={0.92} metalness={0.08} side={DoubleSide} />
       </mesh>
-      {/* Roof edge fascia */}
-      <mesh geometry={fasciaFaces}>
-        <meshStandardMaterial color="#334155" roughness={0.65} metalness={0.2} side={DoubleSide} />
+      <mesh geometry={capFaces}>
+        <meshStandardMaterial color="#6b7280" roughness={0.9} metalness={0.05} side={DoubleSide} />
       </mesh>
-      {/* Architectural corner lines */}
       <lineSegments geometry={wallEdges}>
         <lineBasicMaterial color="#94a3b8" transparent opacity={0.4} />
       </lineSegments>
@@ -113,7 +113,7 @@ function BuildingStructure({
  * Renders aluminum metallic frames, dark reflective monocrystalline cell faces with cell grid lines,
  * and mounting bracket stanchions connecting panels to the roof plane.
  */
-function RealisticPanelsBatch({ panels }: { panels: RoofLayout["panels"] }) {
+function RealisticPanelsBatch({ panels, planes }: { panels: RoofLayout["panels"]; planes: Map<string, Plane> }) {
   const { frameFaces, cellFaces, bracketFaces, gridEdges } = useMemo(() => {
     const framePos: number[] = [];
     const cellPos: number[] = [];
@@ -122,7 +122,7 @@ function RealisticPanelsBatch({ panels }: { panels: RoofLayout["panels"] }) {
 
     const frameThickness = 0.04; // 40mm solar module frame height
     const frameBorder = 0.035; // 35mm frame lip width
-    const mountElevation = 0.06; // 60mm mounting rail offset above roof surface
+    const bracketHalfWidth = 0.03;
 
     for (const panel of panels) {
       const c = panel.corners;
@@ -146,12 +146,8 @@ function RealisticPanelsBatch({ panels }: { panels: RoofLayout["panels"] }) {
         norm = { x: -norm.x, y: -norm.y, z: -norm.z };
       }
 
-      // Base elevated corners
-      const elevated = c.map(pt => ({
-        x: pt.x + norm.x * mountElevation,
-        y: pt.y + norm.y * mountElevation,
-        z: pt.z + norm.z * mountElevation,
-      }));
+      // The planner already lifted the corners by the mounting offset; the frame sits directly on them.
+      const elevated = c.map(pt => ({ x: pt.x, y: pt.y, z: pt.z }));
 
       // Top of the frame
       const topCorners = elevated.map(pt => ({
@@ -220,16 +216,18 @@ function RealisticPanelsBatch({ panels }: { panels: RoofLayout["panels"] }) {
         );
       }
 
-      // 4. Mounting Bracket Struts under the panel corners
-      for (let i = 0; i < 4; i++) {
-        const roofPt = c[i];
-        const mountPt = elevated[i];
-        const w = 0.04;
-        bracketPos.push(
-          roofPt.x - w, roofPt.y, roofPt.z - w,
-          roofPt.x + w, roofPt.y, roofPt.z + w,
-          mountPt.x, mountPt.y, mountPt.z
-        );
+      // 4. Mounting posts from the roof plane up to the panel underside, inset from the corners like rail clamps.
+      const plane = planes.get(panel.segmentId);
+      if (plane) {
+        for (const [a, b] of [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]]) {
+          const top = { x: c[0].x + ux * a + vx * b, y: c[0].y + uy * a + vy * b, z: c[0].z + uz * a + vz * b };
+          const baseY = plane.heightAt(top.x, top.z);
+          const square = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sz]) => ({ x: top.x + sx * bracketHalfWidth, z: top.z + sz * bracketHalfWidth }));
+          for (let i = 0; i < 4; i++) {
+            const p = square[i], q = square[(i + 1) % 4];
+            bracketPos.push(p.x, baseY, p.z, q.x, baseY, q.z, q.x, top.y, q.z, p.x, baseY, p.z, q.x, top.y, q.z, p.x, top.y, p.z);
+          }
+        }
       }
 
       // 5. Silicon cell grid division lines across the cell surface
@@ -277,7 +275,7 @@ function RealisticPanelsBatch({ panels }: { panels: RoofLayout["panels"] }) {
     gridGeo.setAttribute("position", new Float32BufferAttribute(gridPos, 3));
 
     return { frameFaces: frameGeo, cellFaces: cellGeo, bracketFaces: bracketGeo, gridEdges: gridGeo };
-  }, [panels]);
+  }, [panels, planes]);
 
   useEffect(() => () => {
     frameFaces.dispose();
@@ -409,14 +407,18 @@ function CameraControls({ layout, command, reducedMotion }: { layout: RoofLayout
   );
 }
 
-export default function RoofLayoutScene({ layout, command, reducedMotion }: { layout: RoofLayout; command: ViewCommand; reducedMotion: boolean }) {
+export default function RoofLayoutScene({ layout: planLayout, command, reducedMotion }: { layout: RoofLayout; command: ViewCommand; reducedMotion: boolean }) {
+  const layout = useMemo(() => toSceneFrame(planLayout), [planLayout]);
   const bounds = layout.bounds;
   const center = bounds ? { x: (bounds.min.x + bounds.max.x) / 2, y: (bounds.min.y + bounds.max.y) / 2, z: (bounds.min.z + bounds.max.z) / 2 } : { x: 0, y: 0, z: 0 };
   const width = bounds ? bounds.max.x - bounds.min.x : 8;
   const depth = bounds ? bounds.max.z - bounds.min.z : 8;
   const distance = Math.max(width, depth, 6) * 1.75;
-  const groundY = (bounds?.min.y ?? 0) - 3.8;
+  const eaveY = layout.segments.length ? Math.min(...layout.segments.flatMap(segment => segment.corners.map(corner => corner.y))) : (bounds?.min.y ?? 0);
+  const groundY = eaveY - ILLUSTRATIVE_WALL_HEIGHT_METERS;
   const groundRadius = Math.max(width, depth, 8) * 1.6;
+  const planes = useMemo(() => new Map(layout.segments.map(segment => [segment.segmentId, planeOf(segment.corners)])), [layout.segments]);
+  const planeList = useMemo(() => Array.from(planes.values()), [planes]);
 
   const measuredSegments = useMemo(() => layout.segments.filter(segment => segment.geometryKind !== "AREA_ONLY_ILLUSTRATION"), [layout.segments]);
   const symbolicSegments = useMemo(() => layout.segments.filter(segment => segment.geometryKind === "AREA_ONLY_ILLUSTRATION"), [layout.segments]);
@@ -434,9 +436,9 @@ export default function RoofLayoutScene({ layout, command, reducedMotion }: { la
       {/* Modern architectural deep sky background */}
       <color attach="background" args={["#0f172a"]} />
 
-      {/* Sun directional light simulating Indian sunlight (from South-South-West) */}
+      {/* Sun directional light simulating Indian sunlight (from south-southwest; south is +z in the scene) */}
       <directionalLight
-        position={[center.x - distance * 0.8, center.y + distance * 1.8, center.z - distance * 0.6]}
+        position={[center.x - distance * 0.8, center.y + distance * 1.8, center.z + distance * 0.6]}
         intensity={2.4}
         color="#fffbeb"
       />
@@ -462,8 +464,8 @@ export default function RoofLayoutScene({ layout, command, reducedMotion }: { la
       />
 
       {/* Architectural building walls, plinth, and eave fascia underneath the roof */}
-      {layout.segments.length > 0 && (
-        <BuildingStructure segments={layout.segments} bounds={bounds} />
+      {layout.footprint.length >= 3 && (
+        <BuildingStructure footprint={layout.footprint} planes={planeList} eaveY={eaveY} groundY={groundY} />
       )}
 
       {/* Modeled roof surfaces */}
@@ -476,7 +478,7 @@ export default function RoofLayoutScene({ layout, command, reducedMotion }: { la
 
       {/* Realistic 3D Solar PV Modules */}
       {layout.panels.length > 0 && (
-        <RealisticPanelsBatch panels={layout.panels} />
+        <RealisticPanelsBatch panels={layout.panels} planes={planes} />
       )}
 
       <CameraControls layout={layout} command={command} reducedMotion={reducedMotion} />

@@ -36,7 +36,8 @@ describe("policy-backed financial result", () => {
     render(<PolicyFinancialResults response={{ ...demoPolicyFinancialResponse,
       status: "UNAVAILABLE", projection: undefined, benefits: { ...demoPolicyFinancialResponse.benefits,
         status: "UNAVAILABLE", result: undefined } }} />);
-    expect(screen.getByRole("heading", { name: "Policy-adjusted estimate unavailable" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Subsidy-adjusted estimate not available" })).toBeTruthy();
+    expect(screen.getByText(/savings estimate without subsidies is still shown above/)).toBeTruthy();
     expect(screen.queryByText("Modeled net upfront cost")).toBeNull();
     expect(screen.queryByText("Adjusted payback scenario")).toBeNull();
   });
@@ -44,7 +45,7 @@ describe("policy-backed financial result", () => {
   it("explains selected benefits that cannot be applied upfront", () => {
     render(<PolicyFinancialResults response={{ ...demoPolicyFinancialResponse,
       status: "UNAVAILABLE", projection: undefined, reasonCodes: ["NO_UPFRONT_MODELABLE_BENEFITS"] }} />);
-    expect(screen.getByText(/Other selected benefits may exist/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "The benefits found do not reduce the upfront cost" })).toBeTruthy();
     expect(screen.queryByText("Modeled net upfront cost")).toBeNull();
   });
 
@@ -77,11 +78,19 @@ describe("policy-backed financial result", () => {
     expect(screen.queryByText("Current verified coverage")).toBeNull();
   });
 
+  it("explains in plain language when no verified rule is published yet", () => {
+    render(<PolicyFinancialResults response={{ ...demoPolicyFinancialResponse,
+      status: "UNAVAILABLE", projection: undefined, reasonCodes: ["NO_ACTIVE_VERIFIED_RULES"], benefits: { ...demoPolicyFinancialResponse.benefits,
+        status: "UNAVAILABLE", result: undefined, reasonCodes: ["NO_ACTIVE_VERIFIED_RULES"] } }} />);
+    expect(screen.getByRole("heading", { name: "No verified subsidy rule is published for your area yet" })).toBeTruthy();
+    expect(screen.queryByText(/₹/)).toBeNull();
+  });
+
   it("uses past-tense unavailable copy for an archived proposal", () => {
     render(<PolicyFinancialResults asOfSnapshot response={{ ...demoPolicyFinancialResponse,
       status: "UNAVAILABLE", projection: undefined, benefits: { ...demoPolicyFinancialResponse.benefits,
         status: "UNAVAILABLE", result: undefined } }} />);
-    expect(screen.getByText(/No benefit in this saved evaluation could be modeled/)).toBeTruthy();
+    expect(screen.getByText(/No benefit in this saved evaluation could be shown/)).toBeTruthy();
     expect(screen.queryByText(/No current, confirmed benefit/)).toBeNull();
   });
 });

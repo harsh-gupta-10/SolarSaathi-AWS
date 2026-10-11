@@ -1,6 +1,6 @@
 import type { ChatStreamEvent } from "@solarsaathi/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runTurn, resetPromptCacheState, extractUserFigures, type AgentConfig } from "../src/chat/agent";
+import { runTurn, resetPromptCacheState, extractUserFigures, classifyModelError, modelErrorDetails, type AgentConfig } from "../src/chat/agent";
 import { CHAT_CONFIG } from "../src/chat/config";
 import { SYSTEM_PROMPT } from "../src/chat/prompt";
 import { toolsForRole, toolSpecs } from "../src/chat/tools";
@@ -92,13 +92,36 @@ describe("agent loop", () => {
     expect(refused.result.ok).toBe(false);
   });
 
-  it("maps model failures to MODEL_UNAVAILABLE without leaking details and retries without cache checkpoints", async () => {
+  it("maps model failures to specific codes without leaking details and retries without cache checkpoints", async () => {
     const failed = await collect([], { failWith: [Object.assign(new Error("secret internals"), { name: "ThrottlingException" })] });
-    expect(failed.events).toEqual([{ type: "error", code: "MODEL_UNAVAILABLE", message: expect.not.stringContaining("secret") }]);
+    expect(failed.events).toEqual([{ type: "error", code: "MODEL_BUSY", message: expect.not.stringContaining("secret"), requestId: "req-1" }]);
+    const denied = await collect([], { failWith: [Object.assign(new Error("Operation not allowed"), { name: "ValidationException" })] });
+    expect(denied.events).toEqual([{ type: "error", code: "MODEL_ACCESS_DENIED", message: expect.not.stringContaining("Operation"), requestId: "req-1" }]);
     const retried = await collect([textTurn("fine")], { failWith: [Object.assign(new Error("cachePoint not supported"), { name: "ValidationException" })] });
     expect(retried.client.requests).toHaveLength(2);
     expect(JSON.stringify(retried.client.requests[1]!.system)).not.toContain("cachePoint");
     expect(text(retried.events)).toBe("fine");
+  });
+
+  it("classifies timeouts, access, throttling and unknown model errors", () => {
+    const named = (name: string, message = "x") => Object.assign(new Error(message), { name });
+    expect(classifyModelError(named("TimeoutError"), false).code).toBe("MODEL_TIMEOUT");
+    expect(classifyModelError(named("ThrottlingException"), true).code).toBe("MODEL_TIMEOUT");
+    expect(classifyModelError(named("AccessDeniedException"), false).code).toBe("MODEL_ACCESS_DENIED");
+    expect(classifyModelError(named("ResourceNotFoundException"), false).code).toBe("MODEL_ACCESS_DENIED");
+    expect(classifyModelError(named("ServiceUnavailableException"), false).code).toBe("MODEL_BUSY");
+    expect(classifyModelError(named("ValidationException", "Malformed input request"), false).code).toBe("MODEL_UNAVAILABLE");
+    expect(classifyModelError("boom", false).code).toBe("MODEL_UNAVAILABLE");
+  });
+
+  it("logs provider error text and HTTP metadata for model errors", async () => {
+    const log = vi.fn();
+    const error = Object.assign(new Error("Operation not allowed"), { name: "ValidationException", $fault: "client", $metadata: { httpStatusCode: 400, requestId: "br-1" } });
+    expect(modelErrorDetails(error)).toEqual({ name: "ValidationException", message: "Operation not allowed", httpStatusCode: 400, bedrockRequestId: "br-1", fault: "client" });
+    await collect([], { failWith: [error], config: { ...config, promptCache: false, log }, message: "my bill is 4000" });
+    const entry = log.mock.calls.map(call => call[0] as Record<string, unknown>).find(value => value.event === "chat_model_error");
+    expect(entry).toMatchObject({ requestId: "req-1", code: "MODEL_ACCESS_DENIED", httpStatusCode: 400, message: "Operation not allowed" });
+    expect(JSON.stringify(entry)).not.toContain("4000");
   });
 
   it("warns with metadata only when no guardrail is configured", async () => {

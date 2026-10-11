@@ -101,7 +101,7 @@ export async function* runTurn(client: BedrockStreamClient, config: AgentConfig,
   if (!guardrailConfig) log({ event: "chat_guardrail_not_configured", requestId: params.requestId });
 
   const fail = (code: Extract<ChatStreamEvent, { type: "error" }>["code"], message: string): ChatStreamEvent => {
-    result.ok = false; return { type: "error", code, message };
+    result.ok = false; return { type: "error", code, message, requestId: params.requestId };
   };
 
   for (let iteration = 0; iteration <= CHAT_CONFIG.maxToolIterations; iteration++) {
@@ -124,18 +124,14 @@ export async function* runTurn(client: BedrockStreamClient, config: AgentConfig,
     try {
       assembled = yield* callModel(client, input, stream, turnSignal, result);
     } catch (error) {
-      if (!withCache || cacheUnsupported === true) {
-        log({ event: "chat_model_error", requestId: params.requestId, name: error instanceof Error ? error.name : "unknown" });
-        yield fail(turnSignal.aborted ? "MODEL_UNAVAILABLE" : "MODEL_UNAVAILABLE", turnSignal.aborted ?
-          "The assistant took too long to answer. Please try again." : "The assistant is unavailable right now. Please try again shortly.");
-        return result;
-      }
-      if (error instanceof Error && error.name === "ValidationException" && /cache/i.test(error.message)) {
+      const retryWithoutCache = withCache && error instanceof Error && error.name === "ValidationException" && /cache/i.test(error.message);
+      if (retryWithoutCache) {
         cacheUnsupported = true; log({ event: "chat_prompt_cache_disabled", requestId: params.requestId });
         iteration--; continue;
       }
-      log({ event: "chat_model_error", requestId: params.requestId, name: error instanceof Error ? error.name : "unknown" });
-      yield fail("MODEL_UNAVAILABLE", "The assistant is unavailable right now. Please try again shortly.");
+      const failure = classifyModelError(error, turnSignal.aborted);
+      log({ event: "chat_model_error", requestId: params.requestId, code: failure.code, ...modelErrorDetails(error) });
+      yield fail(failure.code, failure.message);
       return result;
     }
     const tail = stream.flush();
@@ -170,6 +166,32 @@ export async function* runTurn(client: BedrockStreamClient, config: AgentConfig,
   if (result.replaced > 0) yield { type: "grounding", replaced: result.replaced };
   yield { type: "done", usage: result.usage };
   return result;
+}
+
+type ModelFailureCode = "MODEL_ACCESS_DENIED" | "MODEL_TIMEOUT" | "MODEL_BUSY" | "MODEL_UNAVAILABLE";
+const ACCESS_ERRORS = new Set(["AccessDeniedException", "ResourceNotFoundException", "UnrecognizedClientException"]);
+const BUSY_ERRORS = new Set(["ThrottlingException", "ServiceQuotaExceededException", "ServiceUnavailableException", "ModelNotReadyException", "TooManyRequestsException"]);
+const TIMEOUT_ERRORS = new Set(["TimeoutError", "AbortError", "ModelTimeoutException", "RequestTimeout"]);
+
+/** Maps a Bedrock failure to a user-facing code. The message never includes provider error text. */
+export function classifyModelError(error: unknown, turnAborted: boolean): { code: ModelFailureCode; message: string } {
+  const name = error instanceof Error ? error.name : "";
+  const text = error instanceof Error ? error.message : "";
+  if (turnAborted || TIMEOUT_ERRORS.has(name)) return { code: "MODEL_TIMEOUT", message: "The assistant took too long to answer. Please try again." };
+  if (BUSY_ERRORS.has(name)) return { code: "MODEL_BUSY", message: "The assistant is busy right now. Please try again in a minute." };
+  // Bedrock reports missing model access / use-case approval as ValidationException "Operation not allowed".
+  if (ACCESS_ERRORS.has(name) || (name === "ValidationException" && /not allowed|not authori[sz]ed|access|model identifier is invalid|use case/i.test(text))) {
+    return { code: "MODEL_ACCESS_DENIED", message: "The assistant is not available in this deployment yet. The AI model has not been enabled for this account." };
+  }
+  return { code: "MODEL_UNAVAILABLE", message: "The assistant is unavailable right now. Please try again shortly." };
+}
+
+/** Safe diagnostic fields: provider error text and HTTP metadata, never prompt or user content. */
+export function modelErrorDetails(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) return { name: "unknown" };
+  const meta = (error as { $metadata?: { httpStatusCode?: number; requestId?: string }; $fault?: string });
+  return { name: error.name, message: error.message.slice(0, 300), httpStatusCode: meta.$metadata?.httpStatusCode,
+    bedrockRequestId: meta.$metadata?.requestId, fault: meta.$fault };
 }
 
 async function* callModel(client: BedrockStreamClient, input: ConverseStreamCommandInput, stream: GroundingStream,

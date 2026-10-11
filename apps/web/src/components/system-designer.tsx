@@ -7,6 +7,8 @@ import { SYSTEM_DESIGN_BASELINE_V1, type SystemDemand } from "@solarsaathi/calcu
 import { RoofRequestError } from "../lib/roof-api";
 import { systemApi, type SystemRecommendationResponse } from "../lib/system-api";
 import { SystemDesignResults } from "./system-design-results";
+import { useDraftSection } from "../lib/analysis-draft";
+import { useRevealOnChange } from "../lib/reveal";
 import { FinancialEstimator } from "./financial-estimator";
 
 function bounded(raw: string, minimum: number, maximum: number): number | undefined {
@@ -14,14 +16,28 @@ function bounded(raw: string, minimum: number, maximum: number): number | undefi
   return raw.trim() && Number.isFinite(value) && value >= minimum && value <= maximum ? value : undefined;
 }
 
-export function SystemDesigner({ propertyId, analysisId }: { propertyId: string; analysisId: string }) {
-  const [basis, setBasis] = useState<"CONSUMPTION" | "BILL">("CONSUMPTION");
-  const [consumption, setConsumption] = useState("");
-  const [bill, setBill] = useState("");
-  const [tariff, setTariff] = useState("");
-  const [yieldFactor, setYieldFactor] = useState(String(SYSTEM_DESIGN_BASELINE_V1.generationKwhPerKwYear));
-  const [sanctionedLoad, setSanctionedLoad] = useState("");
-  const [submitted, setSubmitted] = useState<{ response: SystemRecommendationResponse; demand: SystemDemand; generationKwhPerKwYear: number }>();
+export interface SystemDesignOutcome { response: SystemRecommendationResponse; demand: SystemDemand; generationKwhPerKwYear: number }
+
+/**
+ * With `onResult`, the designer is one step of the analysis flow: it reports its outcome upward and the next step is
+ * rendered by the parent. Without it (demos, standalone use) the cost step follows inline as before.
+ */
+export function SystemDesigner({ propertyId, analysisId, onResult, initialResult }: {
+  propertyId: string; analysisId: string; onResult?: (outcome: SystemDesignOutcome | undefined) => void; initialResult?: SystemDesignOutcome;
+}) {
+  const [inputs, setInputs] = useDraftSection("design", { basis: "CONSUMPTION", consumption: "", bill: "", tariff: "",
+    yieldFactor: String(SYSTEM_DESIGN_BASELINE_V1.generationKwhPerKwYear), sanctionedLoad: "" });
+  const basis = inputs.basis === "BILL" ? "BILL" : "CONSUMPTION";
+  const { consumption, bill, tariff, yieldFactor, sanctionedLoad } = inputs;
+  const setBasis = (value: "CONSUMPTION" | "BILL") => setInputs({ basis: value });
+  const setConsumption = (value: string) => setInputs({ consumption: value });
+  const setBill = (value: string) => setInputs({ bill: value });
+  const setTariff = (value: string) => setInputs({ tariff: value });
+  const setYieldFactor = (value: string) => setInputs({ yieldFactor: value });
+  const setSanctionedLoad = (value: string) => setInputs({ sanctionedLoad: value });
+  const [submitted, setSubmittedState] = useState<SystemDesignOutcome | undefined>(initialResult);
+  const setSubmitted = (value: SystemDesignOutcome | undefined) => { setSubmittedState(value); onResult?.(value); };
+  const resultsRef = useRevealOnChange<HTMLDivElement>(submitted?.response.requestId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -30,7 +46,9 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
 
   function change(update: () => void) {
     request.current?.abort(); request.current = null;
-    setSubmitted(undefined); setBusy(false); setError(undefined); setFieldErrors({}); update();
+    // Clear the result (it no longer matches the inputs) but keep every answer.
+    if (submitted) setSubmitted(undefined);
+    setBusy(false); setError(undefined); setFieldErrors({}); update();
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -120,8 +138,10 @@ export function SystemDesigner({ propertyId, analysisId }: { propertyId: string;
       {busy && <p role="status" className="system-form-status">Checking the saved roof and planning candidates…</p>}
       {error && <p role="alert" className="form-error">{error}</p>}
     </form>
-    {submitted && <SystemDesignResults design={submitted.response.design} analysisId={analysisId} />}
-    {submitted?.response.design.recommendation && <FinancialEstimator propertyId={propertyId} analysisId={analysisId}
+    <div ref={resultsRef} tabIndex={-1} className="outline-none">
+      {submitted && <SystemDesignResults design={submitted.response.design} analysisId={analysisId} />}
+    </div>
+    {!onResult && submitted?.response.design.recommendation && <FinancialEstimator propertyId={propertyId} analysisId={analysisId}
       demand={submitted.demand} generationKwhPerKwYear={submitted.generationKwhPerKwYear}
       candidates={submitted.response.design.candidates} recommendedNominalKw={submitted.response.design.recommendation.nominalKw} />}
   </section>;

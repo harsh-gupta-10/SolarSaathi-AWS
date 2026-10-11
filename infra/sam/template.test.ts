@@ -121,13 +121,15 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
   it("routes authenticated core operations through the stage-relative API", () => {
     const core = properties("CoreFunction");
     expect(core.Handler).toBe("handlers/core.handler");
-    expect(core.Environment).toEqual({ Variables: { CORE_TABLE_NAME: "AnalysesTable" } });
+    expect(core.Environment).toEqual({ Variables: { CORE_TABLE_NAME: "AnalysesTable", APPLICATION_DOCUMENT_BUCKET: "ApplicationDocumentBucket" } });
     const events = core.Events as Record<string, { Properties: Record<string, unknown> }>;
     expect(Object.values(events).map(event => `${event.Properties.Method} ${event.Properties.Path}`).sort()).toEqual([
       "GET /users/me", "POST /users/bootstrap", "GET /organizations/me",
       "GET /customers", "POST /customers", "GET /properties", "POST /properties",
       "GET /properties/{propertyId}", "DELETE /properties/{propertyId}", "GET /leads", "POST /leads",
       "GET /properties/{propertyId}/analyses",
+      "GET /properties/{propertyId}/analyses/{analysisId}",
+      "GET /properties/{propertyId}/analyses/{analysisId}/draft", "PUT /properties/{propertyId}/analyses/{analysisId}/draft",
     ].sort());
     expect(Object.values(events).every(event => event.Properties.Auth === undefined)).toBe(true);
   });
@@ -137,6 +139,9 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     const policies = core.Policies as { Statement: { Sid: string; Effect: string; Action: string | string[]; Resource: unknown }[] }[];
     expect(policies).toHaveLength(1);
     expect(policies[0]?.Statement).toEqual([
+      // Delete-only, application-documents prefix only: property deletion removes the property's uploaded files.
+      expect.objectContaining({ Sid: "CorePropertyDocumentPurge", Effect: "Allow", Action: "s3:DeleteObject",
+        Resource: "${ApplicationDocumentBucket.Arn}/applications/*" }),
       expect.objectContaining({ Sid: "CoreTableItems", Effect: "Allow", Action: [
         "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:ConditionCheckItem", "dynamodb:Query",
       ], Resource: "AnalysesTable.Arn" }),
@@ -442,7 +447,7 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     const tracker = properties("ApplicationsFunction");
     expect(tracker.Handler).toBe("handlers/applications.handler");
     expect(tracker.Environment).toEqual({ Variables: {
-      CORE_TABLE_NAME: "AnalysesTable", POLICY_TABLE_NAME: "PolicyTable",
+      CORE_TABLE_NAME: "AnalysesTable", POLICY_TABLE_NAME: "PolicyTable", APPLICATION_DOCUMENT_BUCKET: "ApplicationDocumentBucket",
     } });
     expect(Object.values(tracker.Events as Record<string, { Properties: { Path: string; Method: string } }>)
       .map(event => `${event.Properties.Method} ${event.Properties.Path}`).sort()).toEqual([
@@ -450,6 +455,9 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
       "GET /applications/{applicationId}/events", "POST /applications/{applicationId}/steps/{stepId}",
       "POST /applications/{applicationId}/details", "POST /applications/{applicationId}/documents",
       "POST /applications/{applicationId}/chat-update",
+      "POST /applications/{applicationId}/documents/{documentId}/confirm",
+      "GET /applications/{applicationId}/documents/{documentId}/download",
+      "DELETE /applications/{applicationId}/documents/{documentId}",
     ].sort());
     const access = JSON.stringify(tracker.Policies);
     expect(access).toContain("WriteApplicationAndAudit");
@@ -457,8 +465,12 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(access).toContain("PUBLISHED_POLICY#*");
     expect(access).toContain("index/GSI5");
     // Idempotency claims are the only update/delete permission, scoped to their own key prefix.
+    // Document object access is limited to the private documents bucket's applications/ prefix.
+    const statements = (tracker.Policies as { Statement: { Sid: string; Resource?: unknown }[] }[]).flatMap(policy => policy.Statement);
+    expect(JSON.stringify(statements.find(item => item.Sid === "ApplicationDocumentObjects")?.Resource)).toContain("/applications/*");
     const withoutIdempotency = JSON.stringify((tracker.Policies as { Statement: { Sid: string }[] }[])
-      .map(policy => ({ ...policy, Statement: policy.Statement.filter(item => item.Sid !== "ApplicationIdempotencyKeys") })));
+      .map(policy => ({ ...policy, Statement: policy.Statement.filter(item =>
+        !["ApplicationIdempotencyKeys", "ApplicationDocumentObjects", "ApplicationDocumentMissingObjectCheck"].includes(item.Sid)) })));
     expect(access).toContain("IDEMPOTENCY#*");
     expect(withoutIdempotency).not.toMatch(/s3:|secretsmanager|bedrock|DeleteItem|UpdateItem/);
   });

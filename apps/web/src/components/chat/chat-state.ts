@@ -8,7 +8,7 @@ export interface UiMessage {
   proposals: ChatProposal[];
   quickReplies: ChatQuickReply[];
   tools: Array<{ name: string; state: "started" | "finished" | "failed" }>;
-  error?: { code: ChatErrorCode | "CLIENT"; message: string };
+  error?: { code: ChatErrorCode | "CLIENT"; message: string; requestId?: string };
   groundingReplaced?: number;
   streaming: boolean;
 }
@@ -54,7 +54,7 @@ export function applyStreamEvent(state: ChatState, event: ChatStreamEvent): Chat
     case "proposal": return updateLast(state, message => ({ ...message,
       proposals: [...message.proposals.filter(item => item.proposalId !== event.proposal.proposalId), event.proposal] }));
     case "grounding": return updateLast(state, message => ({ ...message, groundingReplaced: event.replaced }));
-    case "error": return updateLast(state, message => ({ ...message, streaming: false, error: { code: event.code, message: event.message } }));
+    case "error": return updateLast(state, message => ({ ...message, streaming: false, error: { code: event.code, message: event.message, ...(event.requestId ? { requestId: event.requestId } : {}) } }));
     case "done": return updateLast(state, message => ({ ...message, streaming: false }));
   }
 }

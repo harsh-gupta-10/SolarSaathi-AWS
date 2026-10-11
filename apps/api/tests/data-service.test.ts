@@ -152,6 +152,21 @@ describe("stored canonical tenant and owner authorization", () => {
     expect(memory.read(kept)).toBeDefined();
   });
 
+  it("deletes the uploaded application files of a deleted property", async () => {
+    const memory = setupData().memory;
+    const { CoreRepository } = await import("../src/data/repository");
+    const deleted: string[] = [];
+    const service = new CoreService(new CoreRepository("test-core-table", memory.execute), { now: () => fixedNow,
+      createId: (() => { let n = 0; return () => `doc-test-${++n}`; })(), deleteDocumentObjects: async objectKeys => { deleted.push(...objectKeys); } });
+    await service.bootstrap(identity(), {});
+    const property = await service.createProperty(identity(), propertyBody);
+    memory.seed({ PK: `PROPERTY#${property.propertyId}`, SK: "APPLICATION#app-1", revision: 1, value: { documents: [
+      { documentId: "d1", file: { objectKey: "applications/owner/app-1/d1" } }, { documentId: "d2" },
+    ] } });
+    await service.deleteProperty(identity(), property.propertyId);
+    expect(deleted).toEqual(["applications/owner/app-1/d1"]);
+  });
+
   it("does not delete a property whose revision changed after authorization", async () => {
     const { service, memory } = setupData();
     await service.bootstrap(identity(), {});

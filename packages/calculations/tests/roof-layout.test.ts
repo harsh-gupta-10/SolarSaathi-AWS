@@ -1,6 +1,6 @@
 import type { NormalizedRoofV1, RoofPoint } from "@solarsaathi/types";
 import { describe, expect, it } from "vitest";
-import { planRoofLayout, type RoofLayoutAssumptions } from "../src";
+import { convexHull, fitRotatedRectangle, googleBuildingOutline, planRoofLayout, segmentPlanRotationDegrees, type RoofLayoutAssumptions, type RoofLayoutSegment } from "../src";
 
 const METRES_PER_DEGREE = 6_371_000 * Math.PI / 180;
 const location = (eastMeters: number, northMeters: number): RoofPoint => ({
@@ -33,16 +33,16 @@ const manualRoof = (dimensions: { lengthMeters?: number; widthMeters?: number } 
 });
 
 describe("deterministic roof geometry and layout", () => {
-  it("projects Google coordinates to east/up/north metres and preserves measured plane height", () => {
+  it("projects Google coordinates to east/up/north metres with heights relative to the lowest plane", () => {
     const result = planRoofLayout(googleRoof(), assumptions);
     expect(result.coordinateSystem).toBe("LOCAL_EAST_UP_NORTH_METERS");
     expect(result.fitStatus).toBe("MODELED_APPROXIMATE");
     expect(result.segments[0].geometryKind).toBe("GOOGLE_BOUNDS_APPROXIMATE");
-    expect(result.segments[0].center).toMatchObject({ x: expect.closeTo(0, 5), y: 9, z: expect.closeTo(0, 5) });
+    expect(result.segments[0].center).toMatchObject({ x: expect.closeTo(0, 5), y: 0, z: expect.closeTo(0, 5) });
     expect(result.bounds?.min.x).toBeCloseTo(-5, 1);
     expect(result.bounds?.max.z).toBeCloseTo(5, 1);
     expect(result.panels[0].center.x).toBeCloseTo(-2, 1);
-    expect(result.panels[0].center.y).toBeCloseTo(9.1, 1);
+    expect(result.panels[0].center.y).toBeCloseTo(0.1, 5);
     expect(result.panels[0].center.z).toBeCloseTo(-2, 1);
     expect(result.panelCount).toBe(4);
     expect(result.dcCapacityKw).toBe(2);
@@ -188,4 +188,107 @@ describe("deterministic roof geometry and layout", () => {
     const invalidRoof = manualRoof(); invalidRoof.roofAreaSquareMeters = Infinity;
     expect(() => planRoofLayout(invalidRoof, assumptions)).toThrow(RangeError);
   });
+
+  it("folds azimuths into a plan rotation and fits a rotated rectangle to its bounding box", () => {
+    expect(segmentPlanRotationDegrees(180)).toBe(0);
+    expect(segmentPlanRotationDegrees(30)).toBe(30);
+    expect(segmentPlanRotationDegrees(120)).toBe(30);
+    expect(segmentPlanRotationDegrees(80)).toBe(-10);
+    expect(segmentPlanRotationDegrees(315)).toBe(-45);
+    const angle = 30 * Math.PI / 180;
+    const width = 10 * Math.cos(angle) + 6 * Math.sin(angle), depth = 10 * Math.sin(angle) + 6 * Math.cos(angle);
+    const exact = fitRotatedRectangle(width, depth, 60, 30);
+    expect(exact.along).toBeCloseTo(10, 6);
+    expect(exact.across).toBeCloseTo(6, 6);
+    const irregular = fitRotatedRectangle(width, depth, 30, 30);
+    expect(irregular.along * irregular.across).toBeCloseTo(30, 6);
+    expect(irregular.along / irregular.across).toBeCloseTo(10 / 6, 6);
+    expect(fitRotatedRectangle(10, 10, 50, 0)).toEqual({ along: Math.sqrt(50), across: Math.sqrt(50) });
+  });
+
+  it("models a rotated plane as a rotated rectangle and keeps every panel inside its setbacks", () => {
+    const angle = 30 * Math.PI / 180;
+    const width = 12 * Math.cos(angle) + 8 * Math.sin(angle), depth = 12 * Math.sin(angle) + 8 * Math.cos(angle);
+    const along = { x: Math.cos(angle), z: -Math.sin(angle) }, across = { x: Math.sin(angle), z: Math.cos(angle) };
+    const grid: Array<[number, number]> = [];
+    for (const u of [-3.5, -1.2, 1.2, 3.5]) for (const v of [-2.2, 2.2]) grid.push([u * along.x + v * across.x, u * along.z + v * across.z]);
+    const roof = googleRoof(grid);
+    Object.assign(roof.segments[0], { azimuthDegrees: 30, groundAreaSquareMeters: 96,
+      bounds: { southwest: location(-width / 2, -depth / 2), northeast: location(width / 2, depth / 2) } });
+    roof.panelWidthMeters = 1; roof.panelHeightMeters = 2;
+    const result = planRoofLayout(roof, assumptions);
+    const [c0, c1, , c3] = result.segments[0].corners;
+    expect(Math.hypot(c1.x - c0.x, c1.z - c0.z)).toBeCloseTo(12, 4);
+    expect(Math.hypot(c3.x - c0.x, c3.z - c0.z)).toBeCloseTo(8, 4);
+    expect(result.panelCount).toBe(8);
+    const local = (point: { x: number; z: number }) => ({ u: point.x * along.x + point.z * along.z, v: point.x * across.x + point.z * across.z });
+    for (const panel of result.panels) {
+      for (const corner of panel.corners) {
+        const { u, v } = local(corner);
+        expect(Math.abs(u)).toBeLessThanOrEqual(6 - assumptions.edgeSetbackMeters + 1e-6);
+        expect(Math.abs(v)).toBeLessThanOrEqual(4 - assumptions.edgeSetbackMeters + 1e-6);
+      }
+    }
+  });
+
+  it("joins the two planes of a gable roof at the ridge and outlines one building footprint", () => {
+    const pitch = 30, rise = 2 * Math.tan(pitch * Math.PI / 180);
+    const plane = (id: string, azimuthDegrees: number, south: number, north: number) => ({
+      segmentId: id, areaSquareMeters: 40 / Math.cos(pitch * Math.PI / 180), groundAreaSquareMeters: 40,
+      pitchDegrees: pitch, azimuthDegrees, planeHeightAtCenterMeters: 312,
+      center: location(0, (south + north) / 2), bounds: { southwest: location(-5, south), northeast: location(5, north) },
+    });
+    const roof: NormalizedRoofV1 = { ...googleRoof([]), segmentCount: 2,
+      segments: [plane("south", 180, -4, 0), plane("north", 0, 0, 4)] };
+    const result = planRoofLayout(roof, assumptions);
+    const ridgeHeights = result.segments.flatMap(segment => segment.corners.filter(corner => Math.abs(corner.z) < 1e-6).map(corner => corner.y));
+    expect(ridgeHeights).toHaveLength(4);
+    for (const height of ridgeHeights) expect(height).toBeCloseTo(rise, 6);
+    expect(result.footprint).toHaveLength(4);
+    const xs = result.footprint.map(point => point.x), zs = result.footprint.map(point => point.z);
+    expect(Math.min(...xs)).toBeCloseTo(-5, 4); expect(Math.max(...xs)).toBeCloseTo(5, 4);
+    expect(Math.min(...zs)).toBeCloseTo(-4, 4); expect(Math.max(...zs)).toBeCloseTo(4, 4);
+    const outline = googleBuildingOutline(roof, assumptions);
+    expect(outline).toHaveLength(4);
+    expect(Math.min(...outline!.map(point => point.latitude)) * METRES_PER_DEGREE).toBeCloseTo(-4, 3);
+    expect(Math.max(...outline!.map(point => point.longitude)) * METRES_PER_DEGREE).toBeCloseTo(5, 3);
+    expect(googleBuildingOutline(manualRoof(), assumptions)).toBeNull();
+  });
+
+  it("keeps the east plane east and models all planes level when any plane height is missing", () => {
+    const plane = (id: string, east: number, height?: number): RoofSegmentV1Like => ({
+      segmentId: id, areaSquareMeters: 20, groundAreaSquareMeters: 20, pitchDegrees: 0, azimuthDegrees: 180,
+      ...(height === undefined ? {} : { planeHeightAtCenterMeters: height }),
+      center: location(east, 0), bounds: { southwest: location(east - 2.5, -2), northeast: location(east + 2.5, 2) },
+    });
+    const roof: NormalizedRoofV1 = { ...googleRoof([]), segmentCount: 2, segments: [plane("west", -3, 205), plane("east", 3, 208)] };
+    const result = planRoofLayout(roof, assumptions);
+    const byId = (id: string) => result.segments.find(segment => segment.segmentId === id) as RoofLayoutSegment;
+    expect(byId("east").center.x).toBeGreaterThan(0);
+    expect(byId("west").center.y).toBeCloseTo(0, 6);
+    expect(byId("east").center.y).toBeCloseTo(3, 6);
+    roof.segments[1] = plane("east", 3);
+    const level = planRoofLayout(roof, assumptions);
+    expect(level.segments.every(segment => segment.center.y === 0)).toBe(true);
+  });
+
+  it("ignores dropped near-vertical planes when choosing the height baseline", () => {
+    const plane = (id: string, east: number, height: number, pitch = 0): RoofSegmentV1Like => ({
+      segmentId: id, areaSquareMeters: 20, groundAreaSquareMeters: 20, pitchDegrees: pitch, azimuthDegrees: 180,
+      planeHeightAtCenterMeters: height,
+      center: location(east, 0), bounds: { southwest: location(east - 2.5, -2), northeast: location(east + 2.5, 2) },
+    });
+    const roof: NormalizedRoofV1 = { ...googleRoof([]), segmentCount: 2,
+      segments: [plane("roof", 0, 210), plane("wall", 6, 200, 88)] };
+    const result = planRoofLayout(roof, assumptions);
+    expect(result.segments.map(segment => segment.segmentId)).toEqual(["roof"]);
+    expect(result.segments[0]!.center.y).toBeCloseTo(0, 6);
+  });
+
+  it("computes a counter-clockwise convex hull without interior points", () => {
+    const hull = convexHull([{ x: 0, z: 0 }, { x: 2, z: 0 }, { x: 1, z: 1 }, { x: 2, z: 2 }, { x: 0, z: 2 }, { x: 1, z: 0 }]);
+    expect(hull).toEqual([{ x: 0, z: 0 }, { x: 2, z: 0 }, { x: 2, z: 2 }, { x: 0, z: 2 }]);
+  });
 });
+
+type RoofSegmentV1Like = NormalizedRoofV1["segments"][number];

@@ -284,13 +284,19 @@ benefit amount is accepted. Missing process evidence returns
 | `GET /v1/applications/{applicationId}?propertyId=...` | Owned property | Current application snapshot |
 | `POST /v1/applications/{applicationId}/steps/{stepId}` | `{ propertyId, expectedRevision, status, note? }` | Audited user reported step update |
 | `POST /v1/applications/{applicationId}/details` | `{ propertyId, expectedRevision, referenceNumber?, vendorName? }` | Audited user supplied details |
-| `POST /v1/applications/{applicationId}/documents` | `{ propertyId, expectedRevision, documentType, label, obtainedOn? }` | Metadata only; no upload |
+| `POST /v1/applications/{applicationId}/documents` | `{ propertyId, expectedRevision, documentType, label, obtainedOn?, file?: { contentType, sizeBytes, sha256 } }` | `application`; with `file`, also `upload: { url, method: "PUT", headers, expiresAt }` (5 min) and the document is `PENDING_UPLOAD` |
+| `POST /v1/applications/{applicationId}/documents/{documentId}/confirm` | `{ propertyId, expectedRevision }` | Checks size, type and file signature in S3; marks `UPLOADED` with `expiresAt` (365 days). `409 UPLOAD_NOT_FOUND`, `422 UPLOAD_MISMATCH` (object removed) |
+| `GET /v1/applications/{applicationId}/documents/{documentId}/download?propertyId=...` | Owned property | `download: { url, expiresAt }` presigned GET (5 min, attachment). `409 FILE_NOT_UPLOADED`, `410 FILE_EXPIRED` |
+| `DELETE /v1/applications/{applicationId}/documents/{documentId}?propertyId=...&expectedRevision=...` | Owned property, current revision | Deletes the S3 object, then the metadata; audited `DOCUMENT_DELETED` |
 | `GET /v1/applications/{applicationId}/events?propertyId=...` | Owned property, optional cursor | Immutable event history |
 | `POST /v1/applications/{applicationId}/chat-update` | `{ propertyId, stepId, message }` | Nonmutating suggestion; always requires explicit confirmation |
 
 Application responses use `DYNAMODB_APPLICATION_TRACKER_V1`. Progress is
 `USER_REPORTED`; process steps are a `VERIFIED_POLICY_SNAPSHOT`. Revision
-conflicts return `409 APPLICATION_CONFLICT`. Chat suggestions store no message
+conflicts return `409 APPLICATION_CONFLICT`. File uploads accept PDF, JPEG or PNG up to
+10 MB; without `APPLICATION_DOCUMENT_BUCKET` they return `503 DOCUMENT_STORAGE_NOT_CONFIGURED`
+(notes without a file still work). See `docs/security.md` "Application document uploads".
+Chat suggestions store no message
 and do not change state; a separate step request is required to save progress.
 
 Paths below mix implemented and planned contracts. Implemented: the roof routes except
@@ -545,3 +551,16 @@ Never hide:
 - incomplete application information
 
 Return structured errors and actionable recovery.
+
+
+## Analysis restore and form drafts (2026-10-11)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/v1/properties/{propertyId}/analyses/{analysisId}` | Full confirmed roof (`NormalizedRoofV1`) for an owned, unexpired analysis. Same shape as the roof confirmation response. |
+| GET | `/v1/properties/{propertyId}/analyses/{analysisId}/draft` | `{ draft: null }` or `{ draft, updatedAt }`. |
+| PUT | `/v1/properties/{propertyId}/analyses/{analysisId}/draft` | Body `{ schemaVersion: 1, step?, design?, financial?, benefit? }`; each section ≤ 40 string fields of ≤ 200 chars, keys `^[A-Za-z][A-Za-z0-9]{0,39}$`, body ≤ 32 KB. Last write wins. |
+
+Ownership is checked through the analysis lookup (property owner/org and Google retention expiry). Drafts are stored at
+`PROPERTY#{propertyId}` / `DRAFT#{analysisId}` with a TTL of 90 days, capped at the analysis expiry, and are purged with
+the property. Drafts hold user-reported inputs only and are never used as results.

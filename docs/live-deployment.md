@@ -51,6 +51,10 @@ application.
 
 ## Operational limits before production
 
+- The chat assistant cannot answer until the account submits the Anthropic use-case
+  form in Bedrock (`authorizationStatus: NOT_AUTHORIZED` as of 11 October 2026). Chat
+  uses Sonnet 5.5; owner steps and the redeploy command are in
+  `docs/chat-assistant-plan.md` ("Chat model: Sonnet 5.5 and enabling access").
 - The official-source policy catalog has not been populated or independently
   approved. Do not display live subsidy amounts until that workflow is complete.
 - CloudWatch alarms exist, but notification destinations and API Gateway access

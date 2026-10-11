@@ -15,7 +15,7 @@ export interface RecordGuard { key: EntityKey; revision: number }
 export interface StoredPage<T> { items: T[]; nextCursor?: string }
 
 const PURGE_MAX_PAGES = 200;
-const PROPERTY_CHILD_PREFIXES = ["ANALYSIS#", "ROOF_PREVIEW#", "BUILDING_CONFIRMATION#", "APPLICATION#", "DESIGN#", "DESIGN_CLAIM#"];
+const PROPERTY_CHILD_PREFIXES = ["ANALYSIS#", "ROOF_PREVIEW#", "BUILDING_CONFIRMATION#", "APPLICATION#", "DESIGN#", "DESIGN_CLAIM#", "DRAFT#"];
 
 export class CoreRepository {
   constructor(private readonly tableName: string, private readonly execute: CoreExecutor) {
@@ -90,7 +90,7 @@ export class CoreRepository {
 
   // Deletes every record under one partition/prefix by key. Callers only pass partitions that are unreachable once
   // the property locator is gone, so no entity parsing is needed. Returns the keys it removed.
-  private async purgePrefix(pk: string, prefix: string): Promise<EntityKey[]> {
+  private async purgePrefix(pk: string, prefix: string, objectKeys?: string[]): Promise<EntityKey[]> {
     const removed: EntityKey[] = [];
     for (let page = 0; page < PURGE_MAX_PAGES; page++) {
       const { Items } = await this.send(new QueryCommand({ TableName: this.tableName,
@@ -103,6 +103,14 @@ export class CoreRepository {
       const keysFound = (Items ?? []).map(raw => {
         const item = raw as Record<string, unknown>;
         if (item.PK !== pk || typeof item.SK !== "string") throw databaseUnavailable();
+        // Uploaded application documents live in S3; remember their keys so the caller can delete the files too.
+        // Application records keep their body under `value` (applications/storage.ts).
+        const documents = (item.value as { documents?: unknown } | undefined)?.documents;
+        if (objectKeys && Array.isArray(documents)) {
+          for (const document of documents as Array<{ file?: { objectKey?: unknown } }>) {
+            if (typeof document?.file?.objectKey === "string") objectKeys.push(document.file.objectKey);
+          }
+        }
         return { PK: pk, SK: item.SK };
       });
       if (keysFound.length === 0) return removed;
@@ -117,14 +125,17 @@ export class CoreRepository {
 
   // Property-scoped child records owned by every module: analyses, roof previews, building confirmations,
   // applications (and their event partitions), and design records. Cache items expire by TTL.
-  async purgePropertyChildren(propertyId: string): Promise<void> {
+  /** Removes every property-scoped record and returns the S3 keys of application documents that referenced files. */
+  async purgePropertyChildren(propertyId: string): Promise<string[]> {
     const pk = `PROPERTY#${propertyId}`;
+    const objectKeys: string[] = [];
     for (const prefix of PROPERTY_CHILD_PREFIXES) {
-      const removed = await this.purgePrefix(pk, prefix);
+      const removed = await this.purgePrefix(pk, prefix, prefix === "APPLICATION#" ? objectKeys : undefined);
       if (prefix === "APPLICATION#") {
         for (const key of removed) await this.purgePrefix(`APPLICATION#${key.SK.slice(prefix.length)}`, "EVENT#");
       }
     }
+    return objectKeys;
   }
 
   organizationGuard(organization: StoredOrganization): RecordGuard {

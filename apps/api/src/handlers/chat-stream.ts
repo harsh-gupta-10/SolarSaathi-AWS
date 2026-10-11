@@ -81,7 +81,9 @@ export async function serveChatStream(request: LambdaFunctionURLEvent, sink: Sse
     for await (const value of handleChatTurn(runtime, client, config, { identity, requestId: context.awsRequestId, body, signal: aborted.signal })) {
       sink.write(event(value));
     }
-  } catch {
+  } catch (error) {
+    // Usually the client disconnected mid-stream; logged so a broken stream is distinguishable from a model error.
+    console.error(JSON.stringify({ event: "chat_stream_aborted", requestId: context.awsRequestId, name: error instanceof Error ? error.name : "unknown" }));
     aborted.abort();
   } finally { sink.end(); }
 }

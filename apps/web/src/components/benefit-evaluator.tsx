@@ -12,6 +12,9 @@ import { PolicyFinancialResults } from "./policy-financial-results";
 import { ApplicationStart } from "./application-start";
 import type { CreateApplicationInput } from "../lib/applications-api";
 import { regions } from "../lib/regions";
+import { useDraftSection } from "../lib/analysis-draft";
+import { explainPolicyReasons, MISSING_ANSWER_HINTS } from "../lib/policy-reasons";
+import { useRevealOnChange } from "../lib/reveal";
 
 const rupees = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const dateTime = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
@@ -23,12 +26,12 @@ const formatDate = (value: string) => dateTime.format(new Date(value));
 const optionalCode = (value: string) => value.trim() ? value.trim().toUpperCase().replaceAll(/\s+/g, "_") : undefined;
 const yesNo = (value: string) => value === "YES" ? true : value === "NO" ? false : undefined;
 
-interface Fields {
+type Fields = {
   state: string; customerType: string; propertyType: string; ownership: string;
   gridConnected: string; priorSubsidyReceived: string; vendorApproved: string; equipmentApproved: string;
   district: string; localBody: string; discom: string; sanctionedLoadKw: string;
   installationDate: string; applicationDate: string; participatingSchemeIds: string; eligibleCostRupees: string;
-}
+};
 const initialFields: Fields = { state: "", customerType: "", propertyType: "", ownership: "",
   gridConnected: "", priorSubsidyReceived: "", vendorApproved: "", equipmentApproved: "",
   district: "", localBody: "", discom: "", sanctionedLoadKw: "", installationDate: "",
@@ -54,9 +57,9 @@ function YesNo({ label, value, onChange }: { label: string; value: string; onCha
 function BenefitResults({ response }: { response: BenefitEvaluationResponse }) {
   const result = response.result;
   if (!result) return <div className="benefit-unavailable" role="status">
-    <ShieldAlert size={24} aria-hidden="true" /><div><h4>Verified benefit calculation unavailable</h4>
-      <p>No active, current, approved rule set can be evaluated for this assessment. No amount is inferred.</p>
-      {!!response.reasonCodes?.length && <p>Service status: {response.reasonCodes.map(displayCode).join(" · ")}</p>}
+    <ShieldAlert size={24} aria-hidden="true" /><div><h4>{explainPolicyReasons(response.reasonCodes)[0]?.title ?? "Verified benefit calculation unavailable"}</h4>
+      <p>{explainPolicyReasons(response.reasonCodes)[0]?.text ?? "No active, current, approved rule set can be evaluated for this assessment."} No amount is inferred.</p>
+      {!!response.reasonCodes?.length && <p className="text-xs">Reference: {response.reasonCodes.join(" · ")}</p>}
     </div></div>;
   const sourceCurrent = (decision: typeof result.decisions[number]) => decision.sourceChecks.every(check =>
     check.fresh && check.status === "HEALTHY");
@@ -89,6 +92,8 @@ function BenefitResults({ response }: { response: BenefitEvaluationResponse }) {
         {decision.status === "SELECTED" && decision.countedAmountPaise !== undefined &&
           <strong>{rupees.format(decision.countedAmountPaise / 100)}</strong>}
         {decision.reasonCodes.length > 0 && <p>{decision.reasonCodes.map(displayCode).join(" · ")}</p>}
+        {decision.status === "UNKNOWN" && decision.reasonCodes.some(code => MISSING_ANSWER_HINTS[code]) &&
+          <p><strong>To include this rule:</strong> {decision.reasonCodes.filter(code => MISSING_ANSWER_HINTS[code]).map(code => MISSING_ANSWER_HINTS[code]).join(" ")}</p>}
         <div className="benefit-evidence"><span>{sourceCurrent(decision) ? "Verified policy" : "Previously verified rule"} {decision.policyId.replace(/^POLICY#/, "")} · version {decision.policyVersion} · {decision.jurisdiction}</span>
           <small>Rule effective {decision.effectiveFrom}{decision.effectiveTo ? ` through ${decision.effectiveTo}` : " onward"} · verified {formatDate(decision.lastVerifiedAt)}</small>
           {!sourceCurrent(decision) && <small>A current source check is missing, failed or stale. This stored rule does not establish current eligibility.</small>}
@@ -112,7 +117,7 @@ function BenefitResults({ response }: { response: BenefitEvaluationResponse }) {
 export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwhPerKwYear, nominalKw,
   grossSystemCostRupees, financialInputs }: { propertyId: string; analysisId: string; demand: SystemDemand;
   generationKwhPerKwYear: number; nominalKw: number; grossSystemCostRupees: number; financialInputs?: FinancialInputs }) {
-  const [fields, setFields] = useState<Fields>({ ...initialFields,
+  const [fields, setFields] = useDraftSection<Fields>("benefit", { ...initialFields,
     sanctionedLoadKw: demand.sanctionedLoadKw === undefined ? "" : String(demand.sanctionedLoadKw) });
   const [response, setResponse] = useState<BenefitEvaluationResponse>();
   const [policyResponse, setPolicyResponse] = useState<PolicyFinancialEstimateResponse>();
@@ -122,10 +127,11 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
+  const resultsRef = useRevealOnChange<HTMLDivElement>(response?.requestId ?? policyResponse?.requestId);
   function update(key: keyof Fields, value: string) {
     request.current?.abort(); request.current = null; setBusy(false); setResponse(undefined); setPolicyResponse(undefined);
     setEvaluatedInput(undefined); setError(undefined); setFieldErrors({});
-    setFields(previous => ({ ...previous, [key]: value }));
+    setFields({ [key]: value } as Partial<Fields>);
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -247,11 +253,15 @@ export function BenefitEvaluator({ propertyId, analysisId, demand, generationKwh
       {busy && <p role="status" className="system-form-status">Checking the saved system, current sources and rule compatibility…</p>}
       {error && <p role="alert" className="form-error">{error}</p>}
     </form>
+    <div ref={resultsRef} tabIndex={-1} className="outline-none">
     {response && <BenefitResults response={response} />}
     {response && evaluatedInput && <ApplicationStart key={response.requestId} response={response} input={evaluatedInput} />}
     {policyResponse && <><PolicyFinancialResults response={policyResponse} />
-      {policyResponse.benefits.result && <details className="policy-financial-decisions"><summary>View rule decisions and source details</summary>
-        <BenefitResults response={policyResponse.benefits} /></details>}
+      {policyResponse.benefits.result && (policyResponse.projection
+        ? <details className="policy-financial-decisions"><summary>View rule decisions and source details</summary>
+          <BenefitResults response={policyResponse.benefits} /></details>
+        : <BenefitResults response={policyResponse.benefits} />)}
       {evaluatedInput && <ApplicationStart key={policyResponse.requestId} response={policyResponse.benefits} input={evaluatedInput} />}</>}
+    </div>
   </section>;
 }

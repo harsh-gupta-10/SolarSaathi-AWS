@@ -57,7 +57,7 @@ describe("benefit evaluation UI", () => {
     await user.selectOptions(screen.getByLabelText("State or union territory"), "MH");
     await user.selectOptions(screen.getByLabelText("Electricity customer type"), "RESIDENTIAL");
     await user.click(screen.getByRole("button", { name: "Evaluate benefits" }));
-    expect(await screen.findByRole("heading", { name: "Verified benefit calculation unavailable" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "No verified subsidy rule is published for your area yet" })).toBeTruthy();
     expect(screen.queryByText(/78,000/)).toBeNull();
     expect(screen.queryByRole("button", { name: /sample|fill/i })).toBeNull();
   });
@@ -67,7 +67,7 @@ describe("benefit evaluation UI", () => {
     await user.selectOptions(screen.getByLabelText("State or union territory"), "MH");
     await user.selectOptions(screen.getByLabelText("Electricity customer type"), "RESIDENTIAL");
     await user.click(screen.getByRole("button", { name: "Evaluate benefits" }));
-    await screen.findByRole("heading", { name: "Verified benefit calculation unavailable" });
+    await screen.findByRole("heading", { name: "No verified subsidy rule is published for your area yet" });
     expect(api.evaluate).toHaveBeenCalledWith("property-1", "analysis-1", props.demand, 1500, 3,
       undefined, expect.objectContaining({ country: "IN", state: "MH", customerType: "RESIDENTIAL" }),
       expect.any(AbortSignal));
@@ -80,10 +80,10 @@ describe("benefit evaluation UI", () => {
     await user.click(screen.getByText("More eligibility details, if known"));
     await user.type(screen.getByLabelText("Policy-eligible cost (₹)"), "120000");
     await user.click(screen.getByRole("button", { name: "Evaluate benefits" }));
-    await screen.findByRole("heading", { name: "Verified benefit calculation unavailable" });
+    await screen.findByRole("heading", { name: "No verified subsidy rule is published for your area yet" });
     expect(api.evaluate).toHaveBeenCalledWith("property-1", "analysis-1", props.demand, 1500, 3,
       12000000, expect.objectContaining({ country: "IN" }), expect.any(AbortSignal));
     await user.click(within(screen.getByRole("radiogroup", { name: "Connected to the electricity grid?" })).getByRole("radio", { name: "Yes" }));
-    expect(screen.queryByRole("heading", { name: "Verified benefit calculation unavailable" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "No verified subsidy rule is published for your area yet" })).toBeNull();
   });
 });

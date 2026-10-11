@@ -446,3 +446,22 @@ live services.
 - **Navigation:** Chat, My roofs, Applications, Help, Settings, plus a collapsed "More tools" group for the step-level pages.
 - **Marketing hero** is the chat composer: the typed question is held in `sessionStorage`, carried through sign-in
   (validated `returnTo`) and becomes the first chat turn.
+
+## Analysis flow fixes (2026-10-11)
+
+- **Six steps:** Address → Find building → Roof model → System size → Cost & savings → Subsidies & apply. One form per
+  step; a sticky stepper at the top and sticky Back/Next bar at the bottom. Next is disabled until the step has a
+  backend result. On each step change the page scrolls to the stepper and focuses the step heading; new results scroll
+  into view. Focus is never pulled out of a field the user is typing in.
+- **Desktop sidebar** is sticky (full viewport height, scrolls on its own).
+- **Saved answers:** sizing, cost and benefit inputs are an analysis draft (`lib/analysis-draft.tsx`): written to this
+  device immediately and to the account (debounced `PUT …/draft`). Editing an earlier step clears later *results*, never
+  later *answers*. A visible status says whether answers are saved to the account or only on this device. Device copies
+  are cleared on sign-out. Drafts are inputs only; every figure is recomputed by the backend.
+- **Reload:** `?propertyId=&analysisId=` is kept in the address bar; a reload reopens the confirmed roof, and the sizing
+  step if sizing answers were saved. No duplicate property is created.
+- **Subsidy messages** are explained in plain language from the backend reason codes (`lib/policy-reasons.ts`); unknown
+  rules list the question that would resolve them. No amount is shown or inferred.
+- **3D roof / map overlay:** roof planes are rotated to their azimuth, one building outline is shared by the 3D walls
+  and the map polygon, panels are clipped to their plane's setbacks, the 3D view uses north = −z, and the map is locked
+  top-down with an "approximate outline" note and imagery date.

@@ -13,26 +13,35 @@ import { financialApi, type FinancialEstimateResponse, type FinancialInputs } fr
 import { RoofRequestError } from "../lib/roof-api";
 import { FinancialResults } from "./financial-results";
 import { BenefitEvaluator } from "./benefit-evaluator";
+import { useDraftSection } from "../lib/analysis-draft";
+import { useRevealOnChange } from "../lib/reveal";
 
 function bounded(raw: string, minimum: number, maximum: number): number | undefined {
   const value = Number(raw);
   return raw.trim() && Number.isFinite(value) && value >= minimum && value <= maximum ? value : undefined;
 }
 
-export function FinancialEstimator({ propertyId, analysisId, demand, generationKwhPerKwYear, candidates, recommendedNominalKw }: {
+/** With `onResult` the benefit step is rendered by the parent flow; without it, it follows inline (demos, tests). */
+export function FinancialEstimator({ propertyId, analysisId, demand, generationKwhPerKwYear, candidates, recommendedNominalKw, onResult, initialResult }: {
   propertyId: string; analysisId: string; demand: SystemDemand; generationKwhPerKwYear: number;
   candidates: SystemCandidate[]; recommendedNominalKw: number;
+  onResult?: (result: FinancialEstimateResponse | undefined) => void; initialResult?: FinancialEstimateResponse;
 }) {
-  const [nominal, setNominal] = useState(String(recommendedNominalKw));
-  const [budgetTier, setBudgetTier] = useState<string>("");
-  const [quote, setQuote] = useState("");
-  const [selfConsumptionPercent, setSelfConsumptionPercent] = useState("");
-  const [importRate, setImportRate] = useState("");
   // Advanced assumptions start at an explicit, conservative "none assumed" so the user sees and can change them.
-  const [exportRate, setExportRate] = useState("0");
-  const [maintenance, setMaintenance] = useState("0");
+  const [inputs, setInputs] = useDraftSection("financial", { nominal: String(recommendedNominalKw), budgetTier: "", quote: "",
+    selfConsumptionPercent: "", importRate: "", exportRate: "0", maintenance: "0" });
+  const { nominal, budgetTier, quote, selfConsumptionPercent, importRate, exportRate, maintenance } = inputs;
+  const setNominal = (value: string) => setInputs({ nominal: value });
+  const setBudgetTier = (value: string) => setInputs({ budgetTier: value });
+  const setQuote = (value: string) => setInputs({ quote: value });
+  const setSelfConsumptionPercent = (value: string) => setInputs({ selfConsumptionPercent: value });
+  const setImportRate = (value: string) => setInputs({ importRate: value });
+  const setExportRate = (value: string) => setInputs({ exportRate: value });
+  const setMaintenance = (value: string) => setInputs({ maintenance: value });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<FinancialEstimateResponse>();
+  const [result, setResultState] = useState<FinancialEstimateResponse | undefined>(initialResult);
+  const setResult = (value: FinancialEstimateResponse | undefined) => { setResultState(value); onResult?.(value); };
+  const resultsRef = useRevealOnChange<HTMLDivElement>(result?.requestId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const request = useRef<AbortController | null>(null);
@@ -45,7 +54,8 @@ export function FinancialEstimator({ propertyId, analysisId, demand, generationK
 
   function change(update: () => void) {
     request.current?.abort(); request.current = null;
-    setBusy(false); setResult(undefined); setError(undefined); setFieldErrors({}); update();
+    // Clear the result (it no longer matches the inputs) but keep every answer.
+    setBusy(false); if (result) setResult(undefined); setError(undefined); setFieldErrors({}); update();
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -146,8 +156,9 @@ export function FinancialEstimator({ propertyId, analysisId, demand, generationK
       {busy && <p className="system-form-status" role="status">Calculating the selected system from the saved roof and your inputs…</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
     </form>
-    {result && <><FinancialResults response={result} />
-      <BenefitEvaluator key={result.requestId} propertyId={propertyId} analysisId={analysisId} demand={demand}
+    <div ref={resultsRef} tabIndex={-1} className="outline-none">{result && <FinancialResults response={result} />}</div>
+    {result && !onResult && <>
+      <BenefitEvaluator propertyId={propertyId} analysisId={analysisId} demand={demand}
         generationKwhPerKwYear={generationKwhPerKwYear} nominalKw={result.system.nominalKw}
         grossSystemCostRupees={result.financial.input.quote.grossSystemCostRupees}
         financialInputs={{ grossSystemCostRupees: result.financial.input.quote.grossSystemCostRupees,

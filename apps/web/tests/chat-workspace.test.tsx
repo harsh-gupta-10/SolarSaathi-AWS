@@ -65,6 +65,16 @@ describe("chat workspace", () => {
     expect(await screen.findByText(/I can only help with rooftop solar/)).toBeTruthy();
   });
 
+  it("explains a model-access failure and shows the support reference", async () => {
+    streams([{ type: "error", code: "MODEL_ACCESS_DENIED", message: "not enabled", requestId: "req-abc" }]);
+    const user = userEvent.setup();
+    render(<ChatWorkspace />);
+    await user.type(screen.getByLabelText("Message SolarSaathi"), "hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText(/has not been switched on for this deployment/)).toBeTruthy();
+    expect(screen.getByText("Reference for support: req-abc")).toBeTruthy();
+  });
+
   it("answers a question card by posting the chosen reply back", async () => {
     streams([{ type: "card", card: { cardId: "q1", kind: "QUESTION", title: "One more thing", data: { question: { text: "Do you own the house?", options: [{ label: "Yes", value: "OWNER" }, { label: "No", value: "TENANT" }] } } } }, { type: "done" }]);
     const user = userEvent.setup();

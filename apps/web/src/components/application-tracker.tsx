@@ -3,10 +3,11 @@
 import { SignInLink } from "./sign-in-link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, CalendarDays, Check, CircleAlert, ClipboardList, FileText,
-  MapPin, RefreshCw, ShieldCheck } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CalendarDays, Check, CircleAlert, ClipboardList, Download, FileText,
+  MapPin, RefreshCw, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { Button, Field, Input, Label, Select } from "@solarsaathi/ui";
-import { applicationsApi, type ApplicationStepStatus, type PropertyChoice, type SolarApplication } from "../lib/applications-api";
+import { applicationsApi, documentFileProblem, type ApplicationStepStatus, type PropertyChoice,
+  type SolarApplication } from "../lib/applications-api";
 import { RoofRequestError } from "../lib/roof-api";
 import { useAuth } from "../auth/auth-provider";
 
@@ -20,6 +21,9 @@ const documentTypes: ReadonlyArray<readonly [string, string]> = [["ACKNOWLEDGEME
   ["BANK_PROOF", "Cancelled cheque or passbook"], ["VENDOR_WORK_ORDER", "Vendor work order"],
   ["COMMISSIONING_CERTIFICATE", "Commissioning certificate"], ["NET_METER_CONFIRMATION", "Net-meter confirmation"],
   ["OTHER", "Other"]];
+const day = (value: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric",
+  timeZone: "Asia/Kolkata" }).format(new Date(value));
+const megabytes = (bytes: number) => `${(bytes / 1_048_576).toFixed(bytes < 1_048_576 ? 2 : 1)} MB`;
 const messageFor = (error: unknown) => error instanceof RoofRequestError ? error.message :
   "The application service could not complete that request. Try again.";
 
@@ -100,6 +104,9 @@ export function ApplicationDetails({ initial, demo = false }: { initial: SolarAp
   const [documentType, setDocumentType] = useState("");
   const [documentLabel, setDocumentLabel] = useState("");
   const [obtainedOn, setObtainedOn] = useState("");
+  const [file, setFile] = useState<File>();
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState<string>();
   const nextStep = application.steps.find(step => step.stepId === application.expectedNextStepId);
   const completed = application.steps.filter(step => step.status === "COMPLETED").length;
 
@@ -132,9 +139,21 @@ export function ApplicationDetails({ initial, demo = false }: { initial: SolarAp
     if (!/^[A-Z][A-Z0-9_]{1,63}$/.test(type) || !documentLabel.trim()) {
       setError("Choose a document type and enter a short label."); return;
     }
-    void mutate(current => applicationsApi.document(current, { documentType: type, label: documentLabel.trim(),
-      ...(obtainedOn ? { obtainedOn } : {}) }), "Document note added. No file was uploaded.")
-      .then(saved => { if (saved) { setDocumentType(""); setDocumentLabel(""); setObtainedOn(""); } });
+    const problem = file ? documentFileProblem(file) : undefined;
+    if (problem) { setError(problem); return; }
+    const values = { documentType: type, label: documentLabel.trim(), ...(obtainedOn ? { obtainedOn } : {}) };
+    void mutate(async current => file ? applicationsApi.uploadDocument(current, values, file) :
+      (await applicationsApi.document(current, values)).application,
+    file ? "File uploaded and stored privately." : "Document note added without a file.")
+      .then(saved => { if (saved) { setDocumentType(""); setDocumentLabel(""); setObtainedOn(""); setFile(undefined);
+        setFileInputKey(value => value + 1); } });
+  }
+  async function download(documentId: string) {
+    if (demo) return;
+    setBusy(true); setError(undefined); setNotice(undefined);
+    try { window.location.assign(await applicationsApi.documentDownloadUrl(application, documentId)); }
+    catch (failure) { setError(messageFor(failure)); }
+    finally { setBusy(false); }
   }
 
   return <section className="tracker-detail" aria-labelledby="tracker-detail-title">
@@ -178,11 +197,38 @@ export function ApplicationDetails({ initial, demo = false }: { initial: SolarAp
           </Field>
           <Button type="submit" disabled={busy || demo}>Save details</Button>
         </form></section>
-        <section><h2>Document notes</h2><p>Record what you have. No file contents are uploaded from this tracker.</p>
+        <section><h2>Documents</h2>
+          <p>{demo ? "Fictional document list." : "Upload a PDF, JPEG or PNG (up to 10 MB), or record a note without a file. Files are encrypted, private to people with access to this property, deleted automatically 365 days after upload, and you can delete them at any time."}</p>
           {application.documents.length ? <ul className="tracker-documents">{application.documents.map(document =>
-            <li key={document.documentId}><FileText size={17} aria-hidden="true" /><div><strong>{document.label}</strong>
-              <span>{readable(document.documentType)} · recorded {when(document.recordedAt)}</span></div></li>)}</ul> :
-            <p className="tracker-empty-small">No document notes yet.</p>}
+            <li key={document.documentId}><FileText size={17} aria-hidden="true" /><div className="min-w-0 flex-1"><strong>{document.label}</strong>
+              <span>{readable(document.documentType)} · recorded {when(document.recordedAt)}</span>
+              <span>{!document.file ? "Note only, no file" : document.file.status === "UPLOADED" ?
+                `File stored · ${megabytes(document.file.sizeBytes)}${document.file.expiresAt ? ` · deleted automatically on ${day(document.file.expiresAt)}` : ""}` :
+                "Upload not finished. Choose the same file again to finish it, or delete this entry."}</span>
+              {!demo && <div className="mt-2 flex flex-wrap gap-2">
+                {document.file?.status === "UPLOADED" && <Button type="button" size="sm" variant="outline" disabled={busy}
+                  onClick={() => void download(document.documentId)}><Download size={14} aria-hidden="true" /> Download</Button>}
+                {document.file?.status === "PENDING_UPLOAD" && <Button type="button" size="sm" variant="outline" disabled={busy}
+                  onClick={() => void mutate(current => applicationsApi.confirmDocument(current, document.documentId), "File stored privately.")}>
+                  <RefreshCw size={14} aria-hidden="true" /> Check upload</Button>}
+                {document.file?.status === "PENDING_UPLOAD" && <label className="inline-flex min-h-9 cursor-pointer items-center gap-1 rounded-md border px-3 text-sm font-medium">
+                  <Upload size={14} aria-hidden="true" /> Upload again
+                  <input type="file" className="sr-only" accept="application/pdf,image/jpeg,image/png" disabled={busy}
+                    aria-label={`Choose the file for ${document.label} again`}
+                    onChange={event => { const chosen = event.target.files?.[0]; event.target.value = "";
+                      if (chosen) void mutate(current => applicationsApi.retryUpload(current, document.documentId, chosen), "File stored privately."); }} />
+                </label>}
+                {confirmDelete === document.documentId ? <>
+                  <Button type="button" size="sm" variant="destructive" disabled={busy} onClick={() => {
+                    setConfirmDelete(undefined);
+                    void mutate(current => applicationsApi.deleteDocument(current, document.documentId),
+                      document.file ? "Document and file deleted." : "Document note deleted.");
+                  }}>Confirm delete</Button>
+                  <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmDelete(undefined)}>Cancel</Button></> :
+                  <Button type="button" size="sm" variant="ghost" disabled={busy} aria-label={`Delete ${document.label}`}
+                    onClick={() => setConfirmDelete(document.documentId)}><Trash2 size={14} aria-hidden="true" /> Delete</Button>}
+              </div>}</div></li>)}</ul> :
+            <p className="tracker-empty-small">No documents yet.</p>}
           <form onSubmit={addDocument} className="grid gap-4">
             <Field id="tracker-document-type" label="Document type" required>
               {control => <Select {...control} value={documentType} disabled={demo} onChange={event => setDocumentType(event.target.value)}>
@@ -194,7 +240,11 @@ export function ApplicationDetails({ initial, demo = false }: { initial: SolarAp
             <Field id="tracker-obtained" label="Date received (optional)">
               {control => <Input {...control} type="date" value={obtainedOn} disabled={demo} onChange={event => setObtainedOn(event.target.value)} />}
             </Field>
-            <Button type="submit" variant="outline" disabled={busy || demo}>Add document note</Button>
+            <Field id="tracker-document-file" label="File (optional)" hint="PDF, JPEG or PNG, up to 10 MB.">
+              {control => <Input {...control} key={fileInputKey} type="file" accept="application/pdf,image/jpeg,image/png" disabled={demo}
+                onChange={event => { setFile(event.target.files?.[0]); setError(undefined); }} />}
+            </Field>
+            <Button type="submit" variant="outline" disabled={busy || demo}>{file ? "Upload document" : "Add document note"}</Button>
           </form></section>
         <section className="tracker-reminder"><CalendarDays size={19} aria-hidden="true" />
           <h2>{demo ? "Fictional reference preview" : "Keep your official reference handy"}</h2>

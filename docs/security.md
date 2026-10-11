@@ -129,6 +129,43 @@ Protect:
 
 Do not expose private S3 objects publicly.
 
+## Application document uploads
+Applicants can attach ID, bill, property, bank and certificate files to an
+application tracker. Decided policy (2026-10-11):
+
+- **Storage:** a dedicated private bucket per stage (`ApplicationDocumentBucket`).
+  Block Public Access is fully on, objects are bucket-owner enforced, default
+  encryption is SSE-S3 (AES-256), a bucket policy denies non-TLS requests, and
+  versioning is off so a deletion is final.
+- **What is accepted:** `application/pdf`, `image/jpeg`, `image/png`, 1 byte to
+  10 MB. Keys are built by the server as
+  `applications/{sha256(ownerUserId)[0..32]}/{applicationId}/{documentId}`; a
+  user-supplied filename never reaches a key or a response header.
+- **Upload:** the API records the document as `PENDING_UPLOAD` and returns a
+  presigned `PUT` valid for 5 minutes with `content-type` and `content-length`
+  signed, so S3 rejects any other declared type or size. The browser sends the
+  file straight to S3 without cookies or the Cognito token.
+- **Confirmation:** a file counts as stored only after the confirm call checks
+  `HeadObject` size and content type and the first bytes against the declared
+  type's file signature (PDF, JPEG, PNG). A mismatch deletes the object.
+  The client-computed SHA-256 is recorded as `sha256Reported`; it is not
+  verified by the server.
+- **Access:** only users who pass the property access check (owner, or a member
+  of the owning organization) can confirm, download or delete. Downloads use a
+  presigned `GET` valid for 5 minutes with `Content-Disposition: attachment`.
+- **Retention and deletion:** objects under `applications/` expire 365 days after
+  upload (S3 lifecycle); the tracker shows the deletion date and refuses
+  downloads after it. Incomplete multipart uploads are aborted after 1 day.
+  The delete endpoint removes the object first, then the metadata with an
+  audited `DOCUMENT_DELETED` event, so a retried delete never leaves an orphan.
+  A `PENDING_UPLOAD` entry whose object was never confirmed can be deleted the
+  same way.
+- **Logging:** request logs record only request ID, status and duration. File
+  contents, presigned URLs and object keys are never logged.
+- **Not yet enabled (optional):** S3 server access logs or CloudTrail S3 data
+  events for object-level audit, malware scanning, and account-deletion cascade
+  to documents. Decide before production use.
+
 ## Google roof data retention
 Google Maps Platform's Solar API terms limit cached Building Insights and Data
 Layers to 30 calendar days, except for the specific fixed-media downstream
@@ -253,3 +290,13 @@ Keep:
 - calculation provenance
 - application state transitions
 - admin actions
+
+### Document deletion paths (review fixes, 2026-10-11)
+- **Delete a document:** the S3 object is removed first, then the record; if the record changed meanwhile, the removal is
+  retried once on the latest revision, so no entry keeps offering a download for a missing file.
+- **Delete a property:** the core function collects the S3 keys of every application document of that property while
+  purging its records, then deletes those objects (IAM: `s3:DeleteObject` on `applications/*` only). A failure is logged
+  as `PROPERTY_PURGE_INCOMPLETE`; lifecycle expiry (365 days) is the backstop.
+- **Unfinished uploads:** the upload link is signed before anything is recorded; a pending entry can request a fresh
+  link (`confirm` with `reissueUpload`) and must be completed with a file of the same type and size.
+- Still open: deleting documents when a whole *account* is deleted.

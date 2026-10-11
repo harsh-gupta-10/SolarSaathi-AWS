@@ -28,7 +28,7 @@ const card: z.ZodType<ChatCard> = z.object({
 const proposal = z.object({ proposalId: z.string(), action: z.enum(["CREATE_PROPERTY", "CONFIRM_ROOF", "CREATE_APPLICATION",
   "UPDATE_APPLICATION_STEP", "DELETE_PROPERTY"]), summary: z.string(), expiresAt: z.string() });
 const errorCode = z.enum(["UNAUTHENTICATED", "RATE_LIMITED", "BUDGET_EXCEEDED", "GUARDRAIL_BLOCKED", "MODEL_UNAVAILABLE",
-  "MODEL_REFUSED", "TOOL_FAILED", "INVALID_REQUEST", "INTERNAL"]);
+  "MODEL_ACCESS_DENIED", "MODEL_TIMEOUT", "MODEL_BUSY", "MODEL_REFUSED", "TOOL_FAILED", "INVALID_REQUEST", "INTERNAL"]);
 const streamEvent: z.ZodType<ChatStreamEvent> = z.discriminatedUnion("type", [
   z.object({ type: z.literal("meta"), chatId: z.string(), messageId: z.string() }),
   z.object({ type: z.literal("text"), delta: z.string() }),
@@ -37,7 +37,7 @@ const streamEvent: z.ZodType<ChatStreamEvent> = z.discriminatedUnion("type", [
   z.object({ type: z.literal("quick_replies"), replies: z.array(quickReply) }),
   z.object({ type: z.literal("proposal"), proposal }),
   z.object({ type: z.literal("grounding"), replaced: z.number() }),
-  z.object({ type: z.literal("error"), code: errorCode, message: z.string() }),
+  z.object({ type: z.literal("error"), code: errorCode, message: z.string(), requestId: z.string().max(100).optional() }),
   z.object({ type: z.literal("done"), usage: z.object({ inputTokens: z.number(), outputTokens: z.number() }).optional() }),
 ]);
 
