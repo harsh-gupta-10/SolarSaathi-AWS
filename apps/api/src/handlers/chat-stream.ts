@@ -6,6 +6,8 @@ import type { ChatStreamEvent } from "@solarsaathi/types";
 import type { BedrockStreamClient } from "../chat/agent";
 import { createChatRuntime, type ChatRuntime, type ChatServiceDependencies } from "../chat/services";
 import { handleChatTurn } from "../chat/stream-service";
+import { OpenAiConverseClient } from "../chat/openai-client";
+import { createOpenAiKeyReader } from "../chat/openai-secret";
 import { createCognitoIdentityResolver, type CognitoIdentityResolver } from "../auth/cognito";
 import { currentIdentityResponse } from "../auth/profile";
 import { RequestError } from "../lib/http";
@@ -66,16 +68,24 @@ export async function serveChatStream(request: LambdaFunctionURLEvent, sink: Sse
 
   sink.begin(200, { "content-type": "text/event-stream; charset=utf-8", connection: "keep-alive", ...securityHeaders });
   sink.write(": open\n\n");
-  const modelId = environment.BEDROCK_MODEL_ID;
-  const guardrailId = process.env.GUARDRAIL_ID?.trim();
-  const guardrailVersion = process.env.GUARDRAIL_VERSION?.trim();
+  // CHAT_PROVIDER=openai routes the model call to OpenAI (an external provider; chat text leaves AWS). The default stays Bedrock.
+  const openAi = process.env.CHAT_PROVIDER === "openai";
+  const openAiModel = process.env.OPENAI_CHAT_MODEL_ID?.trim();
+  const openAiSecret = process.env.OPENAI_API_KEY_SECRET_ARN?.trim();
+  const openAiReady = openAi && !!openAiModel && !!openAiSecret;
+  const modelId = openAi ? (openAiReady ? openAiModel : undefined) : environment.BEDROCK_MODEL_ID;
+  const guardrailId = openAi ? undefined : process.env.GUARDRAIL_ID?.trim();
+  const guardrailVersion = openAi ? undefined : process.env.GUARDRAIL_VERSION?.trim();
   let additional: Record<string, unknown> | undefined;
   try { additional = process.env.CHAT_MODEL_REQUEST_FIELDS ? JSON.parse(process.env.CHAT_MODEL_REQUEST_FIELDS) as Record<string, unknown> : undefined; } catch { additional = undefined; }
   const config = modelId ? { modelId, ...(guardrailId && guardrailVersion ? { guardrail: { id: guardrailId, version: guardrailVersion } } : {}),
-    promptCache: process.env.CHAT_PROMPT_CACHE !== "false", ...(additional ? { additionalModelRequestFields: additional } : {}),
-    log: (value: Record<string, unknown>) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), service: "solarsaathi-chat", ...value })) } : undefined;
-  const client = dependencies.client ?? (modelId ? new BedrockRuntimeClient({ region: environment.BEDROCK_REGION ?? environment.AWS_REGION, maxAttempts: 2,
-    requestHandler: { connectionTimeout: 2_000, requestTimeout: 90_000 } }) as unknown as BedrockStreamClient : undefined);
+    // Prompt-cache checkpoints are a Bedrock feature; the OpenAI adapter ignores them.
+    promptCache: !openAi && process.env.CHAT_PROMPT_CACHE !== "false", ...(additional ? { additionalModelRequestFields: additional } : {}),
+    log: (value: Record<string, unknown>) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), service: "solarsaathi-chat", provider: openAi ? "openai" : "bedrock", ...value })) } : undefined;
+  const client = dependencies.client ?? (openAiReady
+    ? new OpenAiConverseClient({ getApiKey: createOpenAiKeyReader(openAiSecret!, environment.AWS_REGION) }) as unknown as BedrockStreamClient
+    : !openAi && modelId ? new BedrockRuntimeClient({ region: environment.BEDROCK_REGION ?? environment.AWS_REGION, maxAttempts: 2,
+      requestHandler: { connectionTimeout: 2_000, requestTimeout: 90_000 } }) as unknown as BedrockStreamClient : undefined);
   const aborted = new AbortController();
   try {
     for await (const value of handleChatTurn(runtime, client, config, { identity, requestId: context.awsRequestId, body, signal: aborted.signal })) {

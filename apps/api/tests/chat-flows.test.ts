@@ -1,6 +1,6 @@
 import type { APIGatewayProxyEvent, Context, LambdaFunctionURLEvent } from "aws-lambda";
 import type { ChatStreamEvent } from "@solarsaathi/types";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildReadinessPack, GENERAL_GUIDANCE_LABEL } from "../src/chat/checklist";
 import { confirmProposal } from "../src/chat/confirm";
 import { ChatLimits } from "../src/chat/limits";
@@ -228,6 +228,28 @@ describe("function url stream", () => {
     const events = ok.out.body.split("\n\n").filter(line => line.startsWith("data: ")).map(line => JSON.parse(line.slice(6)) as ChatStreamEvent);
     expect(events.map(event => event.type)).toEqual(["meta", "text", "done"]);
     expect(ok.out.ended).toBe(true);
+  });
+});
+
+describe("chat provider selection", () => {
+  const request = () => ({ headers: { "content-type": "application/json", authorization: "Bearer a.b.c", origin: "https://app.example.com" }, isBase64Encoded: false,
+    body: JSON.stringify({ message: "hello" }), requestContext: { http: { method: "POST" } } as never }) as never;
+  const signedIn = async () => ({ sub: actorId, groups: [], attributes: [{ Name: "sub", Value: actorId }, { Name: "email", Value: "u@example.com" }, { Name: "email_verified", Value: "true" }] }) as never;
+  const run = async () => {
+    const out = { body: "" };
+    const target: SseSink = { begin: () => undefined, write: chunk => { out.body += chunk; }, end: () => undefined };
+    await serveChatStream(request(), target, { awsRequestId: "req" } as Context, { runtime: runtimeFor() }, signedIn);
+    return out.body.split("\n\n").filter(line => line.startsWith("data: ")).map(line => JSON.parse(line.slice(6)) as ChatStreamEvent);
+  };
+  const saved = { ...process.env };
+  afterEach(() => { process.env = { ...saved }; });
+
+  it("reports 'not configured' for the openai provider without a model or secret, and never falls back to Bedrock", async () => {
+    Object.assign(process.env, { API_ALLOWED_ORIGIN: "https://app.example.com", BEDROCK_MODEL_ID: "bedrock-model", CHAT_PROVIDER: "openai" });
+    delete process.env.OPENAI_CHAT_MODEL_ID; delete process.env.OPENAI_API_KEY_SECRET_ARN;
+    expect((await run()).at(-1)).toMatchObject({ type: "error", code: "MODEL_ACCESS_DENIED" });
+    Object.assign(process.env, { OPENAI_CHAT_MODEL_ID: "gpt-x" });
+    expect((await run()).at(-1)).toMatchObject({ type: "error", code: "MODEL_ACCESS_DENIED" });
   });
 });
 

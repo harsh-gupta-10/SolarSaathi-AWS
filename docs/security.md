@@ -300,3 +300,19 @@ Keep:
 - **Unfinished uploads:** the upload link is signed before anything is recorded; a pending entry can request a fresh
   link (`confirm` with `reissueUpload`) and must be completed with a file of the same type and size.
 - Still open: deleting documents when a whole *account* is deleted.
+
+## External AI provider: OpenAI (optional, 2026-10-11)
+
+When `ChatProvider=openai`, the chat assistant sends the (masked) conversation, the tool results the user's question needed
+and the system prompt to `api.openai.com`. This is an external integration like Google Maps/Solar, not a replacement for AWS.
+- **Key handling:** the API key lives only in AWS Secrets Manager. The chat function reads it at request time through one
+  read-only statement scoped to that secret, caches it five minutes in memory and never logs, returns or echoes it. It is not
+  in Lambda environment variables, CloudFormation parameters (only the secret's ARN), the repository or the browser.
+  Rotate by writing a new secret value; revoke the old key at OpenAI.
+- **Data sent:** masked user text (Aadhaar, bank, card, password, OTP and consumer numbers are removed first), tool summaries
+  of the user's own saved roof/system/financial/benefit data, and the fixed system prompt. No credentials or other users' data.
+  Confirm OpenAI's current API data-retention terms before enabling it for real customers; document them in the privacy notice.
+- **Requests** use HTTPS, do not follow redirects, are bounded by the chat turn deadline, and the provider's error text is
+  truncated and never includes the key.
+- **Controls that remain:** sensitive-data masking, grounding filter, per-user limits, confirm-before-change cards. Bedrock
+  Guardrails do not apply on this path.

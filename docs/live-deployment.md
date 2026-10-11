@@ -67,3 +67,5 @@ application.
 - No custom domain is connected. Add DNS and update Google referrer restrictions,
   SAM `ApplicationOrigin`, Cognito redirects and Amplify branch variables
   together when adopting one.
+- Chat provider: code for an OpenAI provider (`ChatProvider=openai`, key in Secrets Manager) exists but is not deployed or
+  configured. Owner steps are in `docs/chat-assistant-plan.md` ("OpenAI as the chat provider").

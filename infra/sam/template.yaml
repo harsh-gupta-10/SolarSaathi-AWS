@@ -66,6 +66,21 @@ Parameters:
     Default: ""
     AllowedPattern: '^$|^arn:(aws|aws-cn|aws-us-gov):secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
     Description: Optional Secrets Manager ARN containing an apiKey JSON key for transient official-host discovery only.
+  ChatProvider:
+    Type: String
+    Default: bedrock
+    AllowedValues: [bedrock, openai]
+    Description: Model provider for the streaming chat assistant. openai is an external provider (chat text leaves AWS); bedrock is the default.
+  OpenAiChatModelId:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^[A-Za-z0-9._:-]{1,100}$'
+    Description: OpenAI model ID for chat when ChatProvider is openai. Check it with the OpenAI models list; a wrong ID answers 404.
+  OpenAiApiKeySecretArn:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^arn:(aws|aws-cn|aws-us-gov):secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
+    Description: Secrets Manager ARN of a secret with an apiKey JSON key for OpenAI. Read at request time by the chat function only; never placed in its environment.
   AdvisorBedrockModelId:
     Type: String
     Default: ""
@@ -113,6 +128,9 @@ Conditions:
   GeocodingConfigured: !Not [!Equals [!Ref GoogleGeocodingKeySecretArn, ""]]
   SolarConfigured: !Not [!Equals [!Ref GoogleSolarKeySecretArn, ""]]
   BraveSearchConfigured: !Not [!Equals [!Ref BraveSearchKeySecretArn, ""]]
+  OpenAiChatConfigured: !And
+    - !Equals [!Ref ChatProvider, "openai"]
+    - !Not [!Equals [!Ref OpenAiApiKeySecretArn, ""]]
   AdvisorBedrockConfigured: !Not [!Equals [!Ref AdvisorBedrockModelArn, ""]]
   AdvisorFoundationModelConfigured: !Not [!Equals [!Ref AdvisorBedrockFoundationModelArn, ""]]
   ExternalGuardrail: !Not [!Equals [!Ref GuardrailId, ""]]
@@ -132,6 +150,13 @@ Rules:
     Assertions:
       - Assert: !Not [!Equals [!Ref GuardrailVersion, ""]]
         AssertDescription: An external GuardrailId requires GuardrailVersion.
+  OpenAiChatNeedsModelAndSecret:
+    RuleCondition: !Equals [!Ref ChatProvider, "openai"]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref OpenAiChatModelId, ""]]
+        AssertDescription: ChatProvider openai requires OpenAiChatModelId.
+      - Assert: !Not [!Equals [!Ref OpenAiApiKeySecretArn, ""]]
+        AssertDescription: ChatProvider openai requires OpenAiApiKeySecretArn.
   AdvisorModelConfigurationPaired:
     Assertions:
       - Assert: !Or
@@ -1492,6 +1517,7 @@ Resources:
           - Verify the Cognito access token in code on every request; the Function URL itself has no IAM auth.
           - Limit CORS to the application origin.
           - Grant Bedrock invoke and guardrail access only to the configured model, inference profile and guardrail.
+          - When ChatProvider is openai, grant read access to exactly one Secrets Manager secret and keep the key out of the function environment.
           - Never log message text, prompts, tool results or model output.
           - Write only chat state, price research candidates and counters; never policy or account records.
     Properties:
@@ -1515,6 +1541,9 @@ Resources:
           POLICY_TABLE_NAME: !Ref PolicyTable
           BEDROCK_MODEL_ID: !Ref AdvisorBedrockModelId
           BEDROCK_REGION: !Ref AdvisorBedrockRegion
+          CHAT_PROVIDER: !Ref ChatProvider
+          OPENAI_CHAT_MODEL_ID: !Ref OpenAiChatModelId
+          OPENAI_API_KEY_SECRET_ARN: !Ref OpenAiApiKeySecretArn
           GUARDRAIL_ID: !If [ExternalGuardrail, !Ref GuardrailId, !GetAtt ChatGuardrail.GuardrailId]
           GUARDRAIL_VERSION: !If [ExternalGuardrail, !Ref GuardrailVersion, !GetAtt ChatGuardrailVersion.Version]
           BRAVE_SEARCH_API_KEY: !If
@@ -1577,6 +1606,15 @@ Resources:
                   - AdvisorFoundationModelConfigured
                   - [!Ref AdvisorBedrockModelArn, !Ref AdvisorBedrockFoundationModelArn]
                   - !Ref AdvisorBedrockModelArn
+          - !Ref AWS::NoValue
+        - !If
+          - OpenAiChatConfigured
+          - Statement:
+              # Exactly one secret, read-only. The key is fetched at request time and never placed in the function environment.
+              - Sid: ReadOpenAiApiKey
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref OpenAiApiKeySecretArn
           - !Ref AWS::NoValue
 
   ChatAgentFunctionUrlInvoke:

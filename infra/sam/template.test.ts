@@ -514,7 +514,16 @@ describe("SAM foundation and Cognito invariants (not schema validation)", () => 
     expect(policies).toContain("bedrock:InvokeModelWithResponseStream");
     expect(policies).toContain("bedrock:ApplyGuardrail");
     expect(policies).toContain("AdvisorBedrockModelArn");
-    expect(policies).not.toMatch(/DeleteItem|s3:|secretsmanager|"Action":"bedrock:\*"/);
+    expect(policies).not.toMatch(/DeleteItem|s3:|"Action":"bedrock:\*"/);
+    // The only Secrets Manager access is one read-only statement for the OpenAI key secret, present only when the openai
+    // provider is configured. The key itself is never in the function environment, only the secret's ARN.
+    expect(policies.match(/secretsmanager:/g)).toHaveLength(1);
+    expect(policies).toContain('"Sid":"ReadOpenAiApiKey"');
+    expect(policies).toContain('"Action":"secretsmanager:GetSecretValue"');
+    expect(policies).toContain('"Resource":"OpenAiApiKeySecretArn"');
+    expect(policies).toContain("OpenAiChatConfigured");
+    expect(Object.keys(env).filter(name => /API_?KEY$/i.test(name) && name !== "BRAVE_SEARCH_API_KEY")).toEqual([]);
+    expect(env).toMatchObject({ CHAT_PROVIDER: "ChatProvider", OPENAI_CHAT_MODEL_ID: "OpenAiChatModelId", OPENAI_API_KEY_SECRET_ARN: "OpenAiApiKeySecretArn" });
     // The agent may write chat state and price candidates only, never account, property or policy records.
     const write = (agent.Policies as { Statement: { Sid: string; Condition: unknown }[] }[])[0]!.Statement
       .find(item => item.Sid === "WriteChatStateAndPriceCandidates")!;

@@ -178,6 +178,8 @@ export function classifyModelError(error: unknown, turnAborted: boolean): { code
   const name = error instanceof Error ? error.name : "";
   const text = error instanceof Error ? error.message : "";
   if (turnAborted || TIMEOUT_ERRORS.has(name)) return { code: "MODEL_TIMEOUT", message: "The assistant took too long to answer. Please try again." };
+  // OpenAI answers HTTP 429 insufficient_quota when the account has no credit: retrying will not help.
+  if (name === "OpenAiInsufficientQuota") return { code: "MODEL_ACCESS_DENIED", message: "The assistant is not available right now. The AI provider account needs attention from the site owner." };
   if (BUSY_ERRORS.has(name)) return { code: "MODEL_BUSY", message: "The assistant is busy right now. Please try again in a minute." };
   // Bedrock reports missing model access / use-case approval as ValidationException "Operation not allowed".
   if (ACCESS_ERRORS.has(name) || (name === "ValidationException" && /not allowed|not authori[sz]ed|access|model identifier is invalid|use case/i.test(text))) {

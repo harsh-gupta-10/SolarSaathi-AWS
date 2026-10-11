@@ -410,3 +410,53 @@ AdvisorBedrockFoundationModelArn='arn:aws:bedrock:*::foundation-model/openai.gpt
 Untested with this model once access works: tool calling and the guardrail on GPT-6.1 Sol, and prompt caching (the code
 retries without cache checkpoints if the model rejects them; set `CHAT_PROMPT_CACHE=false` to skip them). The answer
 quality of the grounded, card-based replies should be spot-checked before relying on it.
+
+## OpenAI as the chat provider (added 2026-10-11, not deployed)
+
+**Why:** Bedrock refuses every model in this AWS account (see above), most likely a free-tier / new-account restriction.
+The owner chose to run chat on an OpenAI API key instead. Bedrock stays the default and is not removed.
+
+**How it works:** `CHAT_PROVIDER=openai` makes the chat stream handler call OpenAI Chat Completions through
+`apps/api/src/chat/openai-client.ts`, an adapter behind the same interface the agent already uses for Bedrock. The agent,
+tools, grounding filter, redaction and per-user limits are unchanged. The key is read from AWS Secrets Manager at request time
+(`openai-secret.ts`, cached five minutes) and is never in the Lambda environment, CloudFormation, the repo, logs or error text.
+The function role may read exactly that one secret (`ReadOpenAiApiKey`, only when the openai provider is configured).
+
+**Not covered on the OpenAI path (be aware):**
+- **No Bedrock Guardrail.** It is a Bedrock feature. The remaining protections are the system prompt, the sensitive-data
+  masking before the model sees a message, the grounding filter that replaces ungrounded figures, per-user rate and token
+  limits, and the confirm-before-change cards. If stronger content filtering is needed, add OpenAI's moderation endpoint.
+- **Chat text leaves AWS** and is processed by OpenAI under its API terms. Aadhaar, bank, card, password, OTP and consumer
+  numbers are masked before the model call, and the UI already tells users never to share them. Tell users in the privacy notice.
+- **Prompt caching** is a Bedrock feature and is ignored. Cost is per OpenAI token pricing; limits in `chat/config.ts` still apply.
+- The **advisor** (`/advisor/solar`) still uses the Bedrock parameters and falls back to its deterministic answer.
+
+### Owner steps (you run these; the key never goes through the assistant)
+1. **Revoke the key you pasted into the chat** at platform.openai.com → API keys, and create a new one. A key that has been
+   pasted anywhere should be treated as exposed. Make sure the OpenAI account has paid credit: a free account answers HTTP 429
+   `insufficient_quota`, which the app reports as "the AI provider account needs attention".
+2. **Store the new key** in Secrets Manager in your own terminal (the key is typed at a hidden prompt, not saved in history):
+   ```sh
+   read -rs OPENAI_KEY
+   aws secretsmanager create-secret --region ap-south-1 --name solarsaathi/dev/openai-api-key \
+     --description "OpenAI API key for the SolarSaathi chat assistant" \
+     --secret-string "{\"apiKey\":\"$OPENAI_KEY\"}" --query ARN --output text
+   unset OPENAI_KEY
+   ```
+   The printed ARN is `OpenAiApiKeySecretArn`. To rotate later, use `put-secret-value` on the same secret; the function picks it up within five minutes.
+3. **Find the exact model ID** your key can use (the OpenAI ID may differ from Bedrock's `gpt-6.1-sol`):
+   ```sh
+   read -rs OPENAI_KEY
+   curl -s https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_KEY" | python3 -c 'import json,sys; print("\n".join(sorted(m["id"] for m in json.load(sys.stdin)["data"])))' | grep -i gpt
+   unset OPENAI_KEY
+   ```
+   A wrong ID answers 404, shown to users as "the AI model has not been enabled", with `ResourceNotFoundException` and
+   `model_not_found` in the `chat_model_error` log line.
+4. **Deploy** with the three new parameters (carry every other parameter forward as in the redeploy procedure above):
+   `ChatProvider=openai OpenAiChatModelId=<model id> OpenAiApiKeySecretArn=<arn from step 2>`.
+   Review the change set: it should add only the `CHAT_PROVIDER`, `OPENAI_CHAT_MODEL_ID`, `OPENAI_API_KEY_SECRET_ARN` variables and the `ReadOpenAiApiKey` statement on `ChatAgentFunction`.
+5. **Verify:** send a chat turn. Logs (`/solarsaathi/solarsaathi-dev/dev/chat-agent`) show `provider: "openai"` and, on failure,
+   `chat_model_error` with the provider's status and error code (never prompt text or the key).
+
+### Switching back to Bedrock
+Set `ChatProvider=bedrock` (the default) and redeploy. The OpenAI secret and its permission are then unused and can be deleted.
